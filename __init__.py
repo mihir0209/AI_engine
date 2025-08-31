@@ -35,15 +35,16 @@ Usage:
         print(f"Error: {result.error_message}")
 
 Command Line Usage:
-    python -m AI_engine.ai_engine auto "Your message"      # Auto provider rotation
-    python -m AI_engine.ai_engine cerebras "Your message"  # Specific provider
-    python -m AI_engine.ai_engine list                     # List all providers
-    python -m AI_engine.ai_engine status                   # Show engine status
-    python -m AI_engine.ai_engine stress                   # Run stress test
+    python -m AI_engine.ai_engine provider_name                 # Test provider
+    python -m AI_engine.ai_engine auto "Your message"           # Auto provider rotation
+    python -m AI_engine.ai_engine provider_name "Your message"  # Specific provider
+    python -m AI_engine.ai_engine list                          # List all providers
+    python -m AI_engine.ai_engine status                        # Show engine status
+    python -m AI_engine.ai_engine stress                        # Run stress test
 """
 
 __version__ = "3.0.0"
-__author__ = "SEO Automation Team"
+__author__ = "Mihir Patil @ https://github.com/mihir0209"
 
 # Import main components for easy access
 try:

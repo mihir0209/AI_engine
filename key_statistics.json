@@ -1,0 +1,13 @@
+{
+  "cerebras": {
+    "key_0": {
+      "requests": 4,
+      "successes": 4,
+      "failures": 0,
+      "last_used": "2025-08-31T23:56:08.962828",
+      "rate_limited": false,
+      "weight": 0.8145062499999999,
+      "total_response_time": 4.843335151672363
+    }
+  }
+}

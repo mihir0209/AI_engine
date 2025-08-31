@@ -19,6 +19,16 @@ except ImportError as e:
     AI_CONFIGS = {}
     ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5}
 
+# Import Statistics Manager
+try:
+    from statistics_manager import StatisticsManager, get_stats_manager, save_statistics_now
+except ImportError as e:
+    print(f"Failed to import StatisticsManager: {e}")
+    print("Statistics persistence will be disabled")
+    StatisticsManager = None
+    get_stats_manager = lambda: None
+    save_statistics_now = lambda: None
+
 # Load environment variables
 load_dotenv()
 
@@ -60,6 +70,14 @@ class AI_engine:
         self.key_last_used = {}    # Track last usage time per key
         self.key_request_count = {} # Track requests per key per minute
         
+        # Initialize Statistics Manager
+        self.stats_manager = get_stats_manager()
+        
+        # Enhanced tracking for intelligent key rotation
+        self.key_usage_stats = {}  # Track usage per key
+        self.key_last_used = {}    # Track last usage time per key
+        self.key_request_count = {} # Track requests per key per minute
+        
         # Initialize comprehensive stats for all providers
         for provider_name, config in self.providers.items():
             self.usage_stats[provider_name] = {
@@ -77,7 +95,7 @@ class AI_engine:
             self.provider_key_rotation[provider_name] = config.get('current_key_index', 0)
             self.consecutive_failures[provider_name] = config.get('consecutive_failures', 0)
             
-            # Initialize enhanced per-key tracking
+            # Initialize enhanced per-key tracking with persistent data from StatisticsManager
             api_keys = config.get('api_keys', [])
             valid_keys = [key for key in api_keys if key is not None]
             
@@ -89,16 +107,35 @@ class AI_engine:
                 for i, key in enumerate(api_keys):
                     if key is not None:
                         key_id = f"key_{i}"
-                        self.key_usage_stats[provider_name][key_id] = {
-                            'requests': 0,
-                            'successes': 0,
-                            'failures': 0,
-                            'last_used': None,
-                            'rate_limited': False,
-                            'weight': 1.0,  # Load balancing weight
-                            'requests_this_minute': 0
-                        }
-                        self.key_last_used[provider_name][key_id] = None
+                        
+                        # Load persistent statistics for this key from StatisticsManager
+                        persistent_key_stats = self.stats_manager.get_statistics(provider_name, key_id)
+                        
+                        if persistent_key_stats:
+                            # Use persistent data
+                            self.key_usage_stats[provider_name][key_id] = {
+                                'requests': persistent_key_stats.requests,
+                                'successes': persistent_key_stats.successes,
+                                'failures': persistent_key_stats.failures,
+                                'last_used': persistent_key_stats.last_used,
+                                'rate_limited': persistent_key_stats.rate_limited,
+                                'weight': persistent_key_stats.weight,
+                                'requests_this_minute': 0
+                            }
+                            self.key_last_used[provider_name][key_id] = persistent_key_stats.last_used
+                        else:
+                            # Initialize with defaults
+                            self.key_usage_stats[provider_name][key_id] = {
+                                'requests': 0,
+                                'successes': 0,
+                                'failures': 0,
+                                'last_used': None,
+                                'rate_limited': False,
+                                'weight': 1.0,
+                                'requests_this_minute': 0
+                            }
+                            self.key_last_used[provider_name][key_id] = None
+                        
                         self.key_request_count[provider_name][key_id] = []
         
         if self.verbose:
@@ -106,6 +143,7 @@ class AI_engine:
             print(f"🔑 Key rotation: {'Enabled' if self.engine_settings.get('key_rotation_enabled', True) else 'Disabled'}")
             print(f"🔄 Provider rotation: {'Enabled' if self.engine_settings.get('provider_rotation_enabled', True) else 'Disabled'}")
             print(f"⚠️  Failure limit: {self.engine_settings.get('consecutive_failure_limit', 5)} consecutive failures")
+            print(f"💾 Persistent statistics: {'Loaded' if self.stats_manager.get_stats_summary()['total_providers'] > 0 else 'None found'}")
     
     def _load_enabled_providers(self) -> Dict[str, Dict[str, Any]]:
         """Load only enabled providers with valid API keys from external config"""
@@ -272,7 +310,7 @@ class AI_engine:
         return max(0, load_score)
     
     def _track_key_usage(self, provider_name: str, key_index: int):
-        """Track usage of a specific key"""
+        """Track usage of a specific key and update persistent storage"""
         key_id = f"key_{key_index}"
         current_time = datetime.now()
         
@@ -286,6 +324,9 @@ class AI_engine:
         if provider_name in self.key_usage_stats and key_id in self.key_usage_stats[provider_name]:
             self.key_usage_stats[provider_name][key_id]['requests'] += 1
             self.key_usage_stats[provider_name][key_id]['last_used'] = current_time
+            
+            # Update StatisticsManager (this handles persistence automatically)
+            # Note: We don't update success/failure here, that's done in _update_key_stats
     
     def _cleanup_request_counts(self, provider_name: str):
         """Remove request timestamps older than 1 minute"""
@@ -302,7 +343,7 @@ class AI_engine:
             ]
     
     def _update_key_stats(self, provider_name: str, key_index: int, success: bool, response_time: float = 0):
-        """Update statistics for a specific key"""
+        """Update statistics for a specific key in both memory and persistent storage"""
         key_id = f"key_{key_index}"
         
         if provider_name in self.key_usage_stats and key_id in self.key_usage_stats[provider_name]:
@@ -319,21 +360,27 @@ class AI_engine:
                 key_stats['weight'] = min(2.0, key_stats['weight'] * 1.1)
             
             key_stats['last_used'] = datetime.now()
+            
+            # Update StatisticsManager with the results
+            self.stats_manager.update_statistics(provider_name, key_id, success, response_time)
     
     def _mark_key_rate_limited(self, provider_name: str, key_index: int):
-        """Mark a specific key as rate limited"""
+        """Mark a specific key as rate limited and update persistent storage"""
         key_id = f"key_{key_index}"
         
         if provider_name in self.key_usage_stats and key_id in self.key_usage_stats[provider_name]:
             self.key_usage_stats[provider_name][key_id]['rate_limited'] = True
             self.key_usage_stats[provider_name][key_id]['weight'] = 2.0  # Heavy penalty
             
+            # Update StatisticsManager
+            self.stats_manager.mark_rate_limited(provider_name, key_id)
+            
             if self.verbose:
                 print(f"🔴 Key #{key_index + 1} for {provider_name} marked as rate limited")
     
     def get_key_usage_report(self, provider_name: str) -> Dict:
-        """Get detailed usage report for all keys of a provider"""
-        if provider_name not in self.key_usage_stats:
+        """Get detailed usage report for all keys of a provider using persistent statistics"""
+        if provider_name not in self.providers:
             return {}
             
         report = {}
@@ -343,19 +390,38 @@ class AI_engine:
         for i, key in enumerate(api_keys):
             if key is not None:
                 key_id = f"key_{i}"
-                stats = self.key_usage_stats[provider_name].get(key_id, {})
                 
-                requests_this_minute = len(self.key_request_count[provider_name].get(key_id, []))
+                # Get statistics from StatisticsManager
+                persistent_stats = self.stats_manager.get_statistics(provider_name, key_id)
+                memory_stats = self.key_usage_stats.get(provider_name, {}).get(key_id, {})
+                
+                if persistent_stats:
+                    # Use persistent data as base, merge with memory data
+                    stats = {
+                        'total_requests': persistent_stats.requests,
+                        'successes': persistent_stats.successes,
+                        'failures': persistent_stats.failures,
+                        'rate_limited': persistent_stats.rate_limited,
+                        'weight': persistent_stats.weight,
+                        'last_used': persistent_stats.last_used
+                    }
+                    # Merge memory stats (these take precedence for current session)
+                    stats.update(memory_stats)
+                else:
+                    # Fall back to memory stats only
+                    stats = memory_stats.copy()
+                
+                requests_this_minute = len(self.key_request_count.get(provider_name, {}).get(key_id, []))
                 
                 report[f"Key #{i + 1}"] = {
-                    'total_requests': stats.get('requests', 0),
+                    'total_requests': stats.get('total_requests', stats.get('requests', 0)),
                     'successes': stats.get('successes', 0),
                     'failures': stats.get('failures', 0),
                     'requests_this_minute': requests_this_minute,
                     'rate_limited': stats.get('rate_limited', False),
                     'weight': stats.get('weight', 1.0),
                     'last_used': stats.get('last_used'),
-                    'success_rate': (stats.get('successes', 0) / max(1, stats.get('requests', 1))) * 100
+                    'success_rate': (stats.get('successes', 0) / max(1, stats.get('total_requests', stats.get('requests', 1)))) * 100
                 }
         
         return report
@@ -1210,6 +1276,12 @@ class AI_engine:
                 response_time=response_time
             )
 
+    def save_statistics_now(self):
+        """Manually save current statistics to persistent storage"""
+        save_statistics_now()
+        if self.verbose:
+            print("Statistics saved manually")
+    
     def get_status(self) -> Dict[str, Any]:
         """Get current engine status"""
         available_providers = self._get_available_providers()
@@ -1230,6 +1302,21 @@ class AI_engine:
 def main():
     """Test the AI Engine with command-line support"""
     import sys
+    import atexit
+    
+    # Initialize engine
+    engine = None
+    
+    def cleanup():
+        """Save statistics on exit"""
+        if engine:
+            try:
+                engine.save_statistics_now()
+            except:
+                pass
+    
+    # Register cleanup function
+    atexit.register(cleanup)
     
     # Check for command-line arguments
     if len(sys.argv) > 1:
