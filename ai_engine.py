@@ -42,6 +42,7 @@ class RequestResult:
     error_message: str = ""
     error_type: str = "unknown"
     provider_used: str = ""
+    model_used: str = ""
     raw_response: Optional[Dict] = None
 
 class AI_engine:
@@ -675,6 +676,39 @@ class AI_engine:
         """
         Main chat completion method with smart provider rotation
         """
+        preferred_provider = kwargs.get('preferred_provider')
+        
+        # If a preferred provider is specified, try it first
+        if preferred_provider:
+            if preferred_provider in self.providers and not self._is_key_flagged(preferred_provider):
+                provider_config = self.providers[preferred_provider]
+                start_time = time.time()
+                
+                try:
+                    if self.verbose:
+                        print(f"🎯 Using preferred provider: {preferred_provider}")
+                    
+                    result = self._make_request(preferred_provider, provider_config, messages, model, **kwargs)
+                    response_time = time.time() - start_time
+                    
+                    self._update_stats(preferred_provider, result.success, response_time)
+                    
+                    if result.success:
+                        result.provider_used = preferred_provider
+                        result.response_time = response_time
+                        self.current_provider = preferred_provider
+                        return result
+                    else:
+                        if self.verbose:
+                            print(f"❌ Preferred provider {preferred_provider} failed: {result.error_message}")
+                except Exception as e:
+                    if self.verbose:
+                        print(f"❌ Exception with preferred provider {preferred_provider}: {e}")
+            else:
+                if self.verbose:
+                    print(f"⚠️ Preferred provider {preferred_provider} not available or flagged")
+        
+        # Fall back to normal provider rotation
         available_providers = self._get_available_providers()
         
         if not available_providers:
@@ -793,8 +827,9 @@ class AI_engine:
             ]
         
         # Prepare data
+        used_model = model or config['model']
         data = {
-            'model': model or config['model'],
+            'model': used_model,
             'messages': messages
         }
         
@@ -830,6 +865,7 @@ class AI_engine:
                     success=True,
                     content=content,
                     status_code=response.status_code,
+                    model_used=used_model,
                     raw_response=response_data
                 )
             else:
@@ -867,6 +903,9 @@ class AI_engine:
         if api_key:
             url += f"?key={api_key}"
         
+        # Determine the model to use
+        used_model = model or config['model']
+        
         # Convert messages to Gemini format
         parts = []
         for msg in messages:
@@ -895,6 +934,7 @@ class AI_engine:
                     success=True,
                     content=content,
                     status_code=response.status_code,
+                    model_used=used_model,
                     raw_response=response_data
                 )
             else:
@@ -921,9 +961,12 @@ class AI_engine:
         if api_key:
             headers['authorization'] = f"bearer {api_key}"
         
+        # Determine the model to use
+        used_model = model or config['model']
+        
         # Convert to Cohere v2 format - uses messages array directly
         data = {
-            "model": model or config['model'],
+            "model": used_model,
             "messages": messages
         }
         
@@ -954,6 +997,7 @@ class AI_engine:
                     success=True,
                     content=content,
                     status_code=response.status_code,
+                    model_used=used_model,
                     raw_response=response_data
                 )
             else:
@@ -1282,6 +1326,34 @@ class AI_engine:
         if self.verbose:
             print("Statistics saved manually")
     
+    def roll_api_key(self, provider_name: str) -> str:
+        """Manually roll to the next API key for a provider"""
+        if provider_name not in self.providers:
+            return f"Provider {provider_name} not found"
+        
+        config = self.providers[provider_name]
+        api_keys = config.get('api_keys', [])
+        
+        if len(api_keys) <= 1:
+            return f"Provider {provider_name} has only {len(api_keys)} key(s), no rolling needed"
+        
+        # Get current key index
+        current_index = self.provider_key_rotation.get(provider_name, 0)
+        current_key = api_keys[current_index] if current_index < len(api_keys) else None
+        current_key_preview = current_key[:8] + "..." if current_key and len(current_key) > 8 else current_key
+        
+        # Rotate to next key
+        new_key = self._rotate_api_key(provider_name)
+        new_index = self.provider_key_rotation.get(provider_name, 0)
+        new_key_preview = new_key[:8] + "..." if new_key and len(new_key) > 8 else new_key
+        
+        if new_key and new_key != current_key:
+            return f"✅ Rolled from key #{current_index} ({current_key_preview}) to key #{new_index} ({new_key_preview})"
+        elif not self.engine_settings.get('key_rotation_enabled', True):
+            return f"⚠️ Key rotation is disabled in engine settings"
+        else:
+            return f"🔄 Key rolling attempted: staying at key #{current_index} ({current_key_preview}) - may be optimal choice"
+    
     def get_status(self) -> Dict[str, Any]:
         """Get current engine status"""
         available_providers = self._get_available_providers()
@@ -1327,6 +1399,16 @@ def main():
             engine = AI_engine(verbose=True)
             print("🧪 Running comprehensive stress test...")
             results = engine.stress_test_providers(test_iterations=3, ask_for_priority_change=True)
+            return
+        elif provider_name == "server":
+            print("🚀 Starting AI Engine FastAPI Server...")
+            try:
+                from server import main as server_main
+                server_main()
+            except ImportError as e:
+                print(f"❌ Server module not found: {e}")
+                print("Make sure server.py is in the same directory and requirements are installed:")
+                print("pip install -r requirements_server.txt")
             return
         elif provider_name == "list":
             engine = AI_engine(verbose=False)
@@ -1467,6 +1549,7 @@ def main():
     print(f"  python ai_engine.py keys               # Show key usage for all providers")
     print(f"  python ai_engine.py keys <provider>    # Show detailed key usage for provider")
     print(f"  python ai_engine.py stress             # Run stress test")
+    print(f"  python ai_engine.py server             # Start FastAPI web server")
 
 if __name__ == "__main__":
     main()

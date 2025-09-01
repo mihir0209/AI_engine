@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Models - AI Engine</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .provider-card {
+            transition: transform 0.2s;
+        }
+        .provider-card:hover {
+            transform: translateY(-2px);
+        }
+        .model-item {
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .model-item:hover {
+            background-color: #f8f9fa;
+            border-color: #0d6efd;
+        }
+        .model-item.selected {
+            background-color: #0d6efd;
+            color: white;
+            border-color: #0d6efd;
+        }
+        .current-model {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .loading-spinner {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-robot"></i> AI Engine v3.0
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
+                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
+                <a class="nav-link active" href="/models"><i class="fas fa-cubes"></i> Models</a>
+                <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API Docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <h1><i class="fas fa-cubes"></i> Model Management</h1>
+                <p class="text-muted">Configure and discover models across your providers</p>
+            </div>
+        </div>
+
+        <!-- Current Models Overview -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-list"></i> Current Provider Models</h5>
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshCurrentModels()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="currentModelsList" class="row">
+                            <p class="text-muted">Loading current models...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Discovery Section -->
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-search"></i> Model Discovery & Selection</h5>
+                        <p class="card-text mb-0">Discover available models from provider endpoints and update configurations</p>
+                    </div>
+                    <div class="card-body">
+                        <div id="providersList" class="row">
+                            <p class="text-muted">Loading providers...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Selection Modal -->
+    <div class="modal fade" id="modelSelectionModal" tabindex="-1" aria-labelledby="modelSelectionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modelSelectionModalLabel">
+                        <i class="fas fa-cubes"></i> Select Model for <span id="modalProviderName"></span>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="modelDiscoveryStatus" class="alert" style="display: none;"></div>
+                    
+                    <div class="loading-spinner text-center" id="loadingSpinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Discovering models...</span>
+                        </div>
+                        <p class="mt-2">Discovering available models...</p>
+                    </div>
+
+                    <div id="modelsContainer" style="display: none;">
+                        <p class="text-muted">Current model: <span id="currentModelDisplay" class="fw-bold text-primary"></span></p>
+                        <hr>
+                        <h6>Available Models:</h6>
+                        <div id="modelsListContainer" class="mt-3" style="max-height: 400px; overflow-y: auto;">
+                            <!-- Models will be populated here -->
+                        </div>
+                        
+                        <hr>
+                        <h6>Manual Model Entry:</h6>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="manualModelInput" 
+                                   placeholder="Enter model name manually (e.g., gpt-4-turbo, claude-3-opus)">
+                            <button class="btn btn-outline-secondary" type="button" onclick="selectManualModel()">
+                                <i class="fas fa-plus"></i> Add Manual
+                            </button>
+                        </div>
+                        <small class="text-muted">Use this if the model you want is not in the discovered list</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmModelBtn" onclick="confirmModelChange()" disabled>
+                        <i class="fas fa-check"></i> Confirm Selection
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Model Test Results Modal -->
+    <div class="modal fade" id="testResultModal" tabindex="-1" aria-labelledby="testResultModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="testResultModalLabel">
+                        <i class="fas fa-play-circle"></i> Model Test Results
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="testResultModalBody">
+                    <!-- Test results will be populated here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let selectedModel = null;
+        let currentProvider = null;
+        let originalModel = null;
+
+        // Load current models from all providers
+        async function loadCurrentModels() {
+            try {
+                const response = await fetch('/v1/models');
+                const data = await response.json();
+
+                let html = '';
+
+                data.data.forEach(model => {
+                    const provider = model.owned_by;
+                    const modelName = model.id.split('/')[1] || model.id;
+
+                    html += `
+                        <div class="col-md-4 mb-3">
+                            <div class="card provider-card h-100">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-server"></i> ${provider.toUpperCase()}
+                                    </h6>
+                                    <p class="card-text">
+                                        <small class="text-muted">Current Model:</small><br>
+                                        <code class="current-model">${modelName}</code>
+                                    </p>
+                                    <div class="btn-group w-100" role="group">
+                                        <button class="btn btn-primary btn-sm" onclick="openModelSelection('${provider}')">
+                                            <i class="fas fa-exchange-alt"></i> Select Model
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" onclick="testModel('${model.id}')">
+                                            <i class="fas fa-play"></i> Test
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('currentModelsList').innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading current models:', error);
+                document.getElementById('currentModelsList').innerHTML = 
+                    '<div class="col-12"><p class="text-danger">Error loading current models</p></div>';
+            }
+        }
+
+        // Load providers for model discovery
+        async function loadProviders() {
+            try {
+                const response = await fetch('/api/providers');
+                const providers = await response.json();
+
+                let html = '';
+                providers.forEach(provider => {
+                    if (provider.enabled) {
+                        const hasModelEndpoint = provider.config.model_endpoint !== null;
+                        
+                        html += `
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card provider-card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-server"></i> ${provider.name.toUpperCase()}
+                                        </h6>
+                                        <p class="card-text">
+                                            <small class="text-muted">Current:</small> <code>${provider.model}</code><br>
+                                            <small class="text-muted">Discovery:</small> 
+                                            ${hasModelEndpoint ? 
+                                                '<span class="badge bg-success">Available</span>' : 
+                                                '<span class="badge bg-warning">Manual Only</span>'
+                                            }
+                                        </p>
+                                        <button class="btn btn-primary btn-sm w-100" 
+                                                onclick="openModelSelection('${provider.name}')">
+                                            <i class="fas fa-search"></i> Select Model
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+
+                document.getElementById('providersList').innerHTML = html || 
+                    '<div class="col-12"><p class="text-muted">No enabled providers found</p></div>';
+
+            } catch (error) {
+                console.error('Error loading providers:', error);
+                document.getElementById('providersList').innerHTML = 
+                    '<div class="col-12"><p class="text-danger">Error loading providers</p></div>';
+            }
+        }
+
+        // Open model selection modal
+        async function openModelSelection(providerName) {
+            currentProvider = providerName;
+            document.getElementById('modalProviderName').textContent = providerName.toUpperCase();
+            
+            // Reset modal state
+            selectedModel = null;
+            document.getElementById('confirmModelBtn').disabled = true;
+            document.getElementById('modelsContainer').style.display = 'none';
+            document.getElementById('loadingSpinner').style.display = 'block';
+            document.getElementById('modelDiscoveryStatus').style.display = 'none';
+            document.getElementById('manualModelInput').value = '';
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('modelSelectionModal'));
+            modal.show();
+
+            try {
+                // Discover models
+                const response = await fetch(`/api/providers/${providerName}/models`);
+                const data = await response.json();
+
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('modelsContainer').style.display = 'block';
+
+                // Get current model for this provider
+                const providersResponse = await fetch('/api/providers');
+                const providers = await providersResponse.json();
+                const providerData = providers.find(p => p.name === providerName);
+                originalModel = providerData ? providerData.model : 'unknown';
+                
+                document.getElementById('currentModelDisplay').textContent = originalModel;
+
+                if (data.discovery_available) {
+                    // Show discovered models
+                    let modelsHtml = '';
+                    data.models.forEach(model => {
+                        const isCurrentModel = model.id === originalModel;
+                        modelsHtml += `
+                            <div class="model-item ${isCurrentModel ? 'current-model' : ''}" 
+                                 onclick="selectModel('${model.id}', this)">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${model.id}</strong>
+                                        ${isCurrentModel ? '<span class="badge bg-success ms-2">Current</span>' : ''}
+                                    </div>
+                                    <small class="text-muted">${model.owned_by}</small>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    document.getElementById('modelsListContainer').innerHTML = modelsHtml;
+                    
+                    if (data.models.length === 0) {
+                        document.getElementById('modelsListContainer').innerHTML = 
+                            '<p class="text-muted">No models discovered from endpoint</p>';
+                    }
+                } else {
+                    document.getElementById('modelsListContainer').innerHTML = 
+                        '<p class="text-muted">Model discovery not available for this provider. Use manual entry below.</p>';
+                }
+
+            } catch (error) {
+                console.error('Error discovering models:', error);
+                document.getElementById('loadingSpinner').style.display = 'none';
+                document.getElementById('modelDiscoveryStatus').innerHTML = 
+                    `<strong>Error:</strong> ${error.message || 'Failed to discover models'}`;
+                document.getElementById('modelDiscoveryStatus').className = 'alert alert-danger';
+                document.getElementById('modelDiscoveryStatus').style.display = 'block';
+                
+                // Still show the manual entry option
+                document.getElementById('modelsContainer').style.display = 'block';
+                document.getElementById('modelsListContainer').innerHTML = 
+                    '<p class="text-muted">Model discovery failed. Please use manual entry below.</p>';
+            }
+        }
+
+        // Select a model from the list
+        function selectModel(modelId, element) {
+            // Remove previous selection
+            document.querySelectorAll('.model-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            // Add selection to clicked element
+            element.classList.add('selected');
+            
+            selectedModel = modelId;
+            document.getElementById('confirmModelBtn').disabled = false;
+            document.getElementById('manualModelInput').value = '';
+        }
+
+        // Select manual model
+        function selectManualModel() {
+            const manualModel = document.getElementById('manualModelInput').value.trim();
+            if (!manualModel) return;
+
+            // Remove previous selections
+            document.querySelectorAll('.model-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            selectedModel = manualModel;
+            document.getElementById('confirmModelBtn').disabled = false;
+        }
+
+        // Confirm model change
+        async function confirmModelChange() {
+            if (!selectedModel || !currentProvider) return;
+
+            try {
+                document.getElementById('confirmModelBtn').disabled = true;
+                document.getElementById('confirmModelBtn').innerHTML = 
+                    '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+                const response = await fetch(`/api/providers/${currentProvider}/change-model`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ model: selectedModel })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Success
+                    bootstrap.Modal.getInstance(document.getElementById('modelSelectionModal')).hide();
+                    
+                    // Show success message
+                    showAlert('success', 
+                        `✅ Model updated for ${currentProvider}: ${originalModel} → ${selectedModel}`);
+                    
+                    // Refresh the models lists
+                    loadCurrentModels();
+                    loadProviders();
+                } else {
+                    throw new Error(result.detail || 'Failed to update model');
+                }
+
+            } catch (error) {
+                console.error('Error updating model:', error);
+                showAlert('danger', `❌ Failed to update model: ${error.message}`);
+            } finally {
+                document.getElementById('confirmModelBtn').disabled = false;
+                document.getElementById('confirmModelBtn').innerHTML = 
+                    '<i class="fas fa-check"></i> Confirm Selection';
+            }
+        }
+
+        // Test a model
+        async function testModel(modelId) {
+            // Find the provider for this model
+            const providerName = modelId.includes('/') ? modelId.split('/')[0] : 'auto';
+            const actualModelName = modelId.includes('/') ? modelId.split('/')[1] : modelId;
+            
+            // Show modal with loading state
+            const modal = new bootstrap.Modal(document.getElementById('testResultModal'));
+            document.getElementById('testResultModalLabel').innerHTML = `
+                <i class="fas fa-play-circle"></i> Testing ${actualModelName.toUpperCase()}
+            `;
+            document.getElementById('testResultModalBody').innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Testing...</span>
+                    </div>
+                    <p class="mt-3">Testing ${actualModelName.toUpperCase()} model...</p>
+                </div>
+            `;
+            modal.show();
+
+            try {
+                const response = await fetch('/api/test-model', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        provider: providerName,
+                        model: actualModelName,
+                        message: `Hello! This is a test of ${actualModelName} model. Please respond briefly to confirm you're working.`
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('testResultModalBody').innerHTML = `
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle"></i> Test Successful!</h6>
+                            <p><strong>Model:</strong> ${result.model}</p>
+                            <p><strong>Provider:</strong> ${result.provider.toUpperCase()}</p>
+                            <p><strong>Response Time:</strong> ${result.response_time}s</p>
+                            <p><strong>Response:</strong></p>
+                            <div class="bg-light p-3 rounded">
+                                <pre class="mb-0">${result.response}</pre>
+                            </div>
+                            <hr>
+                            <small class="text-muted">
+                                <strong>Timestamp:</strong> ${new Date(result.timestamp).toLocaleString()}
+                            </small>
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('testResultModalBody').innerHTML = `
+                        <div class="alert alert-danger">
+                            <h6><i class="fas fa-times-circle"></i> Test Failed</h6>
+                            <p><strong>Model:</strong> ${result.model || actualModelName}</p>
+                            <p><strong>Provider:</strong> ${result.provider || providerName.toUpperCase()}</p>
+                            <p><strong>Error:</strong> ${result.error || 'Unknown error'}</p>
+                            <p><strong>Response Time:</strong> ${result.response_time || 'N/A'}s</p>
+                            <hr>
+                            <small class="text-muted">
+                                <strong>Timestamp:</strong> ${result.timestamp ? new Date(result.timestamp).toLocaleString() : 'N/A'}
+                            </small>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('testResultModalBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6><i class="fas fa-times-circle"></i> Test Failed</h6>
+                        <p><strong>Model:</strong> ${actualModelName}</p>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Refresh current models
+        function refreshCurrentModels() {
+            loadCurrentModels();
+            loadProviders();
+        }
+
+        // Show alert message
+        function showAlert(type, message) {
+            const alertContainer = document.createElement('div');
+            alertContainer.className = `alert alert-${type} alert-dismissible fade show`;
+            alertContainer.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // Insert at top of container
+            const container = document.querySelector('.container');
+            container.insertBefore(alertContainer, container.firstChild.nextSibling);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertContainer.parentNode) {
+                    alertContainer.remove();
+                }
+            }, 5000);
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCurrentModels();
+            loadProviders();
+        });
+    </script>
+</body>
+</html>

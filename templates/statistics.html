@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statistics - AI Engine</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-robot"></i> AI Engine v3.0
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
+                <a class="nav-link active" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
+                <a class="nav-link" href="/models"><i class="fas fa-cubes"></i> Models</a>
+                <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API Docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <h1><i class="fas fa-chart-bar"></i> Statistics</h1>
+                <p class="text-muted">Detailed performance analytics</p>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-line"></i> Performance Analytics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="statisticsContent">
+                            <p class="text-muted">Loading comprehensive statistics...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-pie"></i> Success Rate Distribution</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="successRateChart" style="height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-bar"></i> Request Volume by Provider</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="requestVolumeChart" style="height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-server"></i> Active Provider Performance</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="activeProvidersDetails">
+                            <p class="text-muted">Loading active provider details...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadStatistics() {
+            try {
+                const response = await fetch('/api/statistics');
+                const data = await response.json();
+
+                // Load main statistics cards
+                let html = '<div class="row mb-4">';
+
+                // Summary cards with better styling
+                html += '<div class="col-md-3 mb-3">';
+                html += '<div class="card bg-gradient text-white" style="background: linear-gradient(45deg, #007bff, #0056b3);">';
+                html += '<div class="card-body text-center">';
+                html += '<i class="fas fa-server fa-2x mb-2"></i>';
+                html += '<h5>Total Providers</h5>';
+                html += `<h2>${data.summary.total_providers}</h2>`;
+                html += '</div></div></div>';
+
+                html += '<div class="col-md-3 mb-3">';
+                html += '<div class="card bg-gradient text-white" style="background: linear-gradient(45deg, #28a745, #1e7e34);">';
+                html += '<div class="card-body text-center">';
+                html += '<i class="fas fa-key fa-2x mb-2"></i>';
+                html += '<h5>Total Keys</h5>';
+                html += `<h2>${data.summary.total_keys}</h2>`;
+                html += '</div></div></div>';
+
+                html += '<div class="col-md-3 mb-3">';
+                html += '<div class="card bg-gradient text-white" style="background: linear-gradient(45deg, #17a2b8, #117a8b);">';
+                html += '<div class="card-body text-center">';
+                html += '<i class="fas fa-paper-plane fa-2x mb-2"></i>';
+                html += '<h5>Total Requests</h5>';
+                html += `<h2>${data.summary.total_requests}</h2>`;
+                html += '</div></div></div>';
+
+                // Calculate overall success rate
+                let totalRequests = 0;
+                let totalSuccesses = 0;
+                Object.values(data.key_statistics || {}).forEach(provider => {
+                    Object.values(provider).forEach(key => {
+                        totalRequests += key.requests || 0;
+                        totalSuccesses += key.successes || 0;
+                    });
+                });
+                const overallSuccessRate = totalRequests > 0 ? ((totalSuccesses / totalRequests) * 100).toFixed(1) : 0;
+
+                html += '<div class="col-md-3 mb-3">';
+                html += '<div class="card bg-gradient text-white" style="background: linear-gradient(45deg, #ffc107, #e0a800);">';
+                html += '<div class="card-body text-center">';
+                html += '<i class="fas fa-chart-line fa-2x mb-2"></i>';
+                html += '<h5>Success Rate</h5>';
+                html += `<h2>${overallSuccessRate}%</h2>`;
+                html += '</div></div></div>';
+
+                html += '</div>';
+
+                document.getElementById('statisticsContent').innerHTML = html;
+
+                // Load active providers only (exclude disabled/flagged)
+                loadActiveProviders(data.key_statistics || {});
+
+                // Create charts
+                createSuccessRateChart(data.key_statistics || {});
+                createRequestVolumeChart(data.key_statistics || {});
+
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+                document.getElementById('statisticsContent').innerHTML = '<p class="text-danger">Error loading statistics</p>';
+            }
+        }
+
+        function loadActiveProviders(keyStats) {
+            let html = '<div class="row">';
+            
+            Object.entries(keyStats).forEach(([provider, keys]) => {
+                // Calculate provider totals
+                let providerRequests = 0;
+                let providerSuccesses = 0;
+                let providerFailures = 0;
+                let activeKeys = 0;
+                let rateLimitedKeys = 0;
+
+                Object.values(keys).forEach(keyData => {
+                    providerRequests += keyData.requests || 0;
+                    providerSuccesses += keyData.successes || 0;
+                    providerFailures += keyData.failures || 0;
+                    if (keyData.requests > 0) activeKeys++;
+                    if (keyData.rate_limited) rateLimitedKeys++;
+                });
+
+                const successRate = providerRequests > 0 ? ((providerSuccesses / providerRequests) * 100).toFixed(1) : 0;
+                const avgResponseTime = Object.values(keys).reduce((sum, key) => {
+                    return sum + (key.total_response_time || 0) / Math.max(key.requests || 1, 1);
+                }, 0) / Object.keys(keys).length;
+
+                // Only show providers with activity
+                if (providerRequests > 0) {
+                    html += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 border-left-primary" style="border-left: 4px solid #007bff;">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0 text-primary">
+                                        <i class="fas fa-server"></i> ${provider.toUpperCase()}
+                                        ${rateLimitedKeys > 0 ? '<span class="badge bg-warning ms-2">Rate Limited</span>' : ''}
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row text-center mb-3">
+                                        <div class="col-3">
+                                            <div class="text-primary h6">${providerRequests}</div>
+                                            <small class="text-muted">Requests</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="text-success h6">${successRate}%</div>
+                                            <small class="text-muted">Success</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="text-info h6">${activeKeys}</div>
+                                            <small class="text-muted">Active Keys</small>
+                                        </div>
+                                        <div class="col-3">
+                                            <div class="text-warning h6">${avgResponseTime.toFixed(2)}s</div>
+                                            <small class="text-muted">Avg Time</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="progress mb-2" style="height: 8px;">
+                                        <div class="progress-bar bg-success" style="width: ${successRate}%"></div>
+                                        <div class="progress-bar bg-danger" style="width: ${100 - successRate}%"></div>
+                                    </div>
+                                    <small class="text-muted">${providerSuccesses} successes, ${providerFailures} failures</small>
+                                    
+                                    <div class="mt-3">
+                                        <strong>Keys Performance:</strong>
+                                        <div class="mt-2">
+                    `;
+                    
+                    Object.entries(keys).forEach(([keyName, keyData], index) => {
+                        const keySuccessRate = keyData.requests > 0 ? ((keyData.successes / keyData.requests) * 100).toFixed(1) : 0;
+                        const status = keyData.rate_limited ? '🔴' : (keyData.successes > 0 ? '🟢' : '�');
+                        const lastUsed = keyData.last_used ? new Date(keyData.last_used).toLocaleString() : 'Never';
+                        
+                        html += `
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <small><strong>${status} Key ${index + 1}:</strong> ${keyData.requests} req (${keySuccessRate}%)</small>
+                                <small class="text-muted">${lastUsed}</small>
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            html += '</div>';
+            
+            if (Object.keys(keyStats).length === 0) {
+                html = '<div class="alert alert-info"><i class="fas fa-info-circle"></i> No active providers with usage data found.</div>';
+            }
+
+            document.getElementById('activeProvidersDetails').innerHTML = html;
+        }
+
+        function createSuccessRateChart(keyStats) {
+            const ctx = document.getElementById('successRateChart').getContext('2d');
+            
+            const providerData = [];
+            const successRates = [];
+            const colors = ['#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6f42c1', '#fd7e14'];
+            
+            Object.entries(keyStats).forEach(([provider, keys], index) => {
+                let totalRequests = 0;
+                let totalSuccesses = 0;
+                
+                Object.values(keys).forEach(keyData => {
+                    totalRequests += keyData.requests || 0;
+                    totalSuccesses += keyData.successes || 0;
+                });
+                
+                if (totalRequests > 0) {
+                    providerData.push(provider);
+                    successRates.push(((totalSuccesses / totalRequests) * 100).toFixed(1));
+                }
+            });
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: providerData,
+                    datasets: [{
+                        data: successRates,
+                        backgroundColor: colors.slice(0, providerData.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.parsed}% success rate`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createRequestVolumeChart(keyStats) {
+            const ctx = document.getElementById('requestVolumeChart').getContext('2d');
+            
+            const providerData = [];
+            const requestCounts = [];
+            const successCounts = [];
+            
+            Object.entries(keyStats).forEach(([provider, keys]) => {
+                let totalRequests = 0;
+                let totalSuccesses = 0;
+                
+                Object.values(keys).forEach(keyData => {
+                    totalRequests += keyData.requests || 0;
+                    totalSuccesses += keyData.successes || 0;
+                });
+                
+                if (totalRequests > 0) {
+                    providerData.push(provider);
+                    requestCounts.push(totalRequests);
+                    successCounts.push(totalSuccesses);
+                }
+            });
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: providerData,
+                    datasets: [
+                        {
+                            label: 'Total Requests',
+                            data: requestCounts,
+                            backgroundColor: '#007bff',
+                            borderColor: '#0056b3',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Successful Requests',
+                            data: successCounts,
+                            backgroundColor: '#28a745',
+                            borderColor: '#1e7e34',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Number of Requests'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Providers'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        loadStatistics();
+    </script>
+</body>
+</html>

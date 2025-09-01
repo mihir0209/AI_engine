@@ -9,5 +9,60 @@
       "weight": 0.8145062499999999,
       "total_response_time": 4.843335151672363
     }
+  },
+  "paxsenix": {
+    "key_0": {
+      "requests": 13,
+      "successes": 7,
+      "failures": 6,
+      "last_used": "2025-09-02T02:11:08.932713",
+      "rate_limited": false,
+      "weight": 1.2371471186051402,
+      "total_response_time": 37.39439296722412
+    }
+  },
+  "chi": {
+    "key_0": {
+      "requests": 12,
+      "successes": 2,
+      "failures": 10,
+      "last_used": "2025-09-02T00:58:59.627122",
+      "rate_limited": false,
+      "weight": 2.0,
+      "total_response_time": 19.474467992782593
+    }
+  },
+  "gemini": {
+    "key_0": {
+      "requests": 10,
+      "successes": 10,
+      "failures": 0,
+      "last_used": "2025-09-02T00:59:00.768345",
+      "rate_limited": false,
+      "weight": 0.5987369392383786,
+      "total_response_time": 12.869527578353882
+    }
+  },
+  "groq": {
+    "key_0": {
+      "requests": 2,
+      "successes": 2,
+      "failures": 0,
+      "last_used": "2025-09-02T00:35:50.162831",
+      "rate_limited": false,
+      "weight": 0.9025,
+      "total_response_time": 1.910799264907837
+    }
+  },
+  "a4f": {
+    "key_0": {
+      "requests": 1,
+      "successes": 1,
+      "failures": 0,
+      "last_used": "2025-09-02T00:57:18.437806",
+      "rate_limited": false,
+      "weight": 0.95,
+      "total_response_time": 3.7788612842559814
+    }
   }
 }
