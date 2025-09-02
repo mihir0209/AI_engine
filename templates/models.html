@@ -371,22 +371,21 @@
         }
 
         // Test a model
-        async function testModel(modelId) {
-            // Find the provider for this model
-            const providerName = modelId.includes('/') ? modelId.split('/')[0] : 'auto';
-            const actualModelName = modelId.includes('/') ? modelId.split('/')[1] : modelId;
+        async function testModel(providerName, modelName) {
+            const actualModelName = modelName || 'auto';
+            const actualProviderName = providerName;
             
             // Show modal with loading state
             const modal = new bootstrap.Modal(document.getElementById('testResultModal'));
             document.getElementById('testResultModalLabel').innerHTML = `
-                <i class="fas fa-play-circle"></i> Testing ${actualModelName.toUpperCase()}
+                <i class="fas fa-play-circle"></i> Testing ${actualProviderName.toUpperCase()}
             `;
             document.getElementById('testResultModalBody').innerHTML = `
                 <div class="text-center">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Testing...</span>
                     </div>
-                    <p class="mt-3">Testing ${actualModelName.toUpperCase()} model...</p>
+                    <p class="mt-3">Testing ${actualProviderName.toUpperCase()} with ${actualModelName}...</p>
                 </div>
             `;
             modal.show();
@@ -398,9 +397,9 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        provider: providerName,
+                        provider: actualProviderName,
                         model: actualModelName,
-                        message: `Hello! This is a test of ${actualModelName} model. Please respond briefly to confirm you're working.`
+                        message: `Hello! This is a test of ${actualProviderName} provider with ${actualModelName} model. Please respond briefly to confirm you're working.`
                     })
                 });
 
@@ -428,7 +427,7 @@
                         <div class="alert alert-danger">
                             <h6><i class="fas fa-times-circle"></i> Test Failed</h6>
                             <p><strong>Model:</strong> ${result.model || actualModelName}</p>
-                            <p><strong>Provider:</strong> ${result.provider || providerName.toUpperCase()}</p>
+                            <p><strong>Provider:</strong> ${result.provider || actualProviderName.toUpperCase()}</p>
                             <p><strong>Error:</strong> ${result.error || 'Unknown error'}</p>
                             <p><strong>Response Time:</strong> ${result.response_time || 'N/A'}s</p>
                             <hr>
@@ -443,6 +442,7 @@
                     <div class="alert alert-danger">
                         <h6><i class="fas fa-times-circle"></i> Test Failed</h6>
                         <p><strong>Model:</strong> ${actualModelName}</p>
+                        <p><strong>Provider:</strong> ${actualProviderName.toUpperCase()}</p>
                         <p><strong>Error:</strong> ${error.message}</p>
                     </div>
                 `;

@@ -190,8 +190,11 @@
                 // Get the provider's current model from the providers list
                 const providersResponse = await fetch('/api/providers');
                 const providers = await providersResponse.json();
+                console.log('All providers data:', providers); // Debug log
                 const provider = providers[providerName];
+                console.log(`Provider ${providerName} data:`, provider); // Debug log
                 const providerModel = provider ? provider.model : 'auto';
+                console.log(`Provider model for ${providerName}:`, providerModel); // Debug log
 
                 const requestBody = {
                     provider: providerName,

@@ -784,6 +784,7 @@ async def test_model(request: Request):
         
         # Make request to AI Engine with specific provider and model
         print(f"🧪 Starting test for {provider_name} with model {model_name}")
+        print(f"🔍 DEBUG: Requesting provider='{provider_name}', model='{model_name}'")
         test_start_time = time.time()
         
         result = engine.chat_completion(
@@ -795,6 +796,7 @@ async def test_model(request: Request):
         test_end_time = time.time()
         total_test_time = test_end_time - test_start_time
         print(f"⏱️ Total test time: {total_test_time:.2f}s")
+        print(f"🔍 DEBUG: Result provider_used='{result.provider_used}', model_used='{result.model_used}'")
         
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()
@@ -803,7 +805,7 @@ async def test_model(request: Request):
             return {
                 'success': True,
                 'provider': result.provider_used,
-                'model': model_name,
+                'model': result.model_used or model_name,
                 'response': result.content[:200] + "..." if len(result.content) > 200 else result.content,
                 'response_time': round(response_time, 2),
                 'timestamp': start_time.isoformat()
