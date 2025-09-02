@@ -1,120 +1,454 @@
-# AI Engine v3.0 Documentation
+# AI Engine v3.0 - Technical Documentation
 
-## Overview
-AI Engine v3.0 is a clean, secure, and efficient AI provider management system with 22 configured providers, smart key rotation, and Python-based configuration using dotenv for security.
+## Architecture Overview
 
-## Key Features
-- **22 AI Providers**: Comprehensive provider ecosystem with automatic failover
-- **Python Configuration**: Secure in-code configuration with dotenv integration
-- **Smart Key Rotation**: Automatic error-based flagging and rotation
-- **No Database Dependencies**: Lightweight, stateless operation
-- **Live Stress Testing**: Real-time provider testing without result persistence
-- **Priority-Based Selection**: Intelligent provider ordering
+AI Engine v3.0 is a sophisticated multi-provider AI management system designed for enterprise applications requiring high availability, intelligent routing, and robust error handling. The system features an autodecide mechanism for automatic model-to-provider matching and comprehensive provider lifecycle management.
 
-## Security
-- API keys loaded from `.env` file using python-dotenv
-- No JSON configuration files with exposed secrets
-- Secure environment variable management
-- No persistent storage of sensitive data
+## Core Components
 
-## Quick Start
+### 1. AI Engine Core (`ai_engine.py`)
+
+The main engine class responsible for:
+- **Provider Management**: Loading, configuring, and monitoring 24 AI providers
+- **Request Routing**: Intelligent provider selection based on priorities and health status
+- **Error Handling**: Comprehensive error classification and recovery mechanisms
+- **Key Rotation**: Automatic API key rotation on authentication failures
+- **Autodecide System**: Intelligent model discovery and provider matching
+
+### 2. Configuration System (`config.py`)
+
+Centralized configuration management with:
+- **Provider Definitions**: Complete configuration for all 24 supported providers
+- **Engine Settings**: Configurable timeouts, failure limits, and behavior options
+- **Autodecide Configuration**: Caching and discovery settings
+- **Environment Integration**: Secure API key loading from environment variables
+
+### 3. FastAPI Server (`server.py`)
+
+Production-ready web server providing:
+- **OpenAI-Compatible APIs**: Standard chat completion endpoints
+- **Provider Management**: REST APIs for provider configuration and testing
+- **Web Dashboard**: Real-time monitoring and management interface
+- **Autodecide Endpoints**: APIs for model discovery and intelligent routing
+
+### 4. Statistics Manager (`statistics_manager.py`)
+
+Performance monitoring system featuring:
+- **Real-Time Metrics**: Success rates, response times, and error tracking
+- **Provider Scoring**: Dynamic performance-based provider ranking
+- **Persistent Storage**: Optional statistics persistence across sessions
+- **Health Monitoring**: Automatic provider health assessment
+
+## Supported Providers
+
+### OpenAI-Compatible Providers (14)
+- **OpenAI**: Official OpenAI API with GPT models
+- **Groq**: High-performance inference with Llama and Mixtral models
+- **Cerebras**: Ultra-fast inference with optimized hardware
+- **Paxsenix**: Multi-model provider with competitive pricing
+- **Chi**: Specialized provider with enhanced model variants
+- **Samurai**: Community provider with diverse model selection
+- **A4F**: Provider focused on latest model versions
+- **Mango**: High-availability provider with redundancy
+- **TypeGPT**: Specialized in text generation and completion
+- **OpenRouter**: Meta-provider aggregating multiple AI services
+- **NVIDIA**: Official NVIDIA AI services and models
+- **Vercel**: Edge-optimized AI inference platform
+- **GitHub**: GitHub Copilot and related AI services
+- **Pawan**: Community provider with free tier options
+
+### Native Format Providers (3)
+- **Google Gemini**: Official Google AI with Gemini model family
+- **Cohere**: Cohere's enterprise AI models and embeddings
+- **Cloudflare Workers**: Cloudflare's edge AI infrastructure
+
+### No-Authentication Providers (3)
+- **A3Z**: Free access provider for testing and development
+- **Omegatron**: Open access provider with rate limiting
+- **Offline**: Local Ollama server integration for on-premise deployment
+
+### Additional Providers (4)
+- **Flowith**: Specialized workflow-optimized models
+- **MiniMax**: Chinese AI provider with multilingual models
+- **Anthropic**: Claude model family (via compatible providers)
+- **Meta**: Llama model family (via multiple providers)
+
+## Autodecide System
+
+### Model Discovery Process
+
+The autodecide system automatically discovers which providers support requested models through:
+
+1. **Model Normalization**: Converts various model name formats to standardized form
+2. **Provider Query**: Checks each provider's available models via API endpoints
+3. **Compatibility Matching**: Uses fuzzy matching to find compatible models
+4. **Priority Ranking**: Orders providers by configured priority and performance
+5. **Caching**: Stores results for 60 minutes to improve performance
+
+### Model Name Handling
+
+The system intelligently handles various model naming conventions:
+
 ```python
-from ai_engine import AI_engine
-
-# Initialize engine
-engine = AI_engine(verbose=True)
-
-# Make a request
-messages = [{"role": "user", "content": "Hello!"}]
-result = engine.chat_completion(messages)
-
-if result.success:
-    print(f"Response: {result.content}")
-    print(f"Provider: {result.provider_used}")
-else:
-    print(f"Error: {result.error_message}")
+# All these resolve to the same model family
+"gpt-4" -> "gpt4"
+"GPT-4" -> "gpt4" 
+"gpt_4" -> "gpt4"
+"gpt-4-turbo" -> "gpt4turbo"
+"claude-3" -> "claude3"
+"llama-3.1" -> "llama31"
 ```
 
-## Required API Keys
-Add these to your `.env` file for full functionality:
+### Provider Selection Algorithm
 
-### Currently Working (19/22 providers):
-- A4F_API_KEY
-- CHI_API_KEY  
-- PAXSENIX_API_KEY
-- MANGO_API_KEY
-- SAMURAI_API_KEY
-- WOW_TYPEGPT_API_KEY
-- GEMINI_API_KEY
-- OPENAI_API_KEY
-- GROQ_API_KEY
-- CLOUDFLARE_API_KEY
-- CLOUDFLARE_ACCOUNT_ID
-- COHERE_API_KEY
-- OPENROUTER_API_KEY
-- NVIDIA_API_KEY
-- VERCEL_API_KEY
-- GITHUB_API_KEY
-- PAWAN_API_KEY
-
-### Missing Keys (3/22 providers):
-- CEREBRAS_API_KEY (disabled due to server issues)
-- FLOWITH_API_KEY
-- MINIMAX_API_KEY
-
-### No Keys Required (2/22 providers):
-- A3Z (no auth required)
-- OMEGATRON (no auth required)
-- OFFLINE (local Ollama server)
-
-## Stress Testing
 ```python
-# Run comprehensive stress test
-results = engine.stress_test_providers(test_iterations=3, ask_for_priority_change=True)
+def _select_best_provider(self, providers: List[Dict]) -> Dict:
+    """
+    Selection criteria (in order):
+    1. Provider health (not flagged)
+    2. Provider priority (lower number = higher priority)
+    3. Performance score (success rate + speed)
+    4. Available API keys
+    """
+```
 
-# Check results
-for provider, result in results.items():
-    if result['passed']:
-        print(f"✅ {provider}: {result['success_rate']}% success")
+## Error Classification and Handling
+
+### Error Types and Responses
+
+| Error Type | Triggers | Action | Recovery Time |
+|------------|----------|--------|---------------|
+| `rate_limit` | "rate limit", "too many requests" | Key rotation + provider flagging | 1 hour |
+| `auth_error` | "unauthorized", "invalid api key" | Key rotation + provider flagging | 1 hour |
+| `quota_exceeded` | "quota", "billing", "usage limit" | Key rotation + provider flagging | 1 hour |
+| `service_unavailable` | HTTP 503, "unavailable", "maintenance" | Provider flagging only | 10 minutes |
+| `server_error` | HTTP 5xx, "internal error" | Provider flagging only | 10 minutes |
+| `network_error` | Connection timeout, DNS failures | Provider flagging only | 10 minutes |
+| `bad_request` | HTTP 400, malformed request | Immediate provider switch | None |
+| `unknown` | Unclassified errors | Provider flagging | 30 minutes |
+
+### Error Recovery Mechanism
+
+```python
+def _handle_provider_success(self, provider_name: str, response_time: float):
+    """
+    Automatic recovery on successful response:
+    1. Remove provider from flagged list
+    2. Reset consecutive failure counter
+    3. Update performance statistics
+    4. Log recovery event
+    """
+```
+
+## API Key Management
+
+### Multi-Key Configuration
+
+Each provider supports up to 3 API keys for redundancy:
+
+```bash
+# Primary key
+OPENAI_API_KEY=primary_key_here
+
+# Backup keys (optional)
+OPENAI_API_KEY_2=backup_key_here
+OPENAI_API_KEY_3=tertiary_key_here
+```
+
+### Rotation Logic
+
+```python
+def _rotate_api_key(self, provider_name: str) -> Optional[str]:
+    """
+    Key rotation algorithm:
+    1. Identify current key index
+    2. Move to next available key
+    3. Skip None/empty keys
+    4. Wrap around to first key if at end
+    5. Return None if no valid keys available
+    """
+```
+
+### Security Considerations
+
+- **Environment Variables**: All keys stored in `.env` files
+- **No Code Embedding**: Zero API keys in source code
+- **Rotation Logging**: Key usage tracked without exposing keys
+- **Error Sanitization**: Keys never appear in error messages or logs
+
+## Performance Optimization
+
+### Provider Priority System
+
+Providers are ordered by priority (1 = highest priority):
+
+```python
+PROVIDER_PRIORITIES = {
+    'paxsenix': 1,      # Primary choice
+    'chi': 2,           # Secondary choice
+    'gemini': 3,        # Third choice
+    # ... etc
+}
+```
+
+### Caching Strategy
+
+- **Model Discovery Cache**: 60-minute TTL for provider discovery results
+- **Performance Metrics**: Real-time success rate and response time tracking
+- **Health Status Cache**: Flagged provider status with automatic expiry
+
+### Performance Scoring
+
+```python
+def calculate_score(success_rate: float, avg_response_time: float) -> float:
+    """
+    Performance score calculation:
+    - 60% weight on success rate
+    - 40% weight on speed (inverse of response time)
+    - Normalized to 0-100 scale
+    """
+    speed_score = max(0, 100 - (avg_response_time * 10))
+    return (success_rate * 0.6) + (speed_score * 0.4)
+```
+
+## Production Deployment
+
+### Environment Setup
+
+```bash
+# Required environment variables
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+ANTHROPIC_API_KEY=your_anthropic_key
+# ... additional keys as needed
+
+# Optional configuration
+AI_ENGINE_LOG_LEVEL=INFO
+AI_ENGINE_TIMEOUT=30
+AI_ENGINE_MAX_RETRIES=3
+```
+
+### Docker Configuration
+
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+# Environment variables from external source
+ENV PYTHONPATH=/app
+
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "server.py"]
+```
+
+### Scaling Considerations
+
+- **Stateless Design**: No persistent state between requests
+- **Horizontal Scaling**: Multiple instances can run concurrently
+- **Load Balancing**: Compatible with standard HTTP load balancers
+- **Circuit Breaker**: Built-in provider failure detection and recovery
+
+## Integration Examples
+
+### Direct Integration
+
+```python
+from ai_engine import get_ai_engine
+
+# Initialize once, reuse everywhere
+engine = get_ai_engine(verbose=False)
+
+# Standard chat completion
+def get_ai_response(user_message: str) -> str:
+    messages = [{"role": "user", "content": user_message}]
+    result = engine.chat_completion(messages)
+    
+    if result.success:
+        return result.content
     else:
-        print(f"❌ {provider}: Failed")
+        raise Exception(f"AI request failed: {result.error_message}")
+
+# Smart model selection
+def get_model_response(user_message: str, preferred_model: str) -> str:
+    messages = [{"role": "user", "content": user_message}]
+    result = engine.chat_completion(
+        messages, 
+        model=preferred_model, 
+        autodecide=True
+    )
+    
+    return result.content if result.success else None
 ```
 
-## Provider Priority Order
-1. **Paxsenix** (Priority 1) - gpt-4.1-mini
-2. **Chi** (Priority 2) - gpt-4.1-mini  
-3. **Gemini** (Priority 3) - gemini-2.5-flash
-4. **Samurai** (Priority 4) - gpt-4.1-mini
-5. **A4F** (Priority 5) - provider-6/gpt-4.1-mini
-6. **Mango** (Priority 6) - gpt-4.1-mini
-7. **A3Z** (Priority 7) - gpt-4.1-nano
-8. **Omegatron** (Priority 7) - gpt-4.1-mini
-9. **TypeGPT** (Priority 8) - compound-beta-mini
-10. **Groq** (Priority 9) - openai/gpt-oss-20b
-11. **OpenAI** (Priority 11) - gpt-4-turbo-preview
-12. **Cloudflare** (Priority 12) - @cf/openai/gpt-oss-120b
-13. **Cohere** (Priority 13) - command-a-03-2025
-14. **OpenRouter** (Priority 14) - meta-llama/llama-3.1-405b-instruct:free
-15. **NVIDIA** (Priority 15) - deepseek-ai/deepseek-v3.1
-16. **Vercel** (Priority 16) - anthropic/claude-sonnet-4
-17. **GitHub** (Priority 17) - openai/gpt-4o
-18. **Flowith** (Priority 18) - gpt-4o-mini
-19. **MiniMax** (Priority 19) - minimax-reasoning-01
-20. **Pawan** (Priority 20) - gpt-4o-mini
+### FastAPI Integration
 
-## Error Handling
-- **Rate Limits**: 1-hour flagging
-- **Daily Limits**: Flagged until midnight
-- **Auth Errors**: 1-hour flagging  
-- **5 Consecutive Failures**: Auto-flagging
-- **Server Errors**: Automatic retry with next provider
+```python
+from fastapi import FastAPI, HTTPException
+from ai_engine import get_ai_engine
 
-## Architecture Benefits
-- ✅ Secure Python configuration
-- ✅ No external JSON files
-- ✅ Environment variable based security
-- ✅ Smart error-based rotation
-- ✅ Live testing without persistence
-- ✅ 22 provider ecosystem
-- ✅ Priority optimization
-- ✅ Clean, maintainable codebase
+app = FastAPI()
+engine = get_ai_engine()
+
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    result = engine.chat_completion(request.messages)
+    
+    if result.success:
+        return {
+            "content": result.content,
+            "provider": result.provider_used,
+            "model": result.model_used,
+            "response_time": result.response_time
+        }
+    else:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"AI request failed: {result.error_message}"
+        )
+```
+
+## Monitoring and Debugging
+
+### Logging Configuration
+
+```python
+import logging
+
+# Enable detailed logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Engine with verbose output
+engine = get_ai_engine(verbose=True)
+```
+
+### Health Monitoring
+
+```python
+# Check engine health
+def check_engine_health(engine):
+    """
+    Returns comprehensive health status
+    """
+    return {
+        'total_providers': len(engine.providers),
+        'enabled_providers': engine.enabled_providers_count,
+        'flagged_providers': len(engine.flagged_keys),
+        'key_rotation_enabled': engine.key_rotation_enabled,
+        'consecutive_failure_limit': engine.consecutive_failure_limit
+    }
+```
+
+### Performance Metrics
+
+```python
+# Get detailed statistics
+stats = engine.statistics_manager.get_statistics()
+
+# Key metrics to monitor
+metrics = {
+    'total_requests': stats.get('total_requests', 0),
+    'success_rate': stats.get('overall_success_rate', 0),
+    'average_response_time': stats.get('average_response_time', 0),
+    'provider_health': {
+        name: data.get('success_rate', 0) 
+        for name, data in stats.get('provider_stats', {}).items()
+    }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **No Valid API Keys**
+   - Check `.env` file exists and contains valid keys
+   - Verify environment variable names match config
+   - Test individual keys with provider APIs
+
+2. **All Providers Flagged**
+   - Check network connectivity
+   - Verify API key validity and quotas
+   - Review error logs for specific failure reasons
+
+3. **Slow Response Times**
+   - Enable autodecide to use fastest providers
+   - Check provider status and health
+   - Consider timeout adjustments
+
+4. **High Error Rates**
+   - Monitor provider-specific error rates
+   - Check for quota limitations
+   - Verify request format compatibility
+
+### Debug Commands
+
+```bash
+# Check engine status
+python ai_engine.py status
+
+# Test specific provider
+python ai_engine.py test groq "test message"
+
+# Run comprehensive tests
+python ai_engine.py stress
+
+# View provider list
+python ai_engine.py list
+
+# Start debug server
+python server.py --debug
+```
+
+## Future Enhancements
+
+### Planned Features
+
+1. **Advanced Caching**: Redis/Memcached integration for distributed caching
+2. **Provider Analytics**: Detailed cost and usage analytics per provider
+3. **Custom Models**: Support for fine-tuned and custom model endpoints
+4. **Load Balancing**: Intelligent request distribution across healthy providers
+5. **Async Support**: Full asyncio support for concurrent request handling
+6. **Provider Marketplace**: Dynamic provider discovery and registration
+
+### API Evolution
+
+The system is designed for extensibility with:
+- **Plugin Architecture**: Easy addition of new providers
+- **Configuration Templates**: Standardized provider configuration
+- **Middleware Support**: Request/response modification hooks
+- **Event System**: Comprehensive event hooks for monitoring and customization
+
+## Security Best Practices
+
+### API Key Security
+- Store keys in environment variables only
+- Use separate keys for development/staging/production
+- Rotate keys regularly and update configuration
+- Monitor key usage for unusual patterns
+
+### Network Security
+- Use HTTPS for all API communications
+- Implement request/response logging for audit trails
+- Consider VPN or private networks for sensitive deployments
+- Apply rate limiting and DDoS protection
+
+### Data Privacy
+- Review each provider's data handling policies
+- Implement request sanitization for sensitive data
+- Consider on-premise deployment for highly sensitive use cases
+- Enable logging controls to prevent data leakage
+
+This documentation covers the complete technical architecture and implementation details of AI Engine v3.0. For additional support, refer to the GitHub repository issues and discussions.

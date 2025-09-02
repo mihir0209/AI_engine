@@ -3,6 +3,8 @@ import time
 import asyncio
 import aiohttp
 import requests
+import re
+import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import random
@@ -12,12 +14,13 @@ from dataclasses import dataclass
 
 # Import configuration from external config file
 try:
-    from config import AI_CONFIGS, ENGINE_SETTINGS
+    from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
     AI_CONFIGS = {}
     ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5}
+    AUTODECIDE_CONFIG = {"enabled": True, "cache_duration": 1800, "model_cache": {}}
 
 # Import Statistics Manager
 try:
@@ -73,6 +76,11 @@ class AI_engine:
         
         # Initialize Statistics Manager
         self.stats_manager = get_stats_manager()
+        
+        # Initialize Autodecide feature
+        self.autodecide_config = AUTODECIDE_CONFIG
+        self.autodecide_cache = self.autodecide_config.get("model_cache", {})
+        self.autodecide_cache_timestamps = {}  # Track when each model was cached
         
         # Enhanced tracking for intelligent key rotation
         self.key_usage_stats = {}  # Track usage per key
@@ -672,11 +680,176 @@ class AI_engine:
             if stats['consecutive_failures'] >= 5:
                 self._flag_key(provider_name, "consecutive_failures")
     
-    def chat_completion(self, messages: List[Dict[str, str]], model: str = None, **kwargs) -> RequestResult:
+    # =============================================
+    # AUTODECIDE FEATURE METHODS
+    # =============================================
+    
+    def normalize_model_name(self, model_name: str) -> str:
+        """Convert model names to comparable format for matching"""
+        if not model_name:
+            return ""
+        
+        normalized = model_name.lower()
+        # Remove provider prefixes like "provider-1/", "@cf/meta/", "anthropic/"
+        normalized = re.sub(r'^@[^/]+/', '', normalized)  # Remove "@cf/" first
+        normalized = re.sub(r'^[^/]+/', '', normalized)   # Then remove other prefixes
+        # Remove special characters and normalize separators
+        normalized = re.sub(r'[-_.]', '', normalized)
+        return normalized
+    
+    def model_matches(self, requested: str, available: str) -> bool:
+        """Check if requested model matches available model using normalized comparison"""
+        if not requested or not available:
+            return False
+        
+        req_norm = self.normalize_model_name(requested)
+        avail_norm = self.normalize_model_name(available)
+        
+        # Check for exact match or substring match
+        return (req_norm == avail_norm or 
+                req_norm in avail_norm or 
+                avail_norm in req_norm)
+    
+    def _get_provider_models(self, provider_name: str) -> List[str]:
+        """Get list of models from a specific provider"""
+        config = self.providers.get(provider_name)
+        if not config or not config.get('model_endpoint'):
+            return []
+        
+        try:
+            endpoint = config['model_endpoint']
+            headers = {}
+            
+            # Add authentication if required
+            if config.get('model_endpoint_auth', False):
+                api_keys = config.get('api_keys', [])
+                valid_keys = [key for key in api_keys if key is not None]
+                if not valid_keys:
+                    return []
+                
+                current_key = valid_keys[0]  # Use first available key
+                
+                auth_type = config.get('auth_type', 'bearer')
+                if auth_type == 'bearer':
+                    headers['Authorization'] = f'Bearer {current_key}'
+                elif auth_type == 'bearer_lowercase':
+                    headers['authorization'] = f'Bearer {current_key}'
+            
+            response = requests.get(endpoint, headers=headers, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Handle different response formats
+                if 'data' in data and isinstance(data['data'], list):
+                    # OpenAI format
+                    return [model.get('id', '') for model in data['data']]
+                elif isinstance(data, list):
+                    # Direct list format
+                    return [model.get('id', model.get('name', str(model))) if isinstance(model, dict) else str(model) for model in data]
+                elif 'models' in data:
+                    # Some providers use 'models' key
+                    return [model.get('id', model.get('name', str(model))) if isinstance(model, dict) else str(model) for model in data['models']]
+                
+            return []
+        except Exception as e:
+            if self.verbose:
+                print(f"❌ Failed to get models from {provider_name}: {e}")
+            return []
+    
+    def _is_cache_valid(self, model_name: str) -> bool:
+        """Check if cached model data is still valid"""
+        if model_name not in self.autodecide_cache_timestamps:
+            return False
+        
+        cache_time = self.autodecide_cache_timestamps[model_name]
+        cache_duration = self.autodecide_config.get("cache_duration", 1800)
+        
+        return (time.time() - cache_time) < cache_duration
+    
+    def _discover_model_providers(self, requested_model: str) -> List[Tuple[str, str]]:
+        """Discover which providers have the requested model"""
+        if self.verbose:
+            print(f"🔍 Discovering providers for model: {requested_model}")
+        
+        providers_with_model = []
+        
+        for provider_name, config in self.providers.items():
+            if not config.get('enabled') or not config.get('model_endpoint'):
+                continue
+            
+            try:
+                models = self._get_provider_models(provider_name)
+                
+                # Check if requested model matches any available model
+                for available_model in models:
+                    if self.model_matches(requested_model, available_model):
+                        providers_with_model.append((provider_name, available_model))
+                        if self.verbose:
+                            print(f"✅ Found {requested_model} as '{available_model}' in {provider_name}")
+                        break
+                        
+            except Exception as e:
+                if self.verbose:
+                    print(f"❌ Error checking {provider_name}: {e}")
+                continue
+        
+        # Cache the result
+        self.autodecide_cache[requested_model] = providers_with_model
+        self.autodecide_cache_timestamps[requested_model] = time.time()
+        
+        if self.verbose:
+            print(f"📊 Found {len(providers_with_model)} providers for {requested_model}")
+        
+        return providers_with_model
+    
+    def _select_best_provider(self, available_providers: List[Tuple[str, str]]) -> Tuple[str, str]:
+        """Select best provider from available options based on priority"""
+        if not available_providers:
+            return None, None
+        
+        # Sort by provider priority (lower number = higher priority)
+        sorted_providers = sorted(available_providers, 
+                                key=lambda x: self.providers[x[0]].get('priority', 999))
+        
+        # Return the highest priority provider that's not flagged
+        for provider_name, model_name in sorted_providers:
+            if not self._is_key_flagged(provider_name):
+                if self.verbose:
+                    print(f"🎯 Selected {provider_name} with model '{model_name}' (priority: {self.providers[provider_name].get('priority')})")
+                return provider_name, model_name
+        
+        # If all are flagged, return the first one anyway
+        provider_name, model_name = sorted_providers[0]
+        if self.verbose:
+            print(f"⚠️ Selected {provider_name} with model '{model_name}' (flagged but best available)")
+        return provider_name, model_name
+
+    def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
-        Main chat completion method with smart provider rotation
+        Main chat completion method with smart provider rotation and autodecide feature
         """
         preferred_provider = kwargs.get('preferred_provider')
+        
+        # AUTODECIDE FEATURE: If enabled and model is specified, try to find best provider
+        if (autodecide and 
+            self.autodecide_config.get("enabled", True) and 
+            model and 
+            not preferred_provider):  # Don't override preferred provider
+            
+            # Check cache first
+            if model not in self.autodecide_cache or not self._is_cache_valid(model):
+                self._discover_model_providers(model)
+            
+            # Get providers that have this model
+            available_providers = self.autodecide_cache.get(model, [])
+            if available_providers:
+                # Select best provider by priority
+                best_provider, actual_model = self._select_best_provider(available_providers)
+                if best_provider:
+                    preferred_provider = best_provider
+                    model = actual_model  # Use the exact model name from the provider
+                    if self.verbose:
+                        print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'")
         
         # If a preferred provider is specified, try it first
         if preferred_provider:
@@ -1490,6 +1663,60 @@ def main():
                 print(f"🚨 Error: {result.error_message}")
                 print(f"🔍 Error type: {result.error_type}")
             return
+        elif provider_name == "autodecide":
+            # Autodecide mode - automatically find best provider for specified model
+            engine = AI_engine(verbose=True)
+            
+            if len(sys.argv) < 3:
+                print("❌ Usage: python ai_engine.py autodecide <model_name> [message]")
+                print("📋 Examples:")
+                print("   python ai_engine.py autodecide gpt-4 'Hello world'")
+                print("   python ai_engine.py autodecide claude 'Test message'")
+                print("   python ai_engine.py autodecide llama 'Quick test'")
+                return
+            
+            target_model = sys.argv[2]
+            custom_message = "Hello! Please respond with a short test message."
+            if len(sys.argv) > 3:
+                custom_message = " ".join(sys.argv[3:])
+            
+            print(f"🎯 Testing autodecide for model: {target_model}")
+            print("-" * 50)
+            
+            # First, discover providers for this model
+            print(f"🔍 Discovering providers for '{target_model}'...")
+            try:
+                providers = engine._discover_model_providers(target_model)
+                if providers:
+                    print(f"📋 Found {len(providers)} providers supporting '{target_model}':")
+                    for i, (provider_name, provider_model) in enumerate(providers[:5], 1):
+                        print(f"  {i}. {provider_name}: {provider_model}")
+                    if len(providers) > 5:
+                        print(f"     ... and {len(providers) - 5} more providers")
+                else:
+                    print(f"⚠️  No providers found for model '{target_model}'")
+                    print("🔄 Falling back to automatic provider selection...")
+            except Exception as e:
+                print(f"⚠️  Provider discovery failed: {e}")
+                print("🔄 Falling back to automatic provider selection...")
+            
+            print(f"\n🚀 Making autodecide chat completion...")
+            messages = [{"role": "user", "content": custom_message}]
+            result = engine.chat_completion(messages, model=target_model, autodecide=True)
+            
+            if result.success:
+                print(f"✅ AUTODECIDE SUCCESS!")
+                print(f"🎯 Requested model: {target_model}")
+                print(f"🏃‍♂️ Provider selected: {result.provider_used}")
+                print(f"🤖 Model used: {result.model_used}")
+                print(f"💬 Response: {result.content}")
+                print(f"⏱️ Response time: {result.response_time:.2f}s")
+            else:
+                print(f"❌ AUTODECIDE FAILED!")
+                print(f"🎯 Requested model: {target_model}")
+                print(f"🚨 Error: {result.error_message}")
+                print(f"🔍 Error type: {result.error_type}")
+            return
         
         # Test specific provider
         engine = AI_engine(verbose=True)
@@ -1553,3 +1780,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Convenience function for easy import
+def get_ai_engine(verbose: bool = False) -> 'AI_engine':
+    """
+    Convenience function to get an AI_engine instance
+    
+    Args:
+        verbose (bool): Enable verbose logging
+        
+    Returns:
+        AI_engine: Configured AI Engine instance
+    """
+    return AI_engine(verbose=verbose)

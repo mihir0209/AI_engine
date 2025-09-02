@@ -827,6 +827,108 @@ async def test_model(request: Request):
             'timestamp': datetime.now().isoformat()
         }
 
+# Autodecide API Endpoints
+@app.get("/api/autodecide/{model}")
+async def discover_model_providers(model: str):
+    """Discover which providers have a specific model"""
+    try:
+        # Check if autodecide is enabled
+        if not engine.autodecide_config.get("enabled", True):
+            return {
+                'model': model,
+                'autodecide_enabled': False,
+                'providers': [],
+                'message': 'Autodecide feature is disabled'
+            }
+        
+        # Check cache first
+        if model not in engine.autodecide_cache or not engine._is_cache_valid(model):
+            providers_with_model = engine._discover_model_providers(model)
+        else:
+            providers_with_model = engine.autodecide_cache.get(model, [])
+        
+        # Format response
+        provider_list = []
+        for provider_name, actual_model in providers_with_model:
+            provider_config = engine.providers.get(provider_name, {})
+            provider_list.append({
+                'provider': provider_name,
+                'model': actual_model,
+                'priority': provider_config.get('priority', 999),
+                'enabled': provider_config.get('enabled', False),
+                'flagged': engine._is_key_flagged(provider_name)
+            })
+        
+        # Sort by priority
+        provider_list.sort(key=lambda x: x['priority'])
+        
+        return {
+            'model': model,
+            'autodecide_enabled': True,
+            'providers': provider_list,
+            'total_providers': len(provider_list),
+            'cache_valid': engine._is_cache_valid(model),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"❌ Error in autodecide discovery: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/autodecide/test")
+async def test_autodecide_model(request: Request):
+    """Test autodecide functionality with a specific model"""
+    try:
+        body = await request.json()
+        model_name = body.get('model')
+        test_message = body.get('message', 'Hello! This is a test of the autodecide feature.')
+        
+        if not model_name:
+            raise HTTPException(status_code=400, detail="Model name required")
+        
+        # Test the model using autodecide
+        messages = [{"role": "user", "content": test_message}]
+        
+        start_time = datetime.now()
+        result = engine.chat_completion(
+            messages=messages,
+            model=model_name,
+            autodecide=True  # Enable autodecide
+        )
+        end_time = datetime.now()
+        
+        response_time = (end_time - start_time).total_seconds()
+        
+        if result.success:
+            return {
+                'success': True,
+                'requested_model': model_name,
+                'provider_used': result.provider_used,
+                'actual_model': result.model_used if hasattr(result, 'model_used') else model_name,
+                'response': result.content[:200] + "..." if len(result.content) > 200 else result.content,
+                'response_time': round(response_time, 2),
+                'autodecide_used': True,
+                'timestamp': start_time.isoformat()
+            }
+        else:
+            return {
+                'success': False,
+                'requested_model': model_name,
+                'error': result.error_message,
+                'response_time': round(response_time, 2),
+                'autodecide_used': True,
+                'timestamp': start_time.isoformat()
+            }
+            
+    except Exception as e:
+        return {
+            'success': False,
+            'requested_model': model_name if 'model_name' in locals() else 'unknown',
+            'error': str(e),
+            'autodecide_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
+
 # Web Dashboard Routes
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):

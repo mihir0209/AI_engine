@@ -52,3 +52,9 @@ __pycache__/
 temp/
 tmp/
 
+# Test files (ignore all files with 'test' in name)
+*test*
+*Test*
+*TEST*
+
+key_statistics.json

@@ -617,3 +617,10 @@ ENGINE_SETTINGS = {
         "rerank_interval_hours": 24
     }
 }
+
+# Autodecide Configuration
+AUTODECIDE_CONFIG = {
+    "enabled": True,  # Default enabled
+    "cache_duration": 1800,  # 30 minutes in seconds
+    "model_cache": {}  # Will store: {"gpt-4.1": [("openai", "gpt-4"), ("a4f", "provider-1/gpt-4.1")], ...}
+}
