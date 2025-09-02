@@ -90,9 +90,7 @@
                 </thead>`;
                 html += '<tbody>';
 
-                providers.forEach(provider => {
-                    const name = provider.name;
-                    const config = provider.config;
+                Object.entries(providers).forEach(([name, provider]) => {
                     const isEnabled = provider.enabled;
                     const keys = provider.keys_count > 0 ? `<i class="fas fa-key text-success"></i> ${provider.keys_count}` : '<span class="text-muted"><i class="fas fa-key"></i> 0</span>';
 
@@ -192,22 +190,26 @@
                 // Get the provider's current model from the providers list
                 const providersResponse = await fetch('/api/providers');
                 const providers = await providersResponse.json();
-                const provider = providers.find(p => p.name === providerName);
+                const provider = providers[providerName];
                 const providerModel = provider ? provider.model : 'auto';
+
+                const requestBody = {
+                    provider: providerName,
+                    model: providerModel,
+                    message: `Hello! This is a test of ${providerName} provider. Please respond briefly to confirm you're working.`
+                };
+                console.log('Sending test request:', requestBody); // Debug log
 
                 const response = await fetch('/api/test-model', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({
-                        provider: providerName,
-                        model: providerModel,
-                        message: `Hello! This is a test of ${providerName} provider. Please respond briefly to confirm you're working.`
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const result = await response.json();
+                console.log('Test result received:', result); // Debug log
                 
                 if (result.success) {
                     document.getElementById('testModalBody').innerHTML = `

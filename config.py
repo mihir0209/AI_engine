@@ -18,7 +18,7 @@ AI_CONFIGS = {
         "endpoint": "https://api.a4f.co/v1/chat/completions",
         "model_endpoint": "https://api.a4f.co/v1/models",
         "model_endpoint_auth": True,
-        "model": "provider-3/deepseek-v3",
+        "model": "provider-3/llama-3.1-70b",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": None,

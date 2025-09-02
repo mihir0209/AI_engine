@@ -325,15 +325,15 @@ async def get_status():
 async def get_providers():
     """Get all providers with their configurations (sanitized)"""
     try:
-        providers = []
+        providers = {}
         for name, config in AI_CONFIGS.items():
-            # Create sanitized config without sensitive data
-            sanitized_config = {
+            # Create sanitized config for this provider
+            providers[name] = {
                 "id": config.get('id'),
                 "priority": config.get('priority', 999),
                 "endpoint": config.get('endpoint', ''),
                 "model_endpoint": config.get('model_endpoint'),
-                "model": config.get('model', 'unknown'),
+                "model": config.get('model', 'auto'),
                 "method": config.get('method', 'POST'),
                 "auth_type": config.get('auth_type'),
                 "max_tokens": config.get('max_tokens'),
@@ -342,23 +342,12 @@ async def get_providers():
                 "retries": config.get('retries', 3),
                 "backoff": config.get('backoff', 1),
                 "format": config.get('format'),
-                "enabled": config.get('enabled', True)
+                "enabled": config.get('enabled', True),
+                "keys_count": len([k for k in config.get('api_keys', []) if k]),  # Count only non-empty keys
+                "has_keys": bool(config.get('api_keys') and any(config.get('api_keys')))
                 # Deliberately exclude api_keys and other sensitive data
             }
-            
-            providers.append({
-                "name": name,
-                "enabled": config.get('enabled', True),
-                "model": config.get('model', 'unknown'),
-                "endpoint": config.get('endpoint', ''),
-                "priority": config.get('priority', 999),
-                "keys_count": len([k for k in config.get('api_keys', []) if k]),  # Count only non-empty keys
-                "has_keys": bool(config.get('api_keys') and any(config.get('api_keys'))),
-                "config": sanitized_config  # Sanitized config without API keys
-            })
         
-        # Sort by priority
-        providers.sort(key=lambda x: x['priority'])
         return providers
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -532,6 +521,8 @@ async def discover_provider_models_internal(provider_name: str):
 @app.get("/api/providers/{provider_name}/models")
 async def discover_provider_models(provider_name: str):
     """Discover available models for a specific provider"""
+    import requests  # Import at function level to handle exceptions properly
+    
     try:
         print(f"🔍 Discovering models for provider: {provider_name}")
         
@@ -601,7 +592,6 @@ async def discover_provider_models(provider_name: str):
         print(f"📤 Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}")
         
         # Make request to discover models
-        import requests
         response = requests.get(models_endpoint, headers=headers, timeout=10)
         
         print(f"📥 Response status: {response.status_code}")

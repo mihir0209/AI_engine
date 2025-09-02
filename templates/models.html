@@ -59,40 +59,28 @@
         <div class="row">
             <div class="col-md-12">
                 <h1><i class="fas fa-cubes"></i> Model Management</h1>
-                <p class="text-muted">Configure and discover models across your providers</p>
+                <p class="text-muted">Configure and select models for each provider</p>
             </div>
         </div>
 
-        <!-- Current Models Overview -->
+        <!-- Provider Model Configuration -->
         <div class="row mt-4">
             <div class="col-md-12">
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5><i class="fas fa-list"></i> Current Provider Models</h5>
-                        <button class="btn btn-outline-primary btn-sm" onclick="refreshCurrentModels()">
+                        <h5><i class="fas fa-cogs"></i> Provider Model Configuration</h5>
+                        <button class="btn btn-outline-primary btn-sm" onclick="loadProviders()">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                     <div class="card-body">
-                        <div id="currentModelsList" class="row">
-                            <p class="text-muted">Loading current models...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Model Discovery Section -->
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-search"></i> Model Discovery & Selection</h5>
-                        <p class="card-text mb-0">Discover available models from provider endpoints and update configurations</p>
-                    </div>
-                    <div class="card-body">
                         <div id="providersList" class="row">
-                            <p class="text-muted">Loading providers...</p>
+                            <div class="col-12 text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading providers...</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -177,81 +165,44 @@
         let originalModel = null;
 
         // Load current models from all providers
-        async function loadCurrentModels() {
-            try {
-                const response = await fetch('/v1/models');
-                const data = await response.json();
-
-                let html = '';
-
-                data.data.forEach(model => {
-                    const provider = model.owned_by;
-                    const modelName = model.id.split('/')[1] || model.id;
-
-                    html += `
-                        <div class="col-md-4 mb-3">
-                            <div class="card provider-card h-100">
-                                <div class="card-body">
-                                    <h6 class="card-title">
-                                        <i class="fas fa-server"></i> ${provider.toUpperCase()}
-                                    </h6>
-                                    <p class="card-text">
-                                        <small class="text-muted">Current Model:</small><br>
-                                        <code class="current-model">${modelName}</code>
-                                    </p>
-                                    <div class="btn-group w-100" role="group">
-                                        <button class="btn btn-primary btn-sm" onclick="openModelSelection('${provider}')">
-                                            <i class="fas fa-exchange-alt"></i> Select Model
-                                        </button>
-                                        <button class="btn btn-outline-primary btn-sm" onclick="testModel('${model.id}')">
-                                            <i class="fas fa-play"></i> Test
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                document.getElementById('currentModelsList').innerHTML = html;
-
-            } catch (error) {
-                console.error('Error loading current models:', error);
-                document.getElementById('currentModelsList').innerHTML = 
-                    '<div class="col-12"><p class="text-danger">Error loading current models</p></div>';
-            }
-        }
-
         // Load providers for model discovery
         async function loadProviders() {
             try {
                 const response = await fetch('/api/providers');
-                const providers = await response.json();
+                const providersData = await response.json();
 
                 let html = '';
-                providers.forEach(provider => {
-                    if (provider.enabled) {
-                        const hasModelEndpoint = provider.config.model_endpoint !== null;
+                Object.entries(providersData).forEach(([providerName, config]) => {
+                    if (config.enabled) {
+                        const hasModelEndpoint = config.model_endpoint !== null;
+                        const currentModel = config.model || 'auto';
                         
                         html += `
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card provider-card h-100">
                                     <div class="card-body">
                                         <h6 class="card-title">
-                                            <i class="fas fa-server"></i> ${provider.name.toUpperCase()}
+                                            <i class="fas fa-server"></i> ${providerName.toUpperCase()}
                                         </h6>
                                         <p class="card-text">
-                                            <small class="text-muted">Current:</small> <code>${provider.model}</code><br>
-                                            <small class="text-muted">Discovery:</small> 
+                                            <small class="text-muted">Current Model:</small><br>
+                                            <code>${currentModel}</code><br><br>
+                                            <small class="text-muted">Model Discovery:</small> 
                                             ${hasModelEndpoint ? 
                                                 '<span class="badge bg-success">Available</span>' : 
                                                 '<span class="badge bg-warning">Manual Only</span>'
                                             }
                                         </p>
-                                        <button class="btn btn-primary btn-sm w-100" 
-                                                onclick="openModelSelection('${provider.name}')">
-                                            <i class="fas fa-search"></i> Select Model
-                                        </button>
+                                        <div class="d-grid gap-2">
+                                            <button class="btn btn-primary btn-sm" 
+                                                    onclick="openModelSelection('${providerName}')">
+                                                <i class="fas fa-cog"></i> Select Model
+                                            </button>
+                                            <button class="btn btn-outline-success btn-sm" 
+                                                    onclick="testModel('${providerName}', '${currentModel}')">
+                                                <i class="fas fa-play"></i> Test
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -297,7 +248,7 @@
                 // Get current model for this provider
                 const providersResponse = await fetch('/api/providers');
                 const providers = await providersResponse.json();
-                const providerData = providers.find(p => p.name === providerName);
+                const providerData = providers[providerName];
                 originalModel = providerData ? providerData.model : 'unknown';
                 
                 document.getElementById('currentModelDisplay').textContent = originalModel;
@@ -403,8 +354,7 @@
                     showAlert('success', 
                         `✅ Model updated for ${currentProvider}: ${originalModel} → ${selectedModel}`);
                     
-                    // Refresh the models lists
-                    loadCurrentModels();
+                    // Refresh the providers list
                     loadProviders();
                 } else {
                     throw new Error(result.detail || 'Failed to update model');
@@ -499,9 +449,8 @@
             }
         }
 
-        // Refresh current models
-        function refreshCurrentModels() {
-            loadCurrentModels();
+        // Refresh providers
+        function refreshProviders() {
             loadProviders();
         }
 
@@ -528,7 +477,6 @@
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
-            loadCurrentModels();
             loadProviders();
         });
     </script>
