@@ -17,8 +17,9 @@
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="/"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
                 <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
-                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
                 <a class="nav-link" href="/models"><i class="fas fa-cubes"></i> Models</a>
+                <a class="nav-link" href="/chat"><i class="fas fa-comments"></i> Chat</a>
+                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
                 <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API Docs</a>
             </div>
         </div>
@@ -81,6 +82,30 @@
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
+                        <h5><i class="fas fa-comments"></i> Chat Interface</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Interactive chat with context-aware AI conversations</p>
+                        <div id="chatStats" class="mb-3">
+                            <small class="text-muted">Loading chat statistics...</small>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <a href="/chat" class="btn btn-primary">
+                                <i class="fas fa-comments"></i> Open Chat Interface
+                            </a>
+                            <button class="btn btn-outline-primary btn-sm" onclick="createQuickChat()">
+                                <i class="fas fa-plus"></i> Quick Temporary Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
                         <h5><i class="fas fa-key"></i> Key Usage Summary</h5>
                     </div>
                     <div class="card-body">
@@ -90,10 +115,7 @@
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-md-12">
+            <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
                         <h5><i class="fas fa-list"></i> Recent Activity</h5>
@@ -127,8 +149,69 @@
                 // Update provider status chart
                 updateProviderChart(status);
 
+                // Load chat statistics
+                loadChatStats();
+
             } catch (error) {
                 console.error('Error updating dashboard:', error);
+            }
+        }
+
+        async function loadChatStats() {
+            try {
+                const response = await fetch('/api/chat/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('chatStats').innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <strong>${stats.total_chats}</strong><br>
+                                <small class="text-muted">Total Chats</small>
+                            </div>
+                            <div class="col-4">
+                                <strong>${stats.total_messages}</strong><br>
+                                <small class="text-muted">Messages</small>
+                            </div>
+                            <div class="col-4">
+                                <strong>${stats.temporary_chats}</strong><br>
+                                <small class="text-muted">Temporary</small>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading chat stats:', error);
+                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Error loading stats</small>';
+            }
+        }
+
+        async function createQuickChat() {
+            try {
+                const response = await fetch('/api/chat/chats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
+                        is_temporary: true
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Redirect to chat interface with the new chat
+                    window.location.href = `/chat#${result.chat_id}`;
+                } else {
+                    alert('Failed to create quick chat');
+                }
+
+            } catch (error) {
+                console.error('Error creating quick chat:', error);
+                alert('Error creating quick chat');
             }
         }
 
@@ -154,9 +237,68 @@
             });
         }
 
+        async function loadChatStats() {
+            try {
+                const response = await fetch('/api/chat/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('chatStats').innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.total_chats || 0}</div>
+                                <small class="text-muted">Chats</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.total_messages || 0}</div>
+                                <small class="text-muted">Messages</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.temporary_chats || 0}</div>
+                                <small class="text-muted">Temp</small>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading chat stats:', error);
+                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Stats unavailable</small>';
+            }
+        }
+
+        async function createQuickChat() {
+            try {
+                const response = await fetch('/api/chat/chats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
+                        is_temporary: true
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    window.location.href = `/chat#${result.chat_id}`;
+                } else {
+                    alert('Failed to create quick chat');
+                }
+
+            } catch (error) {
+                console.error('Error creating quick chat:', error);
+                alert('Failed to create quick chat');
+            }
+        }
+
         // Update dashboard every 30 seconds
         setInterval(updateDashboard, 30000);
+        setInterval(loadChatStats, 30000);
         updateDashboard(); // Initial load
+        loadChatStats(); // Initial load
     </script>
 </body>
 </html>

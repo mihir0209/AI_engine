@@ -19,6 +19,8 @@ try:
     from ai_engine import AI_engine
     from statistics_manager import get_stats_manager
     from config import AI_CONFIGS
+    # Import chat module
+    from chat_module.router import router as chat_router
 except ImportError as e:
     print(f"Failed to import AI Engine components: {e}")
     print("Make sure you're running from the AI_engine directory")
@@ -50,6 +52,9 @@ app.add_middleware(
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# Include chat router
+app.include_router(chat_router)
 
 # Pydantic models for API
 class ChatMessage(BaseModel):
@@ -951,6 +956,11 @@ async def statistics_page(request: Request):
 async def models_page(request: Request):
     """Models page"""
     return templates.TemplateResponse("models.html", {"request": request})
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_page(request: Request):
+    """Chat interface page"""
+    return templates.TemplateResponse("chat.html", {"request": request})
 
 # Background tasks
 async def save_statistics_async():
