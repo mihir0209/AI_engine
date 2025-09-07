@@ -10,6 +10,17 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass, asdict
 
+# Import verbose_print function
+try:
+    from config import verbose_print, ENGINE_SETTINGS
+except ImportError:
+    # Fallback verbose_print function
+    def verbose_print(message: str, verbose_override: bool = None):
+        # Default to False if no config available
+        if verbose_override or False:
+            print(message)
+    ENGINE_SETTINGS = {"verbose_mode": False}
+
 @dataclass
 class KeyStatistics:
     """Statistics for a single API key"""
@@ -70,11 +81,11 @@ class StatisticsManager:
                     for key_id, key_data in provider_stats.items():
                         self.statistics[provider_name][key_id] = KeyStatistics.from_dict(key_data)
 
-                print(f"📊 Loaded statistics for {len(self.statistics)} providers")
+                verbose_print(f"📊 Loaded statistics for {len(self.statistics)} providers")
             else:
-                print("📊 No existing statistics file found, starting fresh")
+                verbose_print("📊 No existing statistics file found, starting fresh")
         except Exception as e:
-            print(f"⚠️ Error loading statistics: {e}")
+            verbose_print(f"⚠️ Error loading statistics: {e}")
             self.statistics = {}
 
     def _save_statistics(self):
@@ -91,7 +102,7 @@ class StatisticsManager:
                 json.dump(data, f, indent=2)
 
         except Exception as e:
-            print(f"⚠️ Error saving statistics: {e}")
+            verbose_print(f"⚠️ Error saving statistics: {e}")
 
     def get_statistics(self, provider_name: str, key_id: str) -> Optional[KeyStatistics]:
         """Get statistics for a specific key"""
@@ -187,9 +198,9 @@ class StatisticsManager:
             try:
                 await asyncio.sleep(self.auto_save_interval)
                 self._save_statistics()
-                print("💾 Statistics auto-saved")
+                verbose_print("💾 Statistics auto-saved")
             except Exception as e:
-                print(f"⚠️ Auto-save error: {e}")
+                verbose_print(f"⚠️ Auto-save error: {e}")
                 await asyncio.sleep(self.auto_save_interval)
 
     def save_now(self):

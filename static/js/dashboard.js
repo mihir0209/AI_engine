@@ -19,11 +19,6 @@ async function updateDashboard() {
         const status = await statusResponse.json();
         updateStatusCards(status);
 
-        // Update statistics
-        const statsResponse = await fetch('/api/statistics');
-        const stats = await statsResponse.json();
-        updateStatistics(stats);
-
         // Update uptime
         updateUptime();
 
@@ -92,155 +87,15 @@ function updateStatistics(stats) {
     const summary = stats.summary || {};
     const providers = stats.providers || {};
 
-    // Update summary cards
-    document.getElementById('totalKeys').textContent = summary.total_keys || 0;
-    document.getElementById('totalRequests').textContent = summary.total_requests || 0;
-
-    // Update key usage summary
-    updateKeyUsageSummary(providers);
-
-    // Update provider details
-    updateProviderDetails(providers);
-
-    // Update recent activity
-    updateRecentActivity(providers);
-}
-
-// Update provider details
-function updateProviderDetails(providers) {
-    const container = document.getElementById('providerDetails');
-    if (!container) return;
-
-    let html = '';
-    for (const [provider, data] of Object.entries(providers)) {
-        html += `<div class="col-md-6 mb-3">
-            <div class="card">
-                <div class="card-header">
-                    <h6 class="mb-0">${provider}</h6>
-                </div>
-                <div class="card-body">`;
-
-        for (const [key, stats] of Object.entries(data)) {
-            const status = stats.rate_limited ? '🔴 RATE LIMITED' : '🟢 ACTIVE';
-            html += `<div class="mb-2">
-                <strong>${key}:</strong> ${stats.total_requests} requests,
-                ${stats.success_rate} success ${status}
-            </div>`;
-        }
-
-        html += '</div></div></div>';
-    }
-
-    container.innerHTML = html;
-}
-
-// Update key usage summary
-function updateKeyUsageSummary(providers) {
-    const summaryContainer = document.getElementById('keyUsageSummary');
-    if (!summaryContainer) return;
-
-    let html = '<div class="row">';
+    // Update summary cards (if they exist on this page)
+    const totalKeysElement = document.getElementById('totalKeys');
+    const totalRequestsElement = document.getElementById('totalRequests');
     
-    for (const [provider, data] of Object.entries(providers)) {
-        for (const [keyName, stats] of Object.entries(data)) {
-            const successRate = stats.requests > 0 ? ((stats.successes / stats.requests) * 100).toFixed(1) : 0;
-            const status = stats.rate_limited ? '🔴' : (stats.successes > 0 ? '🟢' : '🟡');
-            const lastUsed = stats.last_used ? new Date(stats.last_used).toLocaleString() : 'Never';
-            
-            html += `
-                <div class="col-md-6 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">${status} ${provider}/${keyName}</h6>
-                            <div class="row text-center">
-                                <div class="col-4">
-                                    <div class="text-primary h5">${stats.requests}</div>
-                                    <small class="text-muted">Requests</small>
-                                </div>
-                                <div class="col-4">
-                                    <div class="text-success h5">${successRate}%</div>
-                                    <small class="text-muted">Success</small>
-                                </div>
-                                <div class="col-4">
-                                    <div class="text-info h5">${stats.successes}</div>
-                                    <small class="text-muted">Successes</small>
-                                </div>
-                            </div>
-                            <hr>
-                            <small class="text-muted">Last used: ${lastUsed}</small>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    html += '</div>';
-    summaryContainer.innerHTML = html || '<p class="text-muted">No key usage data available</p>';
-}
+    if (totalKeysElement) totalKeysElement.textContent = summary.total_keys || 0;
+    if (totalRequestsElement) totalRequestsElement.textContent = summary.total_requests || 0;
 
-// Update recent activity
-function updateRecentActivity(providers) {
-    const activityContainer = document.getElementById('recentActivity');
-    if (!activityContainer) return;
-
-    const activities = [];
-    
-    // Collect all activities
-    for (const [provider, data] of Object.entries(providers)) {
-        for (const [keyName, stats] of Object.entries(data)) {
-            if (stats.last_used) {
-                activities.push({
-                    provider,
-                    key: keyName,
-                    lastUsed: new Date(stats.last_used),
-                    requests: stats.requests,
-                    successes: stats.successes,
-                    failures: stats.failures
-                });
-            }
-        }
-    }
-
-    // Sort by last used (most recent first)
-    activities.sort((a, b) => b.lastUsed - a.lastUsed);
-
-    // Generate HTML
-    let html = '';
-    if (activities.length === 0) {
-        html = '<p class="text-muted">No recent activity</p>';
-    } else {
-        activities.slice(0, 10).forEach(activity => {
-            const timeAgo = getTimeAgo(activity.lastUsed);
-            const status = activity.successes > activity.failures ? '🟢' : '🔴';
-            
-            html += `
-                <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
-                    <div>
-                        <strong>${status} ${activity.provider}/${activity.key}</strong><br>
-                        <small class="text-muted">${activity.requests} requests (${activity.successes} success, ${activity.failures} failed)</small>
-                    </div>
-                    <small class="text-muted">${timeAgo}</small>
-                </div>
-            `;
-        });
-    }
-    
-    activityContainer.innerHTML = html;
-}
-
-// Helper function to get time ago string
-function getTimeAgo(date) {
-    const now = new Date();
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-
-    if (days > 0) return `${days}d ago`;
-    if (hours > 0) return `${hours}h ago`;
-    if (minutes > 0) return `${minutes}m ago`;
-    return 'Just now';
+    // Note: Key usage summary and recent activity removed from dashboard
+    // These features are available on the dedicated Statistics page
 }
 
 // Update uptime counter

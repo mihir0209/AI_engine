@@ -31,10 +31,19 @@ class ChatDB:
                     context_mode TEXT DEFAULT 'window',
                     summary TEXT,
                     is_temporary BOOLEAN DEFAULT 0,
+                    force_provider BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Add force_provider column if it doesn't exist (migration)
+            try:
+                conn.execute("SELECT force_provider FROM chats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                conn.execute("ALTER TABLE chats ADD COLUMN force_provider BOOLEAN DEFAULT 0")
+                logger.info("Added force_provider column to existing chats table")
             
             # Create messages table
             conn.execute("""
@@ -67,13 +76,13 @@ class ChatDB:
         return conn
 
     def create_chat(self, title: str, model: str = None, provider: str = None, 
-                   system_prompt: str = None, is_temporary: bool = False) -> int:
+                   system_prompt: str = None, is_temporary: bool = False, force_provider: bool = False) -> int:
         """Create a new chat and return chat ID"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO chats (title, model, provider, system_prompt, is_temporary, updated_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (title, model, provider, system_prompt, is_temporary))
+                INSERT INTO chats (title, model, provider, system_prompt, is_temporary, force_provider, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (title, model, provider, system_prompt, is_temporary, force_provider))
             chat_id = cursor.lastrowid
             conn.commit()
             logger.info(f"Created chat {chat_id}: {title}")
@@ -180,7 +189,7 @@ class ChatDB:
         fields = []
         values = []
         for key, value in kwargs.items():
-            if key in ['title', 'model', 'provider', 'system_prompt', 'context_mode', 'summary']:
+            if key in ['title', 'model', 'provider', 'system_prompt', 'context_mode', 'summary', 'force_provider']:
                 fields.append(f"{key} = ?")
                 values.append(value)
         

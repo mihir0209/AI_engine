@@ -9,18 +9,25 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import random
 import logging
+import concurrent.futures
+import threading
 from dotenv import load_dotenv
 from dataclasses import dataclass
 
 # Import configuration from external config file
 try:
-    from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG
+    from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
     AI_CONFIGS = {}
-    ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5}
+    ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5, "verbose_mode": False}
     AUTODECIDE_CONFIG = {"enabled": True, "cache_duration": 1800, "model_cache": {}}
+    
+    # Fallback verbose_print function
+    def verbose_print(message: str, verbose_override: bool = None):
+        if verbose_override or ENGINE_SETTINGS.get("verbose_mode", False):
+            print(message)
 
 # Import Statistics Manager
 try:
@@ -53,9 +60,14 @@ class AI_engine:
     Clean AI Engine v3.0 with Python-based configuration and smart key rotation
     """
     
-    def __init__(self, verbose: bool = False):
+    def __init__(self, verbose: bool = None):
         """Initialize the AI Engine v3.0 with external configuration and advanced features"""
-        self.verbose = verbose
+        # Set verbose mode: instance override > global config > default False
+        if verbose is not None:
+            self.verbose = verbose
+        else:
+            self.verbose = ENGINE_SETTINGS.get("verbose_mode", False)
+            
         self.logger = self._setup_logging()
         
         # Load configuration from external config file
@@ -148,11 +160,11 @@ class AI_engine:
                         self.key_request_count[provider_name][key_id] = []
         
         if self.verbose:
-            print(f"🚀 AI Engine v3.0 initialized with {len(self.providers)} providers")
-            print(f"🔑 Key rotation: {'Enabled' if self.engine_settings.get('key_rotation_enabled', True) else 'Disabled'}")
-            print(f"🔄 Provider rotation: {'Enabled' if self.engine_settings.get('provider_rotation_enabled', True) else 'Disabled'}")
-            print(f"⚠️  Failure limit: {self.engine_settings.get('consecutive_failure_limit', 5)} consecutive failures")
-            print(f"💾 Persistent statistics: {'Loaded' if self.stats_manager.get_stats_summary()['total_providers'] > 0 else 'None found'}")
+            verbose_print(f"🚀 AI Engine v3.0 initialized with {len(self.providers)} providers", self.verbose)
+            verbose_print(f"🔑 Key rotation: {'Enabled' if self.engine_settings.get('key_rotation_enabled', True) else 'Disabled'}", self.verbose)
+            verbose_print(f"🔄 Provider rotation: {'Enabled' if self.engine_settings.get('provider_rotation_enabled', True) else 'Disabled'}", self.verbose)
+            verbose_print(f"⚠️  Failure limit: {self.engine_settings.get('consecutive_failure_limit', 5)} consecutive failures", self.verbose)
+            verbose_print(f"💾 Persistent statistics: {'Loaded' if self.stats_manager.get_stats_summary()['total_providers'] > 0 else 'None found'}", self.verbose)
     
     def _load_enabled_providers(self) -> Dict[str, Dict[str, Any]]:
         """Load only enabled providers with valid API keys from external config"""
@@ -168,15 +180,56 @@ class AI_engine:
                         config["api_keys"] = valid_keys
                         enabled_providers[name] = config
                     else:
-                        self.logger.warning(f"Provider {name} disabled: No valid API keys found")
+                        if self.verbose:
+                            verbose_print(f"Provider {name} disabled: No valid API keys found", self.verbose)
                 elif not config.get("auth_type"):
                     # Provider doesn't need auth (like a3z, omegatron)
                     enabled_providers[name] = config
                 else:
-                    self.logger.warning(f"Provider {name} disabled: No API keys configured")
+                    if self.verbose:
+                        verbose_print(f"Provider {name} disabled: No API keys configured", self.verbose)
         
-        self.logger.info(f"Loaded {len(enabled_providers)} enabled providers out of {len(AI_CONFIGS)} total")
+        if self.verbose:
+            verbose_print(f"Loaded {len(enabled_providers)} enabled providers out of {len(AI_CONFIGS)} total", self.verbose)
         return enabled_providers
+    
+    def set_verbose(self, verbose: bool):
+        """
+        Set verbose mode for this AI_engine instance
+        
+        Args:
+            verbose (bool): Enable or disable verbose output
+        """
+        self.verbose = verbose
+        verbose_print(f"🔧 AI Engine verbose mode: {'Enabled' if verbose else 'Disabled'}", self.verbose)
+    
+    def get_verbose(self) -> bool:
+        """
+        Get current verbose mode setting
+        
+        Returns:
+            bool: Current verbose mode state
+        """
+        return self.verbose
+    
+    def set_global_verbose(self, verbose: bool):
+        """
+        Set global verbose mode in ENGINE_SETTINGS (affects all new instances)
+        
+        Args:
+            verbose (bool): Enable or disable global verbose output
+        """
+        ENGINE_SETTINGS["verbose_mode"] = verbose
+        verbose_print(f"🌍 Global verbose mode: {'Enabled' if verbose else 'Disabled'}", verbose)
+    
+    def get_global_verbose(self) -> bool:
+        """
+        Get global verbose mode setting
+        
+        Returns:
+            bool: Global verbose mode state
+        """
+        return ENGINE_SETTINGS.get("verbose_mode", False)
     
     def _setup_logging(self) -> logging.Logger:
         """Setup logging configuration"""
@@ -204,7 +257,7 @@ class AI_engine:
             # Remove the flag
             del self.flagged_keys[provider_name]
             if self.verbose:
-                print(f"🟢 {provider_name} key unflagged - retry available")
+                verbose_print(f"🟢 {provider_name} key unflagged - retry available", self.verbose)
             return False
         
         return True
@@ -275,7 +328,7 @@ class AI_engine:
                 best_key_index = key_index
         
         if best_key_index is not None and self.verbose:
-            print(f"🔑 Selected key #{best_key_index + 1} for {provider_name} (load score: {best_score:.2f})")
+            verbose_print(f"🔑 Selected key #{best_key_index + 1} for {provider_name} (load score: {best_score:.2f})", self.verbose)
             
         return best_key_index
     
@@ -385,7 +438,7 @@ class AI_engine:
             self.stats_manager.mark_rate_limited(provider_name, key_id)
             
             if self.verbose:
-                print(f"🔴 Key #{key_index + 1} for {provider_name} marked as rate limited")
+                verbose_print(f"🔴 Key #{key_index + 1} for {provider_name} marked as rate limited", self.verbose)
     
     def get_key_usage_report(self, provider_name: str) -> Dict:
         """Get detailed usage report for all keys of a provider using persistent statistics"""
@@ -464,7 +517,7 @@ class AI_engine:
         if selected_index is not None:
             self.provider_key_rotation[provider_name] = selected_index
             if self.verbose:
-                print(f"🔄 Intelligently rotated {provider_name} to key #{selected_index + 1}")
+                verbose_print(f"🔄 Intelligently rotated {provider_name} to key #{selected_index + 1}", self.verbose)
             return api_keys[selected_index]
             
         return None
@@ -487,7 +540,7 @@ class AI_engine:
             self.usage_stats[provider_name]['consecutive_failures'] = consecutive_count
         
         if self.verbose:
-            print(f"🔍 {provider_name} error classified as: {error_type}")
+            verbose_print(f"🔍 {provider_name} error classified as: {error_type}", self.verbose)
         
         # Handle different error types with specific actions
         if error_type in ["rate_limit", "auth_error", "quota_exceeded"]:
@@ -495,7 +548,7 @@ class AI_engine:
             if self.engine_settings.get('key_rotation_enabled', True):
                 rotated_key = self._rotate_api_key(provider_name)
                 if rotated_key and self.verbose:
-                    print(f"🔑 Rotated {provider_name} API key due to {error_type}")
+                    verbose_print(f"🔑 Rotated {provider_name} API key due to {error_type}", self.verbose)
                 # Flag the specific key temporarily
                 self._flag_key(provider_name, error_type)
             else:
@@ -506,20 +559,20 @@ class AI_engine:
             # These errors suggest provider-level issues - flag provider temporarily
             self._flag_provider(provider_name, duration_minutes=10)
             if self.verbose:
-                print(f"🚫 {provider_name} temporarily flagged due to {error_type}")
+                verbose_print(f"🚫 {provider_name} temporarily flagged due to {error_type}", self.verbose)
                 
         # Check if we should flag the provider due to too many consecutive failures
         failure_limit = self.engine_settings.get('consecutive_failure_limit', 5)
         if consecutive_count >= failure_limit:
             self._flag_provider(provider_name, duration_minutes=30)
             if self.verbose:
-                print(f"⚠️  {provider_name} flagged for 30min after {consecutive_count} consecutive failures")
+                verbose_print(f"⚠️  {provider_name} flagged for 30min after {consecutive_count} consecutive failures", self.verbose)
         
         # Try key rotation for other types of failures after 2 attempts
         elif error_type == "unknown" and self.engine_settings.get('key_rotation_enabled', True) and consecutive_count >= 2:
             rotated_key = self._rotate_api_key(provider_name)
             if rotated_key and self.verbose:
-                print(f"� Rotated {provider_name} API key after {consecutive_count} unknown failures")
+                verbose_print(f"� Rotated {provider_name} API key after {consecutive_count} unknown failures", self.verbose)
     
     def _handle_provider_success(self, provider_name: str, response_time: float):
         """Handle successful provider response"""
@@ -538,7 +591,7 @@ class AI_engine:
         if provider_name in self.flagged_keys:
             del self.flagged_keys[provider_name]
             if self.verbose:
-                print(f"🟢 {provider_name} unflagged after successful response")
+                verbose_print(f"🟢 {provider_name} unflagged after successful response", self.verbose)
     
     def _flag_provider(self, provider_name: str, duration_minutes: int = 30):
         """Flag a provider temporarily due to consecutive failures"""
@@ -577,7 +630,7 @@ class AI_engine:
         
         if self.verbose:
             duration = (flag_until - current_time).total_seconds() / 60
-            print(f"🔴 {provider_name} key flagged for {duration:.0f} minutes due to {error_type}")
+            verbose_print(f"🔴 {provider_name} key flagged for {duration:.0f} minutes due to {error_type}", self.verbose)
     
     def _classify_error(self, error_message: str, status_code: int, response_json: dict = None) -> str:
         """
@@ -735,7 +788,9 @@ class AI_engine:
                 elif auth_type == 'bearer_lowercase':
                     headers['authorization'] = f'Bearer {current_key}'
             
-            response = requests.get(endpoint, headers=headers, timeout=10)
+            # Use shorter timeout for model discovery to enable faster threading
+            timeout = min(config.get('timeout', 60), 10)  # Max 10 seconds for model discovery
+            response = requests.get(endpoint, headers=headers, timeout=timeout)
             if response.status_code == 200:
                 data = response.json()
                 
@@ -753,8 +808,59 @@ class AI_engine:
             return []
         except Exception as e:
             if self.verbose:
-                print(f"❌ Failed to get models from {provider_name}: {e}")
+                verbose_print(f"❌ Failed to get models from {provider_name}: {e}", self.verbose)
             return []
+
+    def _get_provider_models_threaded(self, provider_name: str, config: dict, results: dict, timeout_seconds: int = 10):
+        """Thread-safe version of _get_provider_models for concurrent execution"""
+        try:
+            if not config.get('model_endpoint'):
+                results[provider_name] = []
+                return
+            
+            endpoint = config['model_endpoint']
+            headers = {}
+            
+            # Add authentication if required
+            if config.get('model_endpoint_auth', False):
+                api_keys = config.get('api_keys', [])
+                valid_keys = [key for key in api_keys if key is not None]
+                if not valid_keys:
+                    results[provider_name] = []
+                    return
+                
+                current_key = valid_keys[0]
+                auth_type = config.get('auth_type', 'bearer')
+                if auth_type == 'bearer':
+                    headers['Authorization'] = f'Bearer {current_key}'
+                elif auth_type == 'bearer_lowercase':
+                    headers['authorization'] = f'Bearer {current_key}'
+            
+            response = requests.get(endpoint, headers=headers, timeout=timeout_seconds)
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Handle different response formats
+                if 'data' in data and isinstance(data['data'], list):
+                    # OpenAI format
+                    models = [model.get('id', '') for model in data['data']]
+                elif isinstance(data, list):
+                    # Direct list format
+                    models = [model.get('id', model.get('name', str(model))) if isinstance(model, dict) else str(model) for model in data]
+                elif 'models' in data:
+                    # Some providers use 'models' key
+                    models = [model.get('id', model.get('name', str(model))) if isinstance(model, dict) else str(model) for model in data['models']]
+                else:
+                    models = []
+                
+                results[provider_name] = models
+            else:
+                results[provider_name] = []
+                
+        except Exception as e:
+            if self.verbose:
+                verbose_print(f"❌ Failed to get models from {provider_name}: {e}", self.verbose)
+            results[provider_name] = []
     
     def _is_cache_valid(self, model_name: str) -> bool:
         """Check if cached model data is still valid"""
@@ -767,61 +873,142 @@ class AI_engine:
         return (time.time() - cache_time) < cache_duration
     
     def _discover_model_providers(self, requested_model: str) -> List[Tuple[str, str]]:
-        """Discover which providers have the requested model"""
+        """Discover which providers have the requested model using threading for faster discovery"""
         if self.verbose:
-            print(f"🔍 Discovering providers for model: {requested_model}")
+            verbose_print(f"🔍 Discovering providers for model: {requested_model}", self.verbose)
         
         providers_with_model = []
         
-        for provider_name, config in self.providers.items():
-            if not config.get('enabled') or not config.get('model_endpoint'):
-                continue
+        # Get enabled providers with model endpoints
+        providers_to_check = {
+            name: config for name, config in self.providers.items()
+            if config.get('enabled') and config.get('model_endpoint')
+        }
+        
+        if not providers_to_check:
+            if self.verbose:
+                verbose_print("⚠️ No providers available for model discovery", self.verbose)
+            return providers_with_model
+        
+        # Use threading to check all providers concurrently
+        model_results = {}
+        threads = []
+        max_workers = min(len(providers_to_check), 10)  # Limit concurrent requests
+        
+        verbose_print(f"🚀 Starting threaded discovery for {len(providers_to_check)} providers...", self.verbose)
+        
+        start_time = time.time()
+        
+        # Use ThreadPoolExecutor for better thread management
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_provider = {
+                executor.submit(self._get_provider_models_threaded, name, config, model_results, 5): name
+                for name, config in providers_to_check.items()
+            }
             
+            # Wait for completion with timeout
             try:
-                models = self._get_provider_models(provider_name)
-                
-                # Check if requested model matches any available model
-                for available_model in models:
-                    if self.model_matches(requested_model, available_model):
-                        providers_with_model.append((provider_name, available_model))
-                        if self.verbose:
-                            print(f"✅ Found {requested_model} as '{available_model}' in {provider_name}")
-                        break
-                        
+                concurrent.futures.wait(future_to_provider, timeout=10)  # 10 second total timeout
             except Exception as e:
                 if self.verbose:
-                    print(f"❌ Error checking {provider_name}: {e}")
+                    verbose_print(f"⚠️ Threading timeout or error: {e}", self.verbose)
+        
+        discovery_time = time.time() - start_time
+        
+        # Process results
+        for provider_name, models in model_results.items():
+            if not models:
                 continue
+                
+            # Check if requested model matches any available model
+            for available_model in models:
+                if self.model_matches(requested_model, available_model):
+                    providers_with_model.append((provider_name, available_model))
+                    if self.verbose:
+                        verbose_print(f"✅ Found {requested_model} as '{available_model}' in {provider_name}", self.verbose)
+                    break
         
         # Cache the result
         self.autodecide_cache[requested_model] = providers_with_model
         self.autodecide_cache_timestamps[requested_model] = time.time()
         
-        if self.verbose:
-            print(f"📊 Found {len(providers_with_model)} providers for {requested_model}")
+        verbose_print(f"📊 Found {len(providers_with_model)} providers for {requested_model} in {discovery_time:.2f}s", self.verbose)
+        verbose_print(f"🏆 Providers found: {[p[0] for p in providers_with_model]}", self.verbose)
         
         return providers_with_model
     
     def _select_best_provider(self, available_providers: List[Tuple[str, str]]) -> Tuple[str, str]:
-        """Select best provider from available options based on priority"""
+        """Select best provider from available options based on priority and performance"""
         if not available_providers:
             return None, None
         
-        # Sort by provider priority (lower number = higher priority)
-        sorted_providers = sorted(available_providers, 
-                                key=lambda x: self.providers[x[0]].get('priority', 999))
+        # Filter out flagged providers first
+        working_providers = [
+            (provider_name, model_name) for provider_name, model_name in available_providers
+            if not self._is_key_flagged(provider_name)
+        ]
         
-        # Return the highest priority provider that's not flagged
-        for provider_name, model_name in sorted_providers:
-            if not self._is_key_flagged(provider_name):
-                if self.verbose:
-                    print(f"🎯 Selected {provider_name} with model '{model_name}' (priority: {self.providers[provider_name].get('priority')})")
-                return provider_name, model_name
+        if not working_providers:
+            if self.verbose:
+                verbose_print("⚠️ All providers are flagged, falling back to any available provider", self.verbose)
+            working_providers = available_providers
+        
+        # Sort by multiple criteria:
+        # 1. Priority (lower number = higher priority)
+        # 2. Performance score from statistics (if available)
+        # 3. Provider name (for consistency)
+        
+        def get_provider_score(provider_tuple):
+            provider_name, model_name = provider_tuple
+            config = self.providers.get(provider_name, {})
+            
+            # Priority (lower = better, so we use it directly for sorting)
+            priority = config.get('priority', 999)
+            
+            # Performance score from statistics (higher = better, so we negate for sorting)
+            performance_score = 0
+            if hasattr(self, 'statistics_manager') and self.statistics_manager:
+                try:
+                    stats = self.statistics_manager.get_provider_stats(provider_name)
+                    if stats:
+                        success_rate = stats.get('success_rate', 0)
+                        avg_response_time = stats.get('average_response_time', 5.0)
+                        # Calculate performance score (success rate 70%, speed 30%)
+                        speed_score = max(0, 100 - (avg_response_time * 10))
+                        performance_score = -(success_rate * 0.7 + speed_score * 0.3)  # Negative for ascending sort
+                except:
+                    pass
+            
+            # Flagged status penalty
+            flagged_penalty = 1000 if self._is_key_flagged(provider_name) else 0
+            
+            return (priority, performance_score, flagged_penalty, provider_name)
+        
+        # Sort providers by score
+        sorted_providers = sorted(working_providers, key=get_provider_score)
+        
+        # Return the best provider
+        best_provider_name, best_model_name = sorted_providers[0]
+        
+        if self.verbose:
+            config = self.providers.get(best_provider_name, {})
+            priority = config.get('priority', 999)
+            verbose_print(f"🎯 Selected {best_provider_name} with model '{best_model_name}' (priority: {priority})", self.verbose)
+            
+            # Show alternatives if there are any
+            if len(sorted_providers) > 1:
+                alternatives = sorted_providers[1:4]  # Show up to 3 alternatives
+                alt_info = ", ".join([f"{p}(pri:{self.providers.get(p, {}).get('priority', '?')})" 
+                                    for p, m in alternatives])
+                verbose_print(f"🔄 Alternatives available: {alt_info}", self.verbose)
+        
+        return best_provider_name, best_model_name
         
         # If all are flagged, return the first one anyway
         provider_name, model_name = sorted_providers[0]
         if self.verbose:
-            print(f"⚠️ Selected {provider_name} with model '{model_name}' (flagged but best available)")
+            verbose_print(f"⚠️ Selected {provider_name} with model '{model_name}' (flagged but best available, self.verbose)")
         return provider_name, model_name
 
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
@@ -829,6 +1016,67 @@ class AI_engine:
         Main chat completion method with smart provider rotation and autodecide feature
         """
         preferred_provider = kwargs.get('preferred_provider')
+        force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
+        
+        # If force_provider is True and preferred_provider is specified, only use that provider
+        if force_provider and preferred_provider:
+            if preferred_provider not in self.providers:
+                return RequestResult(
+                    success=False,
+                    error_message=f"Forced provider '{preferred_provider}' not found in configuration",
+                    error_type="provider_not_found"
+                )
+            
+            if not self.providers[preferred_provider].get('enabled', True):
+                return RequestResult(
+                    success=False,
+                    error_message=f"Forced provider '{preferred_provider}' is disabled",
+                    error_type="provider_disabled"
+                )
+            
+            # Check if provider is flagged and handle accordingly
+            if self._is_key_flagged(preferred_provider):
+                # For forced provider, we'll try anyway but warn
+                if self.verbose:
+                    verbose_print(f"⚠️ Forcing flagged provider: {preferred_provider}", self.verbose)
+            
+            provider_config = self.providers[preferred_provider]
+            start_time = time.time()
+            
+            try:
+                if self.verbose:
+                    verbose_print(f"🔒 Force using provider: {preferred_provider} with model: {model or 'default'}", self.verbose)
+                
+                result = self._make_request(preferred_provider, provider_config, messages, model, **kwargs)
+                response_time = time.time() - start_time
+                
+                self._update_stats(preferred_provider, result.success, response_time)
+                
+                result.provider_used = preferred_provider
+                result.response_time = response_time
+                self.current_provider = preferred_provider
+                
+                if result.success:
+                    self._handle_provider_success(preferred_provider, response_time)
+                    if self.verbose:
+                        verbose_print(f"✅ Forced provider {preferred_provider} successful ({response_time:.2f}s, self.verbose)")
+                else:
+                    if self.verbose:
+                        verbose_print(f"❌ Forced provider {preferred_provider} failed: {result.error_message}", self.verbose)
+                
+                return result
+                
+            except Exception as e:
+                error_msg = f"Exception with forced provider {preferred_provider}: {str(e)}"
+                if self.verbose:
+                    verbose_print(f"❌ {error_msg}", self.verbose)
+                return RequestResult(
+                    success=False,
+                    error_message=error_msg,
+                    error_type="provider_exception",
+                    provider_used=preferred_provider,
+                    response_time=time.time() - start_time
+                )
         
         # AUTODECIDE FEATURE: If enabled and model is specified, try to find best provider
         if (autodecide and 
@@ -849,7 +1097,7 @@ class AI_engine:
                     preferred_provider = best_provider
                     model = actual_model  # Use the exact model name from the provider
                     if self.verbose:
-                        print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'")
+                        verbose_print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'", self.verbose)
         
         # If a preferred provider is specified, try it first
         if preferred_provider:
@@ -859,7 +1107,7 @@ class AI_engine:
                 
                 try:
                     if self.verbose:
-                        print(f"🎯 Using preferred provider: {preferred_provider}")
+                        verbose_print(f"🎯 Using preferred provider: {preferred_provider}", self.verbose)
                     
                     result = self._make_request(preferred_provider, provider_config, messages, model, **kwargs)
                     response_time = time.time() - start_time
@@ -873,13 +1121,13 @@ class AI_engine:
                         return result
                     else:
                         if self.verbose:
-                            print(f"❌ Preferred provider {preferred_provider} failed: {result.error_message}")
+                            verbose_print(f"❌ Preferred provider {preferred_provider} failed: {result.error_message}", self.verbose)
                 except Exception as e:
                     if self.verbose:
-                        print(f"❌ Exception with preferred provider {preferred_provider}: {e}")
+                        verbose_print(f"❌ Exception with preferred provider {preferred_provider}: {e}", self.verbose)
             else:
                 if self.verbose:
-                    print(f"⚠️ Preferred provider {preferred_provider} not available or flagged")
+                    verbose_print(f"⚠️ Preferred provider {preferred_provider} not available or flagged", self.verbose)
         
         # Fall back to normal provider rotation
         available_providers = self._get_available_providers()
@@ -897,7 +1145,7 @@ class AI_engine:
             
             try:
                 if self.verbose:
-                    print(f"🔄 Trying {provider_name}...")
+                    verbose_print(f"🔄 Trying {provider_name}...", self.verbose)
                 
                 result = self._make_request(provider_name, provider_config, messages, model, **kwargs)
                 response_time = time.time() - start_time
@@ -913,7 +1161,7 @@ class AI_engine:
                     self._handle_provider_success(provider_name, response_time)
                     
                     if self.verbose:
-                        print(f"✅ {provider_name} successful ({response_time:.2f}s)")
+                        verbose_print(f"✅ {provider_name} successful ({response_time:.2f}s, self.verbose)")
                     
                     return result
                 else:
@@ -926,7 +1174,7 @@ class AI_engine:
                     )
                     
                     if self.verbose:
-                        print(f"❌ {provider_name} failed: {result.error_message}")
+                        verbose_print(f"❌ {provider_name} failed: {result.error_message}", self.verbose)
                     
                     # Continue to next provider (automatic provider rotation)
                     continue
@@ -939,7 +1187,7 @@ class AI_engine:
                 self._handle_provider_failure(provider_name, str(e), 0, None)
                 
                 if self.verbose:
-                    print(f"💥 {provider_name} exception: {str(e)}")
+                    verbose_print(f"💥 {provider_name} exception: {str(e, self.verbose)}")
                 
                 # Continue to next provider (automatic provider rotation)
                 continue
@@ -1312,18 +1560,74 @@ class AI_engine:
                 error_type="request_exception"
             )
     
-    def stress_test_providers(self, test_iterations: int = 3, ask_for_priority_change: bool = True) -> Dict[str, Any]:
+    def stress_test_providers(self, test_iterations: int = 3, ask_for_priority_change: bool = True, use_threading: bool = True) -> Dict[str, Any]:
         """
         Run stress test on all providers and optionally ask user for priority changes
+        Enhanced with threading for faster execution
         """
-        print(f"🧪 Starting stress test on {len(self.providers)} providers...")
+        enabled_providers = {name: config for name, config in self.providers.items() if config.get('enabled', True)}
+        
+        print(f"🧪 Starting stress test on {len(enabled_providers)} enabled providers...")
         print(f"📝 Test iterations: {test_iterations}")
+        print(f"⚡ Threading enabled: {use_threading}")
         print()
         
         test_prompt = "Hello! Please respond with exactly: 'Test successful - AI Engine v3.0 working!'"
         results = {}
         
-        for provider_name, provider_config in self.providers.items():
+        if use_threading and len(enabled_providers) > 1:
+            # Use threading for faster stress testing
+            results = self._stress_test_threaded(enabled_providers, test_iterations, test_prompt)
+        else:
+            # Sequential testing (original method)
+            results = self._stress_test_sequential(enabled_providers, test_iterations, test_prompt)
+        
+        # Calculate overall stats
+        total_providers = len(results)
+        passed_providers = sum(1 for r in results.values() if r['passed'])
+        pass_rate = (passed_providers / total_providers) * 100 if total_providers > 0 else 0
+        
+        print(f"\n📊 STRESS TEST SUMMARY:")
+        print(f"Providers tested: {total_providers}")
+        print(f"Providers passed: {passed_providers}")
+        print(f"Overall pass rate: {pass_rate:.1f}%")
+        
+        # Show detailed results
+        print(f"\n📋 DETAILED RESULTS:")
+        print(f"{'Provider':<15} {'Status':<6} {'Success Rate':<12} {'Avg Time':<10} {'Priority'}")
+        print("-" * 65)
+        
+        # Sort by current priority for display
+        sorted_results = sorted(results.items(), key=lambda x: self.providers.get(x[0], {}).get('priority', 999))
+        
+        for provider_name, result in sorted_results:
+            status = "✅ PASS" if result['passed'] else "❌ FAIL"
+            success_rate = f"{result['success_rate']:.1f}%"
+            avg_time = f"{result['avg_response_time']:.2f}s"
+            priority = self.providers.get(provider_name, {}).get('priority', '?')
+            
+            print(f"{provider_name:<15} {status:<6} {success_rate:<12} {avg_time:<10} {priority}")
+        
+        # Ask user about priority changes if requested
+        if ask_for_priority_change and passed_providers > 0:
+            print(f"\n🔄 Priority Optimization Available")
+            print(f"Current priority ranking vs. performance-based ranking could be optimized.")
+            print(f"This will update both in-memory priorities and save changes to config.py.")
+            
+            response = input("Enter 'y' to optimize priorities or 'n' to keep current: ").lower().strip()
+            
+            if response == 'y':
+                self._optimize_priorities(results)
+            else:
+                print("📌 Keeping current priorities")
+        
+        return results
+
+    def _stress_test_sequential(self, providers: Dict, test_iterations: int, test_prompt: str) -> Dict[str, Any]:
+        """Sequential stress testing (original method)"""
+        results = {}
+        
+        for provider_name, provider_config in providers.items():
             print(f"Testing {provider_name}...", end=" ")
             
             provider_results = {
@@ -1372,28 +1676,106 @@ class AI_engine:
             status = "✅ PASS" if provider_results['passed'] else "❌ FAIL"
             print(f"{status} ({success_rate:.1f}%, {avg_response_time:.2f}s)")
         
-        # Calculate overall stats
-        total_providers = len(results)
-        passed_providers = sum(1 for r in results.values() if r['passed'])
-        pass_rate = (passed_providers / total_providers) * 100
+        return results
+
+    def _stress_test_threaded(self, providers: Dict, test_iterations: int, test_prompt: str) -> Dict[str, Any]:
+        """Threaded stress testing for faster execution"""
+        results = {}
+        max_workers = min(len(providers), 8)  # Limit concurrent tests
         
-        print(f"\n📊 STRESS TEST SUMMARY:")
-        print(f"Providers tested: {total_providers}")
-        print(f"Providers passed: {passed_providers}")
-        print(f"Overall pass rate: {pass_rate:.1f}%")
+        print(f"⚡ Running threaded stress test with {max_workers} workers...")
         
-        # Ask user about priority changes if requested
-        if ask_for_priority_change and passed_providers > 0:
-            print(f"\n🔄 Priority Optimization Available")
-            print(f"Would you like to optimize provider priorities based on test results?")
+        def test_provider(provider_item):
+            provider_name, provider_config = provider_item
+            provider_results = {
+                'provider': provider_name,
+                'total_tests': test_iterations,
+                'successful_tests': 0,
+                'failed_tests': 0,
+                'response_times': [],
+                'errors': []
+            }
             
-            response = input("Enter 'y' to optimize priorities or 'n' to keep current: ").lower().strip()
+            print(f"🧪 Testing {provider_name}...")
             
-            if response == 'y':
-                self._optimize_priorities(results)
-                print("✅ Provider priorities optimized!")
-            else:
-                print("📌 Keeping current priorities")
+            for i in range(test_iterations):
+                start_time = time.time()
+                try:
+                    result = self._make_request(
+                        provider_name, 
+                        provider_config, 
+                        [{"role": "user", "content": test_prompt}]
+                    )
+                    response_time = time.time() - start_time
+                    
+                    if result.success:
+                        provider_results['successful_tests'] += 1
+                        provider_results['response_times'].append(response_time)
+                    else:
+                        provider_results['failed_tests'] += 1
+                        provider_results['errors'].append({
+                            'iteration': i + 1,
+                            'error': result.error_message,
+                            'error_type': getattr(result, 'error_type', 'unknown')
+                        })
+                except Exception as e:
+                    response_time = time.time() - start_time
+                    provider_results['failed_tests'] += 1
+                    provider_results['errors'].append({
+                        'iteration': i + 1,
+                        'error': str(e),
+                        'error_type': 'exception'
+                    })
+            
+            # Calculate metrics
+            success_rate = (provider_results['successful_tests'] / test_iterations) * 100
+            avg_response_time = sum(provider_results['response_times']) / len(provider_results['response_times']) if provider_results['response_times'] else 0
+            
+            provider_results.update({
+                'success_rate': success_rate,
+                'avg_response_time': avg_response_time,
+                'min_response_time': min(provider_results['response_times']) if provider_results['response_times'] else 0,
+                'max_response_time': max(provider_results['response_times']) if provider_results['response_times'] else 0,
+                'passed': success_rate >= 75  # 75% success threshold
+            })
+            
+            status = "✅ PASS" if provider_results['passed'] else "❌ FAIL"
+            print(f"✅ {provider_name}: {status} ({success_rate:.1f}%, {avg_response_time:.2f}s)")
+            
+            return provider_name, provider_results
+        
+        # Execute tests in parallel
+        start_time = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_provider = {
+                executor.submit(test_provider, provider_item): provider_item[0]
+                for provider_item in providers.items()
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_provider):
+                try:
+                    provider_name, provider_results = future.result(timeout=60)  # 60 second timeout per provider
+                    results[provider_name] = provider_results
+                except Exception as e:
+                    provider_name = future_to_provider[future]
+                    print(f"❌ {provider_name} test failed with exception: {e}")
+                    # Create a failed result
+                    results[provider_name] = {
+                        'provider': provider_name,
+                        'total_tests': test_iterations,
+                        'successful_tests': 0,
+                        'failed_tests': test_iterations,
+                        'response_times': [],
+                        'errors': [{'iteration': 'all', 'error': str(e), 'error_type': 'timeout_exception'}],
+                        'success_rate': 0,
+                        'avg_response_time': 0,
+                        'min_response_time': 0,
+                        'max_response_time': 0,
+                        'passed': False
+                    }
+        
+        total_time = time.time() - start_time
+        print(f"⏱️ Threaded stress test completed in {total_time:.2f}s")
         
         return results
     
@@ -1415,10 +1797,67 @@ class AI_engine:
         # Sort by score (higher is better)
         provider_scores.sort(key=lambda x: x[1], reverse=True)
         
-        # Update priorities
+        print(f"\n🏆 OPTIMIZED PRIORITY RANKING:")
+        print(f"{'Rank':<4} {'Provider':<15} {'Score':<6} {'Time':<7} {'Old Pri':<7} {'New Pri'}")
+        print("-" * 60)
+        
+        # Update priorities and prepare changes to save
+        priority_changes = {}
         for i, (provider_name, score, avg_time) in enumerate(provider_scores, 1):
-            self.providers[provider_name]['priority'] = i
-            print(f"  {i:2d}. {provider_name:15} (Score: {score:5.1f}, Time: {avg_time:.2f}s)")
+            old_priority = self.providers[provider_name].get('priority', 999)
+            new_priority = i
+            
+            # Update in-memory configuration
+            self.providers[provider_name]['priority'] = new_priority
+            
+            # Track changes for file saving
+            if old_priority != new_priority:
+                priority_changes[provider_name] = new_priority
+            
+            print(f"{i:2d}   {provider_name:15} {score:5.1f}  {avg_time:5.2f}s  {old_priority:5d}   {new_priority:5d}")
+        
+        # Save changes to config.py file
+        if priority_changes:
+            try:
+                self._save_priority_changes_to_config(priority_changes)
+                print(f"\n✅ Priority changes saved to config.py")
+                print(f"📝 Updated {len(priority_changes)} provider priorities")
+            except Exception as e:
+                print(f"\n⚠️ Failed to save priority changes to config.py: {e}")
+                print(f"📝 In-memory priorities updated, but file changes not saved")
+        else:
+            print(f"\n📌 No priority changes needed")
+
+    def _save_priority_changes_to_config(self, priority_changes: Dict[str, int]):
+        """Save priority changes back to config.py file"""
+        try:
+            # Read the current config file
+            with open('config.py', 'r', encoding='utf-8') as f:
+                config_content = f.read()
+            
+            # Apply each priority change
+            updated_content = config_content
+            
+            for provider_name, new_priority in priority_changes.items():
+                # Create a pattern to find and replace the priority line for this provider
+                # Look for the provider section and the priority field within it
+                provider_pattern = rf'"{provider_name}":\s*\{{([^}}]*)"priority":\s*\d+([^}}]*)}}'
+                
+                def replace_priority(match):
+                    before_priority = match.group(1)
+                    after_priority = match.group(2)
+                    return f'"{provider_name}": {{{before_priority}"priority": {new_priority}{after_priority}}}'
+                
+                updated_content = re.sub(provider_pattern, replace_priority, updated_content, flags=re.DOTALL)
+            
+            # Write the updated config back to file
+            with open('config.py', 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+            
+            print(f"📁 Config file updated with new priorities")
+            
+        except Exception as e:
+            raise Exception(f"Failed to update config.py: {str(e)}")
     
     def test_specific_provider(self, provider_name: str, test_message: str = None) -> RequestResult:
         """
@@ -1453,7 +1892,7 @@ class AI_engine:
         
         try:
             if self.verbose:
-                print(f"🧪 Testing {provider_name} specifically...")
+                verbose_print(f"🧪 Testing {provider_name} specifically...", self.verbose)
             
             result = self._make_request(provider_name, provider_config, messages)
             response_time = time.time() - start_time
@@ -1466,7 +1905,7 @@ class AI_engine:
                 result.response_time = response_time
                 
                 if self.verbose:
-                    print(f"✅ {provider_name} test successful ({response_time:.2f}s)")
+                    verbose_print(f"✅ {provider_name} test successful ({response_time:.2f}s, self.verbose)")
             else:
                 # Handle errors and flagging
                 error_type = self._classify_error(result.error_message, result.status_code)
@@ -1475,7 +1914,7 @@ class AI_engine:
                     self._flag_key(provider_name, error_type)
                 
                 if self.verbose:
-                    print(f"❌ {provider_name} test failed: {result.error_message}")
+                    verbose_print(f"❌ {provider_name} test failed: {result.error_message}", self.verbose)
             
             return result
             
@@ -1484,7 +1923,7 @@ class AI_engine:
             self._update_stats(provider_name, False, response_time)
             
             if self.verbose:
-                print(f"💥 {provider_name} exception: {str(e)}")
+                verbose_print(f"💥 {provider_name} exception: {str(e, self.verbose)}")
             
             return RequestResult(
                 success=False,
@@ -1497,7 +1936,7 @@ class AI_engine:
         """Manually save current statistics to persistent storage"""
         save_statistics_now()
         if self.verbose:
-            print("Statistics saved manually")
+            verbose_print("Statistics saved manually", self.verbose)
     
     def roll_api_key(self, provider_name: str) -> str:
         """Manually roll to the next API key for a provider"""
@@ -1665,7 +2104,7 @@ def main():
             return
         elif provider_name == "autodecide":
             # Autodecide mode - automatically find best provider for specified model
-            engine = AI_engine(verbose=True)
+            engine = AI_engine()  # Use global config for verbose mode
             
             if len(sys.argv) < 3:
                 print("❌ Usage: python ai_engine.py autodecide <model_name> [message]")

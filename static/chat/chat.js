@@ -16,6 +16,40 @@ class ChatInterface {
         await this.loadStats();
         this.setupEventListeners();
         this.setupAutoResize();
+        this.setupTemporaryChatCleanup();
+    }
+
+    // Setup temporary chat cleanup on page unload
+    setupTemporaryChatCleanup() {
+        // Track temporary chats opened in this session
+        this.sessionTemporaryChats = new Set();
+        
+        // Cleanup temporary chats when page is closed/refreshed
+        window.addEventListener('beforeunload', () => {
+            this.cleanupTemporaryChats();
+        });
+        
+        // Also cleanup on visibility change (when tab is hidden)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.cleanupTemporaryChats();
+            }
+        });
+    }
+
+    async cleanupTemporaryChats() {
+        // Delete temporary chats that were created/accessed in this session
+        for (const chatId of this.sessionTemporaryChats) {
+            try {
+                await fetch(`/api/chat/chats/${chatId}`, {
+                    method: 'DELETE',
+                    keepalive: true // Allows request to complete even if page is unloading
+                });
+            } catch (error) {
+                console.warn('Error cleaning up temporary chat:', chatId, error);
+            }
+        }
+        this.sessionTemporaryChats.clear();
     }
 
     // Provider Management
@@ -159,27 +193,49 @@ class ChatInterface {
             return;
         }
 
-        const html = chats.map(chat => `
-            <div class="chat-item ${chat.id === this.currentChatId ? 'active' : ''}" 
-                 onclick="chatInterface.selectChat(${chat.id})">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="flex-grow-1">
-                        <div class="chat-item-title">${this.escapeHtml(chat.title)}</div>
-                        <div class="chat-item-preview text-muted">
-                            ${chat.last_message ? this.escapeHtml(chat.last_message.substring(0, 50)) + '...' : 'No messages yet'}
+        // Sort chats by updated_at descending (most recent first)
+        const sortedChats = chats.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+        const html = sortedChats.map(chat => {
+            const badges = [];
+            
+            // Add type badge
+            badges.push(`<span class="badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'}">${chat.is_temporary ? 'TEMP' : 'PERM'}</span>`);
+            
+            // Add force provider badge if enabled
+            if (chat.force_provider) {
+                badges.push(`<span class="badge bg-force">FORCE</span>`);
+            }
+
+            const providerModel = chat.provider && chat.model ? 
+                `${chat.provider}/${chat.model}` : 
+                (chat.provider || 'auto');
+
+            return `
+                <div class="chat-item ${chat.id === this.currentChatId ? 'active' : ''}" 
+                     onclick="chatInterface.selectChat(${chat.id})"
+                     data-chat-id="${chat.id}"
+                     data-is-temporary="${chat.is_temporary}">
+                    <div class="chat-item-header">
+                        <div class="chat-item-title" title="${this.escapeHtml(chat.title)}">
+                            ${this.escapeHtml(chat.title)}
+                        </div>
+                        <div class="chat-item-badges">
+                            ${badges.join('')}
                         </div>
                     </div>
-                    <div class="d-flex flex-column align-items-end">
-                        <span class="badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'} mb-1">
-                            ${chat.is_temporary ? 'Temp' : 'Perm'}
+                    <div class="chat-item-preview" title="${chat.last_message ? this.escapeHtml(chat.last_message) : 'No messages yet'}">
+                        ${chat.last_message ? this.escapeHtml(this.truncateText(chat.last_message, 60)) : 'No messages yet'}
+                    </div>
+                    <div class="chat-item-meta">
+                        <span class="chat-item-time">${this.formatRelativeTime(chat.updated_at)}</span>
+                        <span class="chat-item-provider" title="${providerModel}">
+                            ${this.truncateText(providerModel, 15)}
                         </span>
-                        <small class="chat-item-time text-muted">
-                            ${this.formatTime(chat.updated_at)}
-                        </small>
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
         chatList.innerHTML = html;
     }
@@ -196,6 +252,12 @@ class ChatInterface {
             const data = await response.json();
 
             this.currentChatId = chatId;
+            
+            // Track temporary chats for cleanup
+            if (data.chat.is_temporary) {
+                this.sessionTemporaryChats.add(chatId);
+            }
+            
             this.renderChatHeader(data.chat);
             this.renderMessages(data.messages);
             this.showChatInterface();
@@ -205,7 +267,16 @@ class ChatInterface {
             document.querySelectorAll('.chat-item').forEach(item => {
                 item.classList.remove('active');
             });
-            document.querySelector(`[onclick="chatInterface.selectChat(${chatId})"]`).classList.add('active');
+            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+            if (chatElement) {
+                chatElement.classList.add('active');
+            }
+
+            // Auto-close mobile sidebar
+            if (window.innerWidth <= 768) {
+                const sidebar = document.querySelector('.chat-sidebar');
+                sidebar.classList.remove('show');
+            }
 
         } catch (error) {
             console.error('Error selecting chat:', error);
@@ -218,6 +289,14 @@ class ChatInterface {
         document.getElementById('chatType').textContent = chat.is_temporary ? 'Temporary' : 'Permanent';
         document.getElementById('chatType').className = `badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'}`;
         
+        // Show/hide force provider badge
+        const forceProviderBadge = document.getElementById('forceProviderBadge');
+        if (chat.force_provider) {
+            forceProviderBadge.style.display = 'inline-block';
+        } else {
+            forceProviderBadge.style.display = 'none';
+        }
+        
         // Set provider and model
         if (chat.provider) {
             document.getElementById('providerSelect').value = chat.provider;
@@ -225,6 +304,13 @@ class ChatInterface {
         if (chat.model) {
             document.getElementById('modelSelect').value = chat.model;
         }
+
+        // Populate system prompt
+        const systemPromptTextarea = document.getElementById('currentSystemPrompt');
+        systemPromptTextarea.value = chat.system_prompt || '';
+
+        // Initialize chat controls as hidden (user can toggle with button)
+        document.getElementById('chatControls').style.display = 'none';
     }
 
     renderMessages(messages) {
@@ -243,23 +329,48 @@ class ChatInterface {
 
         const html = messages.map(msg => this.renderMessage(msg)).join('');
         container.innerHTML = html;
+        
+        // Highlight code blocks
+        this.highlightCodeBlocks();
         this.scrollToBottom();
     }
 
+    highlightCodeBlocks() {
+        // Apply syntax highlighting to code blocks
+        if (typeof Prism !== 'undefined') {
+            try {
+                Prism.highlightAll();
+            } catch (e) {
+                console.warn('Prism highlighting error:', e);
+            }
+        }
+    }
+
     renderMessage(message) {
-        const timeStr = this.formatTime(message.created_at);
+        const timeStr = this.formatRelativeTime(message.created_at);
         const isUser = message.role === 'user';
         const isSystem = message.role === 'system';
         
-        let providerInfo = '';
-        if (message.role === 'assistant' && message.metadata) {
-            const provider = message.metadata.provider || 'Unknown';
-            const model = message.metadata.model || 'Unknown';
+        let messageInfo = '';
+        if (isUser) {
+            messageInfo = `<div class="message-timestamp">${timeStr}</div>`;
+        } else if (message.role === 'assistant' && message.metadata) {
+            const provider = message.metadata.provider || 'unknown';
+            const model = message.metadata.model || 'unknown';
             const responseTime = message.metadata.response_time ? 
                 `${message.metadata.response_time.toFixed(2)}s` : '';
-            providerInfo = `
+            
+            // Status indicators
+            const indicators = [];
+            if (message.metadata.error) indicators.push('❌');
+            if (message.metadata.force_provider) indicators.push('🔒');
+            
+            messageInfo = `
                 <div class="message-info">
-                    ${provider.toUpperCase()} • ${model} ${responseTime ? `• ${responseTime}` : ''}
+                    <span class="message-timestamp">${timeStr}</span>
+                    <span class="message-provider-info">
+                        ${provider}/${model}${responseTime ? ` • ${responseTime}` : ''}${indicators.length ? ` ${indicators.join(' ')}` : ''}
+                    </span>
                 </div>
             `;
         }
@@ -267,10 +378,11 @@ class ChatInterface {
         return `
             <div class="message ${message.role}" data-message-id="${message.id}">
                 <div class="message-bubble">
-                    ${this.formatMessageContent(message.content)}
-                    ${isUser ? `<div class="message-info">${timeStr}</div>` : ''}
-                    ${providerInfo}
+                    <div class="message-content">
+                        ${this.formatMessageContent(message.content)}
+                    </div>
                 </div>
+                ${messageInfo}
                 ${!isSystem ? `
                     <div class="message-actions">
                         <button class="btn btn-sm btn-outline-secondary" onclick="chatInterface.copyMessage(${message.id})" title="Copy">
@@ -288,16 +400,63 @@ class ChatInterface {
     }
 
     formatMessageContent(content) {
-        // Basic formatting for code blocks and line breaks
+        // Enhanced markdown support using marked.js if available, otherwise basic formatting
+        if (typeof marked !== 'undefined') {
+            try {
+                const renderer = new marked.Renderer();
+                
+                // Custom code block rendering for syntax highlighting
+                renderer.code = function(code, language) {
+                    const validLanguage = language && Prism.languages[language] ? language : 'javascript';
+                    const highlightedCode = Prism.highlight(code, Prism.languages[validLanguage], validLanguage);
+                    return `<pre class="line-numbers"><code class="language-${validLanguage}">${highlightedCode}</code></pre>`;
+                };
+                
+                return marked.parse(content, { 
+                    renderer: renderer,
+                    breaks: true,
+                    gfm: true,
+                    sanitize: false
+                });
+            } catch (e) {
+                console.warn('Marked.js error, falling back to basic formatting:', e);
+            }
+        }
+        
+        // Basic markdown formatting fallback
         return this.escapeHtml(content)
-            .replace(/\n/g, '<br>')
-            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Headers
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Bold and italic
+            .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Code blocks with basic syntax highlighting
+            .replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                const language = lang || 'javascript';
+                return `<pre class="line-numbers"><code class="language-${language}">${code}</code></pre>`;
+            })
+            .replace(/```([\s\S]*?)```/g, '<pre class="line-numbers"><code>$1</code></pre>')
+            // Inline code
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            // Lists
+            .replace(/^[\s]*[-*+]\s+(.*)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+            .replace(/^[\s]*\d+\.\s+(.*)$/gm, '<li>$1</li>')
+            // Blockquotes
+            .replace(/^> (.*)$/gm, '<blockquote>$1</blockquote>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
     }
 
     showChatInterface() {
         document.getElementById('welcomeMessage').style.display = 'none';
         document.getElementById('chatHeader').style.display = 'block';
+        document.getElementById('chatControls').style.display = 'block';
         document.getElementById('messagesList').style.display = 'block';
         document.getElementById('messageInput').style.display = 'block';
     }
@@ -305,6 +464,7 @@ class ChatInterface {
     hideChatInterface() {
         document.getElementById('welcomeMessage').style.display = 'block';
         document.getElementById('chatHeader').style.display = 'none';
+        document.getElementById('chatControls').style.display = 'none';
         document.getElementById('messagesList').style.display = 'none';
         document.getElementById('messageInput').style.display = 'none';
     }
@@ -396,8 +556,19 @@ class ChatInterface {
         
         if (!content || !this.currentChatId) return;
 
-        const provider = document.getElementById('providerSelect').value || null;
-        const model = document.getElementById('modelSelect').value || null;
+        // Check autodecide mode
+        const autodecideBtn = document.getElementById('autodecideBtn');
+        const isAutodecideOn = autodecideBtn.classList.contains('btn-success');
+        
+        let provider = null;
+        let model = null;
+        
+        if (!isAutodecideOn) {
+            // Manual mode - use selected provider/model
+            provider = document.getElementById('providerSelect').value || null;
+            model = document.getElementById('modelSelect').value || null;
+        }
+        // If autodecide is on, provider and model stay null (AI Engine will decide)
 
         // Clear input
         textarea.value = '';
@@ -413,7 +584,7 @@ class ChatInterface {
                 content: content,
                 provider: provider,
                 model: model,
-                metadata: {}
+                metadata: { autodecide: isAutodecideOn }
             }));
         } else {
             // Fallback to REST API
@@ -426,7 +597,7 @@ class ChatInterface {
                     body: JSON.stringify({
                         role: 'user',
                         content: content,
-                        metadata: { provider, model }
+                        metadata: { provider, model, autodecide: isAutodecideOn }
                     })
                 });
                 
@@ -512,6 +683,8 @@ class ChatInterface {
         const streamingMsg = document.getElementById('streamingResponse');
         if (streamingMsg) {
             streamingMsg.removeAttribute('id');
+            // Highlight any code blocks in the final response
+            this.highlightCodeBlocks();
         }
         this.messageBuffer = '';
     }
@@ -543,9 +716,16 @@ class ChatInterface {
         const provider = document.getElementById('chatProviderSelect').value || null;
         const model = document.getElementById('chatModelSelect').value || null;
         const isTemporary = document.getElementById('isTemporaryCheck').checked;
+        const forceProvider = document.getElementById('forceProviderCheck').checked;
 
         if (!title) {
             alert('Please enter a chat title');
+            return;
+        }
+
+        // Validate force provider setting
+        if (forceProvider && !provider) {
+            alert('Force Provider requires selecting a specific provider');
             return;
         }
 
@@ -560,7 +740,8 @@ class ChatInterface {
                     system_prompt: systemPrompt || null,
                     provider: provider,
                     model: model,
-                    is_temporary: isTemporary
+                    is_temporary: isTemporary,
+                    force_provider: forceProvider
                 })
             });
 
@@ -572,6 +753,11 @@ class ChatInterface {
                 
                 // Clear form
                 form.reset();
+                
+                // Track temporary chats for cleanup
+                if (isTemporary) {
+                    this.sessionTemporaryChats.add(result.chat_id);
+                }
                 
                 // Refresh chat list and select new chat
                 await this.loadChats();
@@ -737,7 +923,7 @@ class ChatInterface {
         const existing = document.querySelector('.connection-status');
         if (existing) existing.remove();
 
-        // Add new status
+        // Add new status to bottom-right corner
         const statusDiv = document.createElement('div');
         statusDiv.className = `connection-status ${status}`;
         
@@ -753,10 +939,47 @@ class ChatInterface {
         if (status === 'connected') {
             setTimeout(() => {
                 if (statusDiv.parentNode) {
-                    statusDiv.remove();
+                    statusDiv.style.opacity = '0';
+                    setTimeout(() => statusDiv.remove(), 300);
                 }
             }, 3000);
         }
+    }
+
+    // Enhanced time formatting
+    formatRelativeTime(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        if (diffMins < 1) return 'now';
+        if (diffMins < 60) return `${diffMins}m`;
+        if (diffHours < 24) return `${diffHours}h`;
+        if (diffDays < 7) return `${diffDays}d`;
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
+        
+        // For older dates, show actual date
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (date.toDateString() === today.toDateString()) return 'today';
+        if (date.toDateString() === yesterday.toDateString()) return 'yesterday';
+        
+        return date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
+    }
+
+    // Text truncation utility
+    truncateText(text, maxLength) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
     }
 
     copyMessage(messageId) {
@@ -779,16 +1002,8 @@ class ChatInterface {
     }
 
     formatTime(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-        
-        return date.toLocaleDateString();
+        // Legacy method - keeping for compatibility
+        return this.formatRelativeTime(dateString);
     }
 
     escapeHtml(text) {
@@ -823,6 +1038,117 @@ class ChatInterface {
             }
         }, 5000);
     }
+
+    // Quick temporary chat creation - bypasses modal
+    async createQuickTempChat() {
+        try {
+            const response = await fetch('/api/chat/chats', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: 'Untitled Temporary Chat',
+                    system_prompt: null,
+                    provider: null,
+                    model: null,
+                    is_temporary: true,
+                    force_provider: false
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Refresh chat list and select the new chat
+                await this.loadChats();
+                this.selectChat(result.chat_id);
+                this.showSuccess('Quick temporary chat created!');
+            } else {
+                this.showError('Failed to create chat: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error creating quick temp chat:', error);
+            this.showError('Failed to create chat');
+        }
+    }
+
+    // Update system prompt for current chat
+    async updateSystemPrompt() {
+        if (!this.currentChatId) {
+            this.showError('No chat selected');
+            return;
+        }
+
+        const systemPrompt = document.getElementById('currentSystemPrompt').value.trim();
+        
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    system_prompt: systemPrompt || null
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showSuccess('System prompt updated!');
+            } else {
+                this.showError('Failed to update system prompt: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating system prompt:', error);
+            this.showError('Failed to update system prompt');
+        }
+    }
+
+    // Clear system prompt
+    clearSystemPrompt() {
+        document.getElementById('currentSystemPrompt').value = '';
+        this.updateSystemPrompt();
+    }
+
+    // Toggle autodecide mode
+    toggleAutodecide() {
+        const autodecideBtn = document.getElementById('autodecideBtn');
+        const autodecideBtnText = document.getElementById('autodecideBtnText');
+        const modelControls = document.getElementById('modelControls');
+        
+        // Check current state
+        const isAutodecideOn = autodecideBtn.classList.contains('btn-success');
+        
+        if (isAutodecideOn) {
+            // Turn OFF autodecide
+            autodecideBtn.classList.remove('btn-success');
+            autodecideBtn.classList.add('btn-outline-secondary');
+            autodecideBtnText.textContent = 'Autodecide: OFF';
+            modelControls.style.display = 'flex';
+            this.showSuccess('Autodecide mode disabled - manual provider/model selection');
+        } else {
+            // Turn ON autodecide
+            autodecideBtn.classList.remove('btn-outline-secondary');
+            autodecideBtn.classList.add('btn-success');
+            autodecideBtnText.textContent = 'Autodecide: ON';
+            modelControls.style.display = 'none';
+            this.showSuccess('Autodecide mode enabled - AI will choose optimal provider/model');
+        }
+    }
+
+    // Toggle system prompt visibility
+    toggleSystemPrompt() {
+        const chatControls = document.getElementById('chatControls');
+        const isVisible = chatControls.style.display === 'block';
+        
+        if (isVisible) {
+            chatControls.style.display = 'none';
+        } else {
+            chatControls.style.display = 'block';
+        }
+    }
 }
 
 // Global functions for HTML onclick handlers
@@ -852,6 +1178,32 @@ function sendMessage() {
 
 function clearInput() {
     chatInterface.clearInput();
+}
+
+function toggleSidebar() {
+    const sidebar = document.querySelector('.chat-sidebar');
+    sidebar.classList.toggle('show');
+}
+
+// New functions for enhanced chat features
+function createQuickTempChat() {
+    chatInterface.createQuickTempChat();
+}
+
+function updateSystemPrompt() {
+    chatInterface.updateSystemPrompt();
+}
+
+function clearSystemPrompt() {
+    chatInterface.clearSystemPrompt();
+}
+
+function toggleAutodecide() {
+    chatInterface.toggleAutodecide();
+}
+
+function toggleSystemPrompt() {
+    chatInterface.toggleSystemPrompt();
 }
 
 // Initialize chat interface when page loads

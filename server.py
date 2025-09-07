@@ -6,6 +6,7 @@ import aiohttp
 import requests
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -18,7 +19,7 @@ import uvicorn
 try:
     from ai_engine import AI_engine
     from statistics_manager import get_stats_manager
-    from config import AI_CONFIGS
+    from config import AI_CONFIGS, ENGINE_SETTINGS, verbose_print
     # Import chat module
     from chat_module.router import router as chat_router
 except ImportError as e:
@@ -26,18 +27,117 @@ except ImportError as e:
     print("Make sure you're running from the AI_engine directory")
     exit(1)
 
-# Initialize AI Engine
-engine = AI_engine(verbose=False)
+# Initialize AI Engine with global verbose setting
+engine = AI_engine(verbose=ENGINE_SETTINGS.get("verbose_mode", False))
 stats_manager = get_stats_manager()
 
-# FastAPI app
+# Model caching system
+MODEL_CACHE_FILE = "model_cache.json"
+MODEL_CACHE_DURATION = 30 * 60  # 30 minutes in seconds
+model_cache = {
+    "cached_at": None,
+    "models": []
+}
+
+def save_model_cache(models_data):
+    """Save models data to cache file"""
+    global model_cache
+    try:
+        cache_data = {
+            "cached_at": time.time(),
+            "models": models_data
+        }
+        with open(MODEL_CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f, indent=2)
+        model_cache = cache_data
+        verbose_print(f"💾 Saved {len(models_data)} models to cache")
+    except Exception as e:
+        verbose_print(f"❌ Error saving model cache: {e}")
+
+def load_model_cache():
+    """Load models data from cache file"""
+    global model_cache
+    try:
+        if os.path.exists(MODEL_CACHE_FILE):
+            with open(MODEL_CACHE_FILE, 'r') as f:
+                cache_data = json.load(f)
+            
+            # Check if cache is still valid (within 30 minutes)
+            if cache_data.get("cached_at"):
+                cache_age = time.time() - cache_data["cached_at"]
+                if cache_age <= MODEL_CACHE_DURATION:
+                    model_cache = cache_data
+                    verbose_print(f"📦 Loaded {len(cache_data['models'])} models from cache (age: {cache_age/60:.1f} minutes)")
+                    return True
+                else:
+                    verbose_print(f"⏰ Model cache expired (age: {cache_age/60:.1f} minutes)")
+            
+    except Exception as e:
+        verbose_print(f"❌ Error loading model cache: {e}")
+    
+    return False
+
+def is_cache_valid():
+    """Check if current cache is still valid"""
+    if not model_cache.get("cached_at"):
+        return False
+    
+    cache_age = time.time() - model_cache["cached_at"]
+    return cache_age <= MODEL_CACHE_DURATION
+
+def get_cached_models():
+    """Get models from cache if valid, otherwise return None"""
+    if is_cache_valid():
+        return model_cache.get("models", [])
+    return None
+
+# Lifespan event handler for FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    # Startup
+    import threading
+    
+    def initialize_cache():
+        """Initialize cache in background thread - ALWAYS refresh on startup"""
+        try:
+            verbose_print("🚀 Initializing fresh model cache on server startup...")
+            verbose_print("🔄 Skipping old cache - refreshing models from providers...")
+            
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                result = loop.run_until_complete(discover_and_cache_models())
+                verbose_print(f"✅ Fresh model cache initialized with {len(result['data'])} models")
+            except Exception as e:
+                verbose_print(f"❌ Error during cache initialization: {e}")
+            finally:
+                loop.close()
+                
+        except Exception as e:
+            verbose_print(f"❌ Critical error in cache initialization: {e}")
+    
+    # Start fresh cache initialization in background thread
+    cache_thread = threading.Thread(target=initialize_cache, daemon=True)
+    cache_thread.start()
+    verbose_print("🎯 Fresh model cache initialization started in background thread")
+    
+    yield  # Server is running
+    
+    # Shutdown (cleanup if needed)
+    verbose_print("🛑 Server shutting down...")
+
+# FastAPI app with lifespan handler
 app = FastAPI(
     title="AI Engine v3.0",
     description="Advanced AI Engine with Multi-Provider Support",
     version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -182,28 +282,59 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
 
 @app.get("/v1/models")
 async def list_models():
-    """List all available models across all providers in OpenAI format"""
+    """List all available models across all providers in OpenAI format with caching"""
+    
+    # Check if we have valid cached models
+    cached_models = get_cached_models()
+    if cached_models:
+        verbose_print(f"📦 Returning {len(cached_models)} models from cache")
+        return {"object": "list", "data": cached_models}
+    
+    # No valid cache, discover models with threading
+    verbose_print("🔍 Cache miss or expired, discovering models...")
+    return await discover_and_cache_models()
+async def discover_and_cache_models():
+    """Discover models from all providers and cache the results"""
+    import concurrent.futures
+    
     try:
         all_models = []
+        enabled_providers = {name: config for name, config in AI_CONFIGS.items() if config.get('enabled', True)}
         
-        for provider_name, config in AI_CONFIGS.items():
-            if not config.get('enabled', True):
-                continue
-                
+        if not enabled_providers:
+            return {"object": "list", "data": []}
+        
+        verbose_print(f"🔍 Discovering models from {len(enabled_providers)} providers using threading...")
+        
+        def discover_provider_models_sync(provider_name):
+            """Synchronous wrapper for model discovery"""
             try:
-                # Try to discover models for this provider
-                models_response = await discover_provider_models_internal(provider_name)
-                
-                if models_response and 'models' in models_response:
-                    for model in models_response['models']:
-                        all_models.append({
-                            "id": f"{provider_name}/{model}",
-                            "object": "model", 
-                            "created": int(datetime.now().timestamp()),
-                            "owned_by": provider_name
-                        })
-                else:
-                    # Fallback to current configured model if discovery fails
+                # Use the internal discovery function
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    models_response = loop.run_until_complete(discover_provider_models_internal(provider_name))
+                    return models_response
+                finally:
+                    loop.close()
+            except Exception as e:
+                verbose_print(f"❌ Error discovering models for {provider_name}: {e}")
+                return None
+        
+        # Use threading for faster model discovery
+        max_workers = min(len(enabled_providers), 8)
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all discovery tasks
+            future_to_provider = {
+                executor.submit(discover_provider_models_sync, provider_name): (provider_name, config)
+                for provider_name, config in enabled_providers.items()
+                if config.get('model_endpoint')  # Only for providers with model discovery
+            }
+            
+            # Add providers without model discovery immediately
+            for provider_name, config in enabled_providers.items():
+                if not config.get('model_endpoint'):
                     current_model = config.get('model', 'unknown')
                     all_models.append({
                         "id": f"{provider_name}/{current_model}",
@@ -211,17 +342,71 @@ async def list_models():
                         "created": int(datetime.now().timestamp()),
                         "owned_by": provider_name
                     })
-                    
-            except Exception as e:
-                print(f"❌ Error discovering models for {provider_name}: {e}")
-                # Fallback to current model
-                current_model = config.get('model', 'unknown')
-                all_models.append({
-                    "id": f"{provider_name}/{current_model}",
-                    "object": "model", 
-                    "created": int(datetime.now().timestamp()),
-                    "owned_by": provider_name
-                })
+            
+            # Collect results with proper timeout handling
+            try:
+                for future in concurrent.futures.as_completed(future_to_provider, timeout=30):
+                    provider_name, config = future_to_provider[future]
+                    try:
+                        models_response = future.result(timeout=10)
+                        
+                        if models_response and 'models' in models_response:
+                            provider_models = models_response['models']
+                            
+                            # Add models to the response
+                            for model in provider_models:
+                                all_models.append({
+                                    "id": f"{provider_name}/{model}",
+                                    "object": "model", 
+                                    "created": int(datetime.now().timestamp()),
+                                    "owned_by": provider_name
+                                })
+                            verbose_print(f"✅ {provider_name}: discovered {len(provider_models)} models")
+                        else:
+                            # Fallback to current configured model if discovery fails
+                            current_model = config.get('model', 'unknown')
+                            all_models.append({
+                                "id": f"{provider_name}/{current_model}",
+                                "object": "model",
+                                "created": int(datetime.now().timestamp()),
+                                "owned_by": provider_name
+                            })
+                            verbose_print(f"⚠️ {provider_name}: fallback to default model")
+                            
+                    except Exception as e:
+                        verbose_print(f"❌ Error processing {provider_name}: {e}")
+                        # Fallback to current model
+                        current_model = config.get('model', 'unknown')
+                        all_models.append({
+                            "id": f"{provider_name}/{current_model}",
+                            "object": "model",
+                            "created": int(datetime.now().timestamp()),
+                            "owned_by": provider_name
+                        })
+                        
+            except concurrent.futures.TimeoutError:
+                # Handle unfinished futures
+                unfinished_count = 0
+                for future in future_to_provider:
+                    if not future.done():
+                        provider_name, config = future_to_provider[future]
+                        verbose_print(f"⏰ Timeout: {provider_name} - using fallback")
+                        # Cancel and add fallback
+                        future.cancel()
+                        current_model = config.get('model', 'unknown')
+                        all_models.append({
+                            "id": f"{provider_name}/{current_model}",
+                            "object": "model",
+                            "created": int(datetime.now().timestamp()),
+                            "owned_by": provider_name
+                        })
+                        unfinished_count += 1
+                verbose_print(f"⚠️ {unfinished_count} providers timed out, used fallbacks")
+
+        verbose_print(f"✅ Model discovery completed. Found {len(all_models)} models total.")
+
+        # Cache the discovered models
+        save_model_cache(all_models)
 
         return {
             "object": "list",
@@ -229,12 +414,32 @@ async def list_models():
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        verbose_print(f"❌ Error in threaded model listing: {e}")
+        # Fallback to basic model list
+        basic_models = []
+        for provider_name, config in AI_CONFIGS.items():
+            if config.get('enabled', True):
+                current_model = config.get('model', 'unknown')
+                basic_models.append({
+                    "id": f"{provider_name}/{current_model}",
+                    "object": "model",
+                    "created": int(datetime.now().timestamp()),
+                    "owned_by": provider_name
+                })
+        
+        # Cache the basic models too
+        save_model_cache(basic_models)
+        
+        return {
+            "object": "list",
+            "data": basic_models
+        }
 
 @app.get("/api/statistics")
 async def get_statistics():
     """Get comprehensive statistics"""
     try:
+        # Get statistics from stats manager
         stats_summary = stats_manager.get_stats_summary()
         
         # Load actual key statistics from file
@@ -243,26 +448,47 @@ async def get_statistics():
             with open("key_statistics.json", "r") as f:
                 key_statistics = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
-            pass
+            # If no statistics file exists, create empty structure
+            key_statistics = {}
 
-        # Format provider reports with actual data
+        # Format provider reports with actual data for dashboard
         provider_reports = {}
+        total_keys = 0
+        total_requests = 0
+        total_successes = 0
+        
         for provider_name, provider_data in key_statistics.items():
             provider_reports[provider_name] = {}
             for key_name, key_stats in provider_data.items():
+                total_keys += 1
+                requests = key_stats.get("requests", 0)
+                successes = key_stats.get("successes", 0)
+                failures = key_stats.get("failures", 0)
+                total_requests += requests
+                total_successes += successes
+                
                 provider_reports[provider_name][key_name] = {
-                    "requests": key_stats.get("requests", 0),
-                    "successes": key_stats.get("successes", 0),
-                    "failures": key_stats.get("failures", 0),
+                    "requests": requests,
+                    "successes": successes,
+                    "failures": failures,
                     "last_used": key_stats.get("last_used"),
                     "rate_limited": key_stats.get("rate_limited", False),
                     "weight": key_stats.get("weight", 1.0),
                     "total_response_time": key_stats.get("total_response_time", 0),
-                    "success_rate": f"{(key_stats.get('successes', 0) / max(key_stats.get('requests', 1), 1) * 100):.1f}%"
+                    "success_rate": f"{(successes / max(requests, 1) * 100):.1f}%"
                 }
 
+        # Enhanced summary for dashboard
+        enhanced_summary = {
+            "total_keys": total_keys,
+            "total_requests": total_requests,
+            "total_successes": total_successes,
+            "overall_success_rate": f"{(total_successes / max(total_requests, 1) * 100):.1f}%",
+            **stats_summary
+        }
+
         return {
-            "summary": stats_summary,
+            "summary": enhanced_summary,
             "providers": provider_reports,
             "key_statistics": key_statistics,
             "timestamp": datetime.now().isoformat()
@@ -361,37 +587,37 @@ async def get_providers():
 async def toggle_provider(provider_name: str, request: Request):
     """Toggle a provider's enabled status"""
     try:
-        print(f"🔄 Toggle request for provider: {provider_name}")
+        verbose_print(f"🔄 Toggle request for provider: {provider_name}")
         body = await request.json()
         enabled = body.get('enabled', True)
-        print(f"📝 Request body: {body}")
-        print(f"✅ Enabled setting: {enabled}")
+        verbose_print(f"📝 Request body: {body}")
+        verbose_print(f"✅ Enabled setting: {enabled}")
         
         if provider_name not in AI_CONFIGS:
-            print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
-            print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
+            verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
+            verbose_print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
             raise HTTPException(status_code=404, detail="Provider not found")
         
         # Update the provider's enabled status
         old_status = AI_CONFIGS[provider_name].get('enabled', True)
         AI_CONFIGS[provider_name]['enabled'] = enabled
-        print(f"🔄 Changed {provider_name} enabled status: {old_status} -> {enabled}")
+        verbose_print(f"🔄 Changed {provider_name} enabled status: {old_status} -> {enabled}")
         
         # Save the configuration change to config.py file
         await save_config_to_file(provider_name, 'enabled', enabled)
         
         # If disabling, also remove from engine's active providers
         if not enabled and hasattr(engine, 'providers'):
-            print(f"🔍 Current engine.providers structure: {type(engine.providers)}")
+            verbose_print(f"🔍 Current engine.providers structure: {type(engine.providers)}")
             if engine.providers:
                 if isinstance(engine.providers, dict):
-                    print(f"🔍 Provider dict keys: {list(engine.providers.keys())[:5]}...")  # Show first 5 keys
+                    verbose_print(f"🔍 Provider dict keys: {list(engine.providers.keys())[:5]}...")  # Show first 5 keys
                     # For dict structure, remove the provider key
                     if provider_name in engine.providers:
                         del engine.providers[provider_name]
-                        print(f"🗑️ Removed {provider_name} from engine providers dict")
+                        verbose_print(f"🗑️ Removed {provider_name} from engine providers dict")
                 elif isinstance(engine.providers, list):
-                    print(f"🔍 First provider example: {engine.providers[0] if len(engine.providers) > 0 else 'None'}")
+                    verbose_print(f"🔍 First provider example: {engine.providers[0] if len(engine.providers) > 0 else 'None'}")
                     # Try to handle different provider structures
                     try:
                         if isinstance(engine.providers[0], tuple) and len(engine.providers[0]) == 2:
@@ -401,23 +627,23 @@ async def toggle_provider(provider_name: str, request: Request):
                             # Different format, try to filter differently
                             engine.providers = [p for p in engine.providers if getattr(p, 'name', p) != provider_name]
                     except Exception as filter_error:
-                        print(f"⚠️ Could not filter providers: {filter_error}")
+                        verbose_print(f"⚠️ Could not filter providers: {filter_error}")
             else:
-                print(f"🔍 engine.providers is empty")
+                verbose_print(f"🔍 engine.providers is empty")
         elif enabled:
             # If enabling, reinitialize the engine (simplified approach)
             if hasattr(engine, '_load_providers'):
-                print(f"🔄 Reloading engine providers for {provider_name}")
+                verbose_print(f"🔄 Reloading engine providers for {provider_name}")
                 engine._load_providers()
             else:
-                print(f"⚠️ Engine does not have _load_providers method")
+                verbose_print(f"⚠️ Engine does not have _load_providers method")
         
-        print(f"✅ Toggle operation completed for {provider_name}")
+        verbose_print(f"✅ Toggle operation completed for {provider_name}")
         
         return {"message": f"Provider {provider_name} {'enabled' if enabled else 'disabled'} successfully"}
     
     except Exception as e:
-        print(f"❌ Error in toggle_provider: {e}")
+        verbose_print(f"❌ Error in toggle_provider: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
@@ -426,11 +652,11 @@ async def toggle_provider(provider_name: str, request: Request):
 async def roll_provider_key(provider_name: str):
     """Roll to the next API key for a provider"""
     try:
-        print(f"🔑 Roll key request for provider: {provider_name}")
+        verbose_print(f"🔑 Roll key request for provider: {provider_name}")
         
         if provider_name not in AI_CONFIGS:
-            print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
-            print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
+            verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
+            verbose_print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
             raise HTTPException(status_code=404, detail="Provider not found")
         
         # Check if provider has multiple keys
@@ -446,7 +672,7 @@ async def roll_provider_key(provider_name: str):
             print(f"✅ Key rolling result: {result}")
             return {"message": f"API key rolled for {provider_name}: {result}"}
         else:
-            print(f"⚠️ Engine does not have roll_api_key method")
+            verbose_print(f"⚠️ Engine does not have roll_api_key method")
             return {"message": f"Key rolling not supported for {provider_name}"}
     
     except Exception as e:
@@ -532,7 +758,7 @@ async def discover_provider_models(provider_name: str):
         print(f"🔍 Discovering models for provider: {provider_name}")
         
         if provider_name not in AI_CONFIGS:
-            print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
+            verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
             raise HTTPException(status_code=404, detail="Provider not found")
         
         provider_config = AI_CONFIGS[provider_name]
@@ -567,7 +793,7 @@ async def discover_provider_models(provider_name: str):
         
         # Check if authentication is required but no keys available
         if model_endpoint_auth and (not api_keys or not api_keys[0]):
-            print(f"❌ Provider '{provider_name}' requires auth but no API key configured")
+            verbose_print(f"❌ Provider '{provider_name}' requires auth but no API key configured")
             raise HTTPException(status_code=400, detail="API key required but not configured")
         
         # Prepare headers
@@ -605,11 +831,11 @@ async def discover_provider_models(provider_name: str):
         if response.status_code == 200:
             try:
                 models_data = response.json()
-                print(f"📊 Raw response data type: {type(models_data)}")
-                print(f"📊 Raw response keys: {list(models_data.keys()) if isinstance(models_data, dict) else 'Not a dict'}")
+                verbose_print(f"📊 Raw response data type: {type(models_data)}")
+                verbose_print(f"📊 Raw response keys: {list(models_data.keys()) if isinstance(models_data, dict) else 'Not a dict'}")
             except Exception as json_error:
-                print(f"❌ Failed to parse JSON response: {json_error}")
-                print(f"📝 Raw response text: {response.text[:500]}")
+                verbose_print(f"❌ Failed to parse JSON response: {json_error}")
+                verbose_print(f"📝 Raw response text: {response.text[:500]}")
                 raise HTTPException(status_code=500, detail=f"Invalid JSON response from provider: {str(json_error)}")
             
             models = []
@@ -756,9 +982,9 @@ async def save_config_to_file(provider_name: str, field: str, new_value):
                 with open('config.py', 'w', encoding='utf-8') as f:
                     f.write(updated_config)
                 
-                print(f"✅ Config updated: {provider_name}.{field} = {new_value}")
+                verbose_print(f"✅ Config updated: {provider_name}.{field} = {new_value}")
             else:
-                print(f"⚠️ Field '{field}' not found in provider '{provider_name}'")
+                verbose_print(f"⚠️ Field '{field}' not found in provider '{provider_name}'")
         else:
             print(f"⚠️ Provider '{provider_name}' not found in config file")
             
@@ -998,10 +1224,10 @@ def create_templates():
     
     # If any template files exist, skip template creation to preserve manual edits
     if any(os.path.exists(file) for file in template_files):
-        print("📄 Templates already exist - preserving manual edits")
+        verbose_print("📄 Templates already exist - preserving manual edits")
         return
     
-    print("📄 Creating default templates...")
+    verbose_print("📄 Creating default templates...")
 
 def main():
     """Main function to run the server"""

@@ -7,15 +7,19 @@ AI Engine v3.0 is an enterprise-grade Python system for managing multiple AI pro
 ## Key Features
 
 ### Multi-Provider Support
-- **24 AI Providers**: Comprehensive ecosystem including OpenAI, Google Gemini, Anthropic Claude, Meta Llama, and more
+- **23 AI Providers**: Comprehensive ecosystem including OpenAI, Google Gemini, Anthropic Claude, Meta Llama, and more
 - **Universal Compatibility**: Support for OpenAI-compatible APIs, native formats, and specialized providers
 - **No-Auth Options**: Providers that don't require API keys for testing and development
 
-### Intelligent Autodecide System
-- **Automatic Model Discovery**: Finds providers that support any requested model
-- **Smart Provider Selection**: Priority-based selection with performance optimization
-- **Model Name Normalization**: Handles various model naming formats (gpt-4, gpt4, GPT-4, etc.)
-- **Intelligent Caching**: 10x speed improvement with smart cache management
+### Intelligent Model Discovery
+- **Threaded Model Discovery**: Fast parallel discovery of 1300+ models from all providers
+- **Automatic Model Caching**: 30-minute smart cache with background refresh
+- **Provider-Specific Models**: Real-time model lists from each provider's API
+
+### Verbose Mode Control
+- **Production-Ready Startup**: Clean server startup with essential URLs only
+- **Debug Mode**: Comprehensive logging with emoji indicators and threading progress
+- **Configurable Logging**: Global verbose control via `config.py`
 
 ### Robust API Key Management
 - **Multi-Key Support**: Up to 3 API keys per provider with automatic rotation
@@ -31,9 +35,10 @@ AI Engine v3.0 is an enterprise-grade Python system for managing multiple AI pro
 
 ### FastAPI Web Server
 - **RESTful API**: OpenAI-compatible endpoints for seamless integration
-- **Web Dashboard**: Real-time monitoring with provider management interface
-- **Interactive Documentation**: Swagger UI with comprehensive API documentation
-- **Model Management**: Provider configuration and testing interface
+- **Interactive Web Dashboard**: Real-time monitoring with provider management interface
+- **Model Discovery Interface**: Test model discovery and provider capabilities
+- **Chat Interface**: Direct web-based chat with provider selection
+- **Statistics Dashboard**: Performance analytics and provider health monitoring
 
 ### Security & Configuration
 - **Environment Variables**: Secure API key storage using `.env` files
@@ -73,10 +78,10 @@ PAXSENIX_API_KEY=your_paxsenix_key
 ### Basic Usage
 
 ```python
-from ai_engine import get_ai_engine
+from ai_engine import AI_engine
 
 # Initialize the engine
-engine = get_ai_engine(verbose=True)
+engine = AI_engine(verbose=True)
 
 # Chat completion with automatic provider selection
 messages = [{"role": "user", "content": "Explain quantum computing"}]
@@ -115,11 +120,28 @@ for model in models_to_try:
 # Start the FastAPI server
 python server.py
 
-# Access the web dashboard
-# http://localhost:8000
+# Clean startup (verbose_mode: False)
+🚀 Starting AI Engine FastAPI Server...
+📊 Dashboard: http://localhost:8000
+📚 API Docs: http://localhost:8000/docs
+🔴 ReDoc: http://localhost:8000/redoc
+📝 Server logs: ai_engine_server.log
 
-# API documentation
-# http://localhost:8000/docs
+# Debug startup (verbose_mode: True)
+# Shows full model discovery progress with threading details
+```
+
+### Verbose Mode Control
+
+```python
+# In config.py - Global setting
+ENGINE_SETTINGS = {
+    "verbose_mode": False,  # Clean production startup
+    # "verbose_mode": True,  # Full debug output
+}
+
+# Or instance-level override
+engine = AI_engine(verbose=True)  # Force verbose for this instance
 ```
 
 ## Architecture
@@ -138,20 +160,65 @@ AI_engine/
 
 ### Provider Configuration
 
-The system supports 24 providers across different categories:
+The system supports 23 providers across different categories:
 
 **OpenAI-Compatible Providers:**
 - OpenAI, Groq, Cerebras, Paxsenix, Chi, Samurai, A4F, Mango, TypeGPT
-- OpenRouter, NVIDIA, Vercel, GitHub, Pawan
+- OpenRouter, NVIDIA, Vercel, GitHub, Pawan, CR (Close Router)
 
 **Native Format Providers:**
-- Google Gemini, Cohere, Cloudflare Workers
+- Google Gemini, Cohere, Cloudflare Workers, Flowith, MiniMax
 
 **No-Auth Providers:**
 - A3Z, Omegatron (no API keys required)
 
 **Local/Offline:**
 - Ollama integration for local models
+
+### Model Discovery System
+
+The engine automatically discovers 1300+ models using threaded discovery:
+
+```python
+# Threaded model discovery from all providers
+🔍 Discovering models from 21 providers using threading...
+✅ a4f: discovered 160 models
+✅ groq: discovered 21 models  
+✅ nvidia: discovered 159 models
+✅ openrouter: discovered 326 models
+✅ vercel: discovered 113 models
+# ... continues for all providers
+✅ Model discovery completed. Found 1310 models total.
+💾 Saved 1310 models to cache
+```
+
+### Verbose Mode Behavior
+
+**Production Mode (`verbose_mode: False`)**:
+```
+🚀 Starting AI Engine FastAPI Server...
+📊 Dashboard: http://localhost:8000
+📚 API Docs: http://localhost:8000/docs
+🔴 ReDoc: http://localhost:8000/redoc
+📝 Server logs: ai_engine_server.log
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+**Debug Mode (`verbose_mode: True`)**:
+```
+🚀 Starting AI Engine FastAPI Server...
+📊 Dashboard: http://localhost:8000
+📚 API Docs: http://localhost:8000/docs
+🔴 ReDoc: http://localhost:8000/redoc
+📝 Server logs: ai_engine_server.log
+Provider flowith disabled: No valid API keys found
+Provider minimax disabled: No valid API keys found
+Loaded 19 enabled providers out of 23 total
+🚀 AI Engine v3.0 initialized with 19 providers
+🔍 Discovering models from 21 providers using threading...
+✅ a4f: discovered 160 models
+# ... full discovery details
+```
 
 ### Error Classification System
 
@@ -224,23 +291,84 @@ OpenAI-compatible chat completions endpoint.
 
 #### `GET /v1/models`
 
-List all available models across providers.
+List all available models across providers (1300+ models total).
+
+```bash
+curl -X GET "http://localhost:8000/v1/models"
+# Returns: {"object": "list", "data": [{"id": "gpt-4", "object": "model", "owned_by": "openai"}, ...]}
+```
 
 #### `GET /api/status`
 
 Engine status and health information.
 
+```bash
+curl -X GET "http://localhost:8000/api/status"
+# Returns: Provider counts, health status, flagged providers
+```
+
 #### `GET /api/providers`
 
 Provider configurations and current status.
+
+#### `GET /api/providers/{provider}/models`
+
+Get models for a specific provider.
+
+```bash
+curl -X GET "http://localhost:8000/api/providers/groq/models" 
+# Returns: {"discovery_available": true, "models": [...], "total_models": 21}
+```
 
 #### `GET /api/autodecide/{model}`
 
 Discover providers for a specific model.
 
+```bash
+curl -X GET "http://localhost:8000/api/autodecide/gpt-4"
+# Returns: {"model": "gpt-4", "providers": [...], "total_providers": 5}
+```
+
 #### `POST /api/autodecide/test`
 
 Test autodecide functionality with a model and message.
+
+```bash
+curl -X POST "http://localhost:8000/api/autodecide/test" \
+     -H "Content-Type: application/json" \
+     -d '{"model": "claude", "message": "Hello!"}'
+```
+
+#### `GET /api/statistics`
+
+Comprehensive performance statistics and provider analytics.
+
+### Web Dashboard Pages
+
+#### `/` - Main Dashboard
+- Real-time engine status and provider health
+- Performance metrics with success rates
+- Quick provider testing interface
+
+#### `/providers` - Provider Management
+- Individual provider testing and configuration
+- API key rotation controls
+- Provider enable/disable toggles
+
+#### `/models` - Model Discovery
+- Provider-specific model browsing
+- Model testing and validation
+- Real-time model discovery status
+
+#### `/statistics` - Analytics Dashboard
+- Performance analytics and trends
+- Provider comparison charts
+- Historical data visualization
+
+#### `/chat` - Interactive Chat Interface
+- Direct chat with provider selection
+- Model-specific conversations
+- Real-time response testing
 
 ## Configuration
 
@@ -286,17 +414,33 @@ Modify `config.py` to customize behavior:
 
 ```python
 ENGINE_SETTINGS = {
-    'consecutive_failure_limit': 5,    # Failures before flagging
-    'key_rotation_enabled': True,      # Enable key rotation
-    'provider_timeout': 30,            # Request timeout (seconds)
-    'verbose_logging': True,           # Detailed logging
-    'auto_unflag_on_success': True,    # Auto-recover providers
+    "default_timeout": 60,           # Request timeout (seconds)
+    "max_retries": 3,                # Maximum retry attempts
+    "enable_auto_rotation": True,    # Enable automatic key rotation
+    "consecutive_failure_limit": 5,  # Failures before flagging
+    "key_rotation_enabled": True,    # Enable key rotation
+    "provider_rotation_enabled": True, # Enable provider rotation on failure
+    "verbose_mode": False,           # Global verbose mode for debugging/logging
+    "stress_test_settings": {
+        "min_pass_percentage": 75,   # Minimum pass rate for stress tests
+        "test_iterations": 3,        # Number of test iterations per provider
+        "test_timeout": 30,          # Timeout for individual tests
+        "concurrent_tests": 2,       # Number of concurrent tests
+    },
+    "priority_settings": {
+        "enable_dynamic_priority": True,    # Dynamic priority reranking
+        "success_rate_weight": 0.4,         # Weight for success rate in scoring
+        "response_time_weight": 0.3,        # Weight for response time in scoring
+        "cost_weight": 0.2,                 # Weight for cost in scoring
+        "reliability_weight": 0.1,          # Weight for reliability in scoring
+        "rerank_interval_hours": 24         # How often to rerank providers
+    }
 }
 
 AUTODECIDE_CONFIG = {
-    'enabled': True,                   # Enable autodecide feature
-    'cache_duration_minutes': 60,      # Model discovery cache time
-    'model_cache': {}                  # In-memory cache storage
+    "enabled": True,                 # Enable autodecide feature
+    "cache_duration": 1800,          # Model discovery cache time (30 minutes)
+    "model_cache": {}                # In-memory cache storage
 }
 ```
 
@@ -319,9 +463,38 @@ python ai_engine.py status          # Engine status
 python ai_engine.py list            # List providers
 python ai_engine.py stress          # Stress test all providers
 
-# Web server
-python ai_engine.py server          # Start FastAPI server
+# Start web server
+python server.py                    # Start FastAPI server with clean startup
+python server.py --verbose          # Start with full debug output
 ```
+
+## Model Discovery & Caching
+
+The system automatically discovers and caches models:
+
+### Discovery Process
+```bash
+# Background threaded discovery on server startup
+🔍 Discovering models from 21 providers using threading...
+✅ a4f: discovered 160 models
+✅ groq: discovered 21 models
+✅ nvidia: discovered 159 models
+✅ openrouter: discovered 326 models
+# ... continues for all providers
+✅ Model discovery completed. Found 1310 models total.
+💾 Saved 1310 models to cache
+```
+
+### Cache Management
+- **Duration**: 30 minutes automatic refresh
+- **Storage**: JSON file (`model_cache.json`)
+- **Background Refresh**: Fresh discovery on server startup
+- **Fallback**: Default models if discovery fails
+
+### Model Endpoints
+- **`/v1/models`**: All 1300+ discovered models
+- **`/api/providers/{provider}/models`**: Provider-specific models
+- **Manual Discovery**: Background threading with 30s timeout
 
 ## Performance Benchmarks
 

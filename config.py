@@ -600,6 +600,7 @@ ENGINE_SETTINGS = {
     "consecutive_failure_limit": 5,  # Flag provider after 5 consecutive failures
     "key_rotation_enabled": True,    # Enable automatic key rotation
     "provider_rotation_enabled": True,  # Enable provider rotation on failure
+    "verbose_mode": False,  # Global verbose mode for debugging/logging
     "stress_test_settings": {
         "min_pass_percentage": 75,
         "test_iterations": 3,
@@ -624,3 +625,21 @@ AUTODECIDE_CONFIG = {
     "cache_duration": 1800,  # 30 minutes in seconds
     "model_cache": {}  # Will store: {"gpt-4.1": [("openai", "gpt-4"), ("a4f", "provider-1/gpt-4.1")], ...}
 }
+
+# Verbose printing utility function
+def verbose_print(message: str, verbose_override: bool = None):
+    """
+    Print message only if verbose mode is enabled
+    
+    Args:
+        message (str): Message to print
+        verbose_override (bool): Override global verbose setting
+    """
+    # Check verbose override first, then global setting
+    if verbose_override is not None:
+        is_verbose = verbose_override
+    else:
+        is_verbose = ENGINE_SETTINGS.get("verbose_mode", False)
+    
+    if is_verbose:
+        print(message)
