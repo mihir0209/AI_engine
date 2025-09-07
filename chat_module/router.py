@@ -17,6 +17,28 @@ from .websocket_manager import WebSocketManager
 
 logger = logging.getLogger(__name__)
 
+# Global engine instance - will be set by server
+_global_engine = None
+
+def set_global_engine(engine):
+    """Set the global AI_engine instance to avoid creating duplicates"""
+    global _global_engine
+    _global_engine = engine
+
+def get_global_engine():
+    """Get the global AI_engine instance, create new one if not set"""
+    global _global_engine
+    if _global_engine is not None:
+        return _global_engine
+    
+    # Fallback: create new instance (for backward compatibility)
+    # Import here to avoid circular imports and reduce import-time side effects
+    import sys
+    import os
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from ai_engine import AI_engine
+    return AI_engine()
+
 # Pydantic models for API
 class CreateChatRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
@@ -310,7 +332,6 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        from ai_engine import AI_engine
         
         # Get context messages
         context_messages = chat_db.get_context_messages(chat_id)
@@ -323,8 +344,8 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
                 "content": msg["content"]
             })
         
-        # Initialize AI Engine
-        ai = AI_engine()
+        # Use global AI Engine instance
+        ai = get_global_engine()
         
         # Get response with correct parameter names and forced provider usage
         start_time = time.time()
@@ -397,7 +418,6 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        from ai_engine import AI_engine
 
         # Get context messages
         context_messages = chat_db.get_context_messages(chat_id)
@@ -412,7 +432,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         # Immediate client update so UI knows we're processing
         await websocket.send_text(json.dumps({"type": "ai_thinking", "provider": provider, "model": model}))
 
-        ai = AI_engine()
+        ai = get_global_engine()
         logger.info(f"Starting threaded AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
         # Determine autodecide behavior and force provider based on chat settings

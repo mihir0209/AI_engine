@@ -642,4 +642,9 @@ def verbose_print(message: str, verbose_override: bool = None):
         is_verbose = ENGINE_SETTINGS.get("verbose_mode", False)
     
     if is_verbose:
-        print(message)
+        try:
+            print(message)
+        except UnicodeEncodeError:
+            # Fallback: replace problematic Unicode characters
+            safe_message = message.encode('ascii', 'replace').decode('ascii')
+            print(safe_message)

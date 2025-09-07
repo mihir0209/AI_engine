@@ -32,6 +32,13 @@ except ImportError as e:
 engine = AI_engine(verbose=ENGINE_SETTINGS.get("verbose_mode", False))
 stats_manager = get_stats_manager()
 
+# Set the global engine in chat module to prevent duplicate initialization
+try:
+    from chat_module.router import set_global_engine
+    set_global_engine(engine)
+except ImportError:
+    verbose_print("⚠️ Could not set global engine in chat module")
+
 # Initialize shared model cache
 shared_model_cache.load_cache()
 
@@ -1214,7 +1221,7 @@ def main():
 
     # Run server with detailed logging
     uvicorn.run(
-        "server:app",
+        app,  # Pass app object directly instead of string to avoid re-import
         host="0.0.0.0",
         port=8000,
         reload=False,  # Disabled auto-reload to prevent restart loops
