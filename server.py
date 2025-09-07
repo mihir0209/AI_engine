@@ -436,6 +436,7 @@ async def get_statistics():
                     "rate_limited": key_stats.get("rate_limited", False),
                     "weight": key_stats.get("weight", 1.0),
                     "total_response_time": key_stats.get("total_response_time", 0),
+                    "successful_response_time": key_stats.get("successful_response_time", 0),
                     "success_rate": f"{(successes / max(requests, 1) * 100):.1f}%"
                 }
 

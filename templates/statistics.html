@@ -125,20 +125,23 @@
                 // Calculate overall success rate
                 let totalRequests = 0;
                 let totalSuccesses = 0;
-                Object.values(data.key_statistics || {}).forEach(provider => {
-                    Object.values(provider).forEach(key => {
+                
+                Object.entries(data.key_statistics || {}).forEach(([provider, keys]) => {
+                    Object.values(keys).forEach(key => {
                         totalRequests += key.requests || 0;
                         totalSuccesses += key.successes || 0;
                     });
                 });
-                const overallSuccessRate = totalRequests > 0 ? ((totalSuccesses / totalRequests) * 100).toFixed(1) : 0;
+                
+                const overallSuccessRate = totalRequests > 0 ? ((totalSuccesses / totalRequests) * 100) : 0;
+                const overallSuccessRateDisplay = overallSuccessRate.toFixed(1);
 
                 html += '<div class="col-md-3 mb-3">';
                 html += '<div class="card bg-gradient text-white" style="background: linear-gradient(45deg, #ffc107, #e0a800);">';
                 html += '<div class="card-body text-center">';
                 html += '<i class="fas fa-chart-line fa-2x mb-2"></i>';
                 html += '<h5>Success Rate</h5>';
-                html += `<h2>${overallSuccessRate}%</h2>`;
+                html += '<h2>' + overallSuccessRateDisplay + '%</h2>';
                 html += '</div></div></div>';
 
                 html += '</div>';
@@ -179,7 +182,9 @@
 
                 const successRate = providerRequests > 0 ? ((providerSuccesses / providerRequests) * 100).toFixed(1) : 0;
                 const avgResponseTime = Object.values(keys).reduce((sum, key) => {
-                    return sum + (key.total_response_time || 0) / Math.max(key.requests || 1, 1);
+                    // Calculate average response time for successful requests only
+                    const successfulAvg = (key.successes || 0) > 0 ? (key.successful_response_time || 0) / (key.successes || 1) : 0;
+                    return sum + successfulAvg;
                 }, 0) / Object.keys(keys).length;
 
                 // Only show providers with activity

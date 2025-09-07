@@ -30,13 +30,20 @@ class KeyStatistics:
     last_used: Optional[datetime] = None
     rate_limited: bool = False
     weight: float = 1.0
-    total_response_time: float = 0.0
+    total_response_time: float = 0.0  # For all requests (backward compatibility)
+    successful_response_time: float = 0.0  # Only for successful requests
 
     def success_rate(self) -> float:
         """Calculate success rate percentage"""
         if self.requests == 0:
             return 0.0
         return (self.successes / self.requests) * 100
+
+    def avg_successful_response_time(self) -> float:
+        """Calculate average response time for successful requests only"""
+        if self.successes == 0:
+            return 0.0
+        return self.successful_response_time / self.successes
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -47,12 +54,18 @@ class KeyStatistics:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'KeyStatistics':
-        """Create from dictionary (handles datetime deserialization)"""
+        """Create from dictionary (handles datetime deserialization and missing fields)"""
+        # Handle datetime deserialization
         if 'last_used' in data and data['last_used']:
             try:
                 data['last_used'] = datetime.fromisoformat(data['last_used'])
             except:
                 data['last_used'] = None
+        
+        # Handle backward compatibility for missing successful_response_time field
+        if 'successful_response_time' not in data:
+            data['successful_response_time'] = 0.0
+            
         return cls(**data)
 
 class StatisticsManager:
@@ -124,6 +137,7 @@ class StatisticsManager:
 
         if success:
             stats.successes += 1
+            stats.successful_response_time += response_time  # Track successful response time separately
             # Improve weight for successful keys
             stats.weight = max(0.5, stats.weight * 0.95)
             stats.rate_limited = False
