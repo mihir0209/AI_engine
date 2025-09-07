@@ -47,23 +47,37 @@ class ModelCache:
         
         return False
     
-    def save_cache(self, models_data: List[Dict], providers_data: Dict = None) -> None:
-        """Save models data to cache file"""
+    def save_cache(self, models_data, providers_data: Dict = None) -> None:
+        """Save models data to cache file in optimized format"""
         try:
+            # Handle both old format (List[Dict]) and new format (List[str])
+            optimized_models = []
+            
+            for model in models_data:
+                if isinstance(model, dict):
+                    # Old format: extract ID from dict
+                    model_id = model.get("id", "")
+                    if model_id:
+                        optimized_models.append(model_id)
+                elif isinstance(model, str):
+                    # New format: already a string
+                    optimized_models.append(model)
+            
             cache_data = {
                 "cached_at": time.time(),
-                "models": models_data,
+                "models": optimized_models,  # Just array of model ID strings
                 "providers": providers_data or {}
             }
             
+            # Save without indentation to minimize file size
             with open(self.cache_file, 'w') as f:
-                json.dump(cache_data, f, indent=2)
+                json.dump(cache_data, f, separators=(',', ':'))
             
             with self._lock:
                 self.cache_data = cache_data
                 
-            print(f"✅ Model discovery completed. Found {len(models_data)} models total.")
-            verbose_print(f"💾 Saved {len(models_data)} models to cache")
+            print(f"✅ Model discovery completed. Found {len(optimized_models)} models total.")
+            verbose_print(f"💾 Saved {len(optimized_models)} models to optimized cache")
         except Exception as e:
             verbose_print(f"❌ Error saving model cache: {e}")
     
@@ -76,8 +90,8 @@ class ModelCache:
             cache_age = time.time() - self.cache_data["cached_at"]
             return cache_age <= self.cache_duration
     
-    def get_models(self) -> List[Dict]:
-        """Get all cached models"""
+    def get_models(self) -> List[str]:
+        """Get all cached models (now returns list of model ID strings)"""
         with self._lock:
             return self.cache_data.get("models", [])
     
@@ -98,25 +112,36 @@ class ModelCache:
         Find providers that support a specific model with STRICT matching
         Returns list of (provider_name, model_name) tuples
         Only returns exact matches - no fuzzy matching to prevent wrong model selection
+        Now works with optimized cache format (string array)
         """
         providers_with_model = []
-        models = self.get_models()
+        models = self.get_models()  # Now returns list of model ID strings
         
         # Normalize the requested model for comparison
         requested_normalized = self._normalize_model_name(model_name)
         
-        for model_entry in models:
-            # Get provider from 'owned_by' field (server cache format)
-            provider = model_entry.get("owned_by", model_entry.get("provider", ""))
-            model_id = model_entry.get("id", "")
-            
-            # Remove provider prefix from model_id if present (e.g., "groq/gpt-4" -> "gpt-4")
+        for model_id in models:
+            # Extract provider from model_id (supports both "/" and "|" separators)
+            provider = "unknown"
             clean_model_id = model_id
-            if "/" in model_id:
-                clean_model_id = model_id.split("/", 1)[1]
             
-            # Normalize the available model for comparison
-            available_normalized = self._normalize_model_name(clean_model_id)
+            if "|" in model_id:
+                # New format: "provider|complete_model_name"
+                provider, clean_model_id = model_id.split("|", 1)
+                # For matching, extract the base model name (part after last /)
+                if "/" in clean_model_id:
+                    base_model_for_matching = clean_model_id.split("/")[-1]
+                else:
+                    base_model_for_matching = clean_model_id
+            elif "/" in model_id:
+                # Old format: "provider/model"
+                provider, clean_model_id = model_id.split("/", 1)
+                base_model_for_matching = clean_model_id
+            else:
+                base_model_for_matching = clean_model_id
+            
+            # Normalize the available model for comparison (use base model name)
+            available_normalized = self._normalize_model_name(base_model_for_matching)
             
             # STRICT MATCHING: Only exact matches allowed
             if requested_normalized == available_normalized:

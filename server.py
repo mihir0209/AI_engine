@@ -297,12 +297,7 @@ async def discover_and_cache_models():
             for provider_name, config in enabled_providers.items():
                 if not config.get('model_endpoint'):
                     current_model = config.get('model', 'unknown')
-                    all_models.append({
-                        "id": f"{provider_name}/{current_model}",
-                        "object": "model",
-                        "created": int(datetime.now().timestamp()),
-                        "owned_by": provider_name
-                    })
+                    all_models.append(f"{provider_name}/{current_model}")
             
             # Collect results with proper timeout handling
             try:
@@ -314,36 +309,22 @@ async def discover_and_cache_models():
                         if models_response and 'models' in models_response:
                             provider_models = models_response['models']
                             
-                            # Add models to the response
+                            # Add models to the response - store complete model names as returned by provider
                             for model in provider_models:
-                                all_models.append({
-                                    "id": f"{provider_name}/{model}",
-                                    "object": "model", 
-                                    "created": int(datetime.now().timestamp()),
-                                    "owned_by": provider_name
-                                })
+                                # Store the complete model ID as returned by the provider
+                                all_models.append(f"{provider_name}|{model}")  # Use | separator to distinguish provider from model ID
                             verbose_print(f"✅ {provider_name}: discovered {len(provider_models)} models")
                         else:
                             # Fallback to current configured model if discovery fails
                             current_model = config.get('model', 'unknown')
-                            all_models.append({
-                                "id": f"{provider_name}/{current_model}",
-                                "object": "model",
-                                "created": int(datetime.now().timestamp()),
-                                "owned_by": provider_name
-                            })
+                            all_models.append(f"{provider_name}|{current_model}")
                             verbose_print(f"⚠️ {provider_name}: fallback to default model")
                             
                     except Exception as e:
                         verbose_print(f"❌ Error processing {provider_name}: {e}")
                         # Fallback to current model
                         current_model = config.get('model', 'unknown')
-                        all_models.append({
-                            "id": f"{provider_name}/{current_model}",
-                            "object": "model",
-                            "created": int(datetime.now().timestamp()),
-                            "owned_by": provider_name
-                        })
+                        all_models.append(f"{provider_name}|{current_model}")
                         
             except concurrent.futures.TimeoutError:
                 # Handle unfinished futures
@@ -355,23 +336,29 @@ async def discover_and_cache_models():
                         # Cancel and add fallback
                         future.cancel()
                         current_model = config.get('model', 'unknown')
-                        all_models.append({
-                            "id": f"{provider_name}/{current_model}",
-                            "object": "model",
-                            "created": int(datetime.now().timestamp()),
-                            "owned_by": provider_name
-                        })
+                        all_models.append(f"{provider_name}/{current_model}")
                         unfinished_count += 1
                 verbose_print(f"⚠️ {unfinished_count} providers timed out, used fallbacks")
 
         verbose_print(f"✅ Model discovery completed. Found {len(all_models)} models total.")
 
-        # Cache the discovered models
+        # Cache the discovered models in optimized format
         shared_model_cache.save_cache(all_models)
+
+        # Convert to API format for endpoint response
+        api_models = []
+        for model_id in all_models:
+            provider = model_id.split("/", 1)[0] if "/" in model_id else "unknown"
+            api_models.append({
+                "id": model_id,
+                "object": "model",
+                "created": int(datetime.now().timestamp()),
+                "owned_by": provider
+            })
 
         return {
             "object": "list",
-            "data": all_models
+            "data": api_models
         }
 
     except Exception as e:
@@ -381,19 +368,25 @@ async def discover_and_cache_models():
         for provider_name, config in AI_CONFIGS.items():
             if config.get('enabled', True):
                 current_model = config.get('model', 'unknown')
-                basic_models.append({
-                    "id": f"{provider_name}/{current_model}",
-                    "object": "model",
-                    "created": int(datetime.now().timestamp()),
-                    "owned_by": provider_name
-                })
+                basic_models.append(f"{provider_name}|{current_model}")
         
         # Cache the basic models too
         shared_model_cache.save_cache(basic_models)
         
+        # Convert to API format for endpoint response
+        api_models = []
+        for model_id in basic_models:
+            provider = model_id.split("/", 1)[0] if "/" in model_id else "unknown"
+            api_models.append({
+                "id": model_id,
+                "object": "model",
+                "created": int(datetime.now().timestamp()),
+                "owned_by": provider
+            })
+        
         return {
             "object": "list",
-            "data": basic_models
+            "data": api_models
         }
 
 @app.get("/api/statistics")

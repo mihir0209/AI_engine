@@ -875,6 +875,9 @@ class AI_engine:
         """Discover which providers have the requested model using shared cache"""
         verbose_print(f"🔍 Discovering providers for model: {requested_model}", self.verbose)
         
+        # Store the requested model for discovery function
+        self._current_requested_model = requested_model
+        
         # Use shared cache from server if available
         if not shared_model_cache.is_cache_valid():
             shared_model_cache.load_cache()
@@ -885,8 +888,197 @@ class AI_engine:
             return providers_with_model
         
         # Fallback to manual discovery if no shared cache
-        verbose_print("⚠️ No valid shared cache available for model discovery", self.verbose)
-        return []
+        verbose_print("⚠️ No valid shared cache available, attempting to discover models...", self.verbose)
+        return self._discover_and_cache_models_sync()
+    
+    def _discover_and_cache_models_sync(self) -> List[Tuple[str, str]]:
+        """Synchronous wrapper for model discovery and caching"""
+        try:
+            verbose_print("🔄 Starting model discovery from AI_engine...", self.verbose)
+            
+            # Create new event loop for model discovery
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(self._discover_and_cache_models())
+                return result
+            finally:
+                loop.close()
+        except Exception as e:
+            verbose_print(f"❌ Error in model discovery: {e}", self.verbose)
+            return []
+    
+    async def _discover_and_cache_models(self) -> List[Tuple[str, str]]:
+        """Discover models from all providers and cache the results (similar to server logic)"""
+        try:
+            all_models = []
+            enabled_providers = {name: config for name, config in AI_CONFIGS.items() if config.get('enabled', True)}
+            
+            if not enabled_providers:
+                verbose_print("❌ No enabled providers found for model discovery", self.verbose)
+                return []
+            
+            verbose_print(f"🔍 Discovering models from {len(enabled_providers)} providers...", self.verbose)
+            
+            def discover_provider_models_sync(provider_name):
+                """Synchronous wrapper for provider model discovery"""
+                try:
+                    config = enabled_providers[provider_name]
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        models_response = loop.run_until_complete(self._discover_provider_models_internal(provider_name, config))
+                        return models_response
+                    finally:
+                        loop.close()
+                except Exception as e:
+                    verbose_print(f"❌ Error discovering models for {provider_name}: {e}", self.verbose)
+                    return None
+            
+            # Use threading for faster model discovery
+            max_workers = min(len(enabled_providers), 8)
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all discovery tasks
+                future_to_provider = {
+                    executor.submit(discover_provider_models_sync, provider_name): (provider_name, config)
+                    for provider_name, config in enabled_providers.items()
+                    if config.get('model_endpoint')  # Only for providers with model discovery
+                }
+                
+                # Add providers without model discovery immediately
+                for provider_name, config in enabled_providers.items():
+                    if not config.get('model_endpoint'):
+                        current_model = config.get('model', 'unknown')
+                        all_models.append(f"{provider_name}|{current_model}")
+                
+                # Collect results with timeout handling
+                try:
+                    for future in concurrent.futures.as_completed(future_to_provider, timeout=30):
+                        provider_name, config = future_to_provider[future]
+                        try:
+                            models_response = future.result(timeout=10)
+                            
+                            if models_response and 'models' in models_response:
+                                provider_models = models_response['models']
+                                
+                                # Add models to the response
+                                for model in provider_models:
+                                    all_models.append(f"{provider_name}|{model}")
+                                verbose_print(f"✅ {provider_name}: discovered {len(provider_models)} models", self.verbose)
+                            else:
+                                # Fallback to current configured model if discovery fails
+                                current_model = config.get('model', 'unknown')
+                                all_models.append(f"{provider_name}|{current_model}")
+                                verbose_print(f"⚠️ {provider_name}: fallback to default model", self.verbose)
+                                
+                        except Exception as e:
+                            verbose_print(f"❌ Error processing {provider_name}: {e}", self.verbose)
+                            # Fallback to current model
+                            current_model = config.get('model', 'unknown')
+                            all_models.append(f"{provider_name}|{current_model}")
+                            
+                except concurrent.futures.TimeoutError:
+                    # Handle unfinished futures
+                    unfinished_count = 0
+                    for future in future_to_provider:
+                        if not future.done():
+                            provider_name, config = future_to_provider[future]
+                            verbose_print(f"⏰ Timeout: {provider_name} - using fallback", self.verbose)
+                            # Cancel and add fallback
+                            future.cancel()
+                            current_model = config.get('model', 'unknown')
+                            all_models.append(f"{provider_name}|{current_model}")
+                            unfinished_count += 1
+                    verbose_print(f"⚠️ {unfinished_count} providers timed out, used fallbacks", self.verbose)
+
+            verbose_print(f"✅ Model discovery completed. Found {len(all_models)} models total.", self.verbose)
+
+            # Cache the discovered models
+            shared_model_cache.save_cache(all_models)
+            
+            # Now find the requested model from the cached models
+            requested_model = getattr(self, '_current_requested_model', None)
+            if requested_model:
+                return shared_model_cache.find_providers_for_model(requested_model)
+            
+            return []
+
+        except Exception as e:
+            verbose_print(f"❌ Error in model discovery: {e}", self.verbose)
+            return []
+    
+    async def _discover_provider_models_internal(self, provider_name: str, config: Dict[str, Any]) -> Optional[Dict]:
+        """Internal method to discover models from a specific provider"""
+        model_endpoint = config.get('model_endpoint')
+        if not model_endpoint:
+            return None
+            
+        headers = {}
+        auth_header = config.get('auth_header', 'Authorization')
+        
+        # Get API key (supporting multiple key formats)
+        api_key = None
+        api_keys = config.get('api_keys', [])
+        if api_keys:
+            api_key = api_keys[0] if isinstance(api_keys, list) else api_keys
+        else:
+            api_key = config.get('api_key')
+        
+        if api_key:
+            if auth_header == 'Authorization':
+                headers[auth_header] = f"Bearer {api_key}"
+            else:
+                headers[auth_header] = api_key
+        
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(model_endpoint, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        # Handle different response formats
+                        if isinstance(data, dict):
+                            if 'data' in data and isinstance(data['data'], list):
+                                # OpenAI format
+                                models = [model.get('id', '') for model in data['data'] if model.get('id')]
+                            elif 'models' in data:
+                                # Direct models array
+                                models = data['models'] if isinstance(data['models'], list) else []
+                            elif isinstance(data, list):
+                                # Direct array
+                                models = [str(item) for item in data]
+                            else:
+                                models = []
+                        elif isinstance(data, list):
+                            models = [str(item) for item in data]
+                        else:
+                            models = []
+                        
+                        # Clean up model names (remove provider prefix if present)
+                        clean_models = []
+                        for model in models:
+                            if isinstance(model, dict):
+                                model_id = model.get('id', str(model))
+                            else:
+                                model_id = str(model)
+                            
+                            # Remove provider prefix if present
+                            if '/' in model_id:
+                                model_id = model_id.split('/', 1)[1]
+                            
+                            if model_id and model_id not in clean_models:
+                                clean_models.append(model_id)
+                        
+                        return {"models": clean_models}
+                    else:
+                        verbose_print(f"❌ {provider_name}: HTTP {response.status}", self.verbose)
+                        return None
+                        
+        except Exception as e:
+            verbose_print(f"❌ {provider_name}: {str(e)}", self.verbose)
+            return None
     
     def _select_best_provider(self, available_providers: List[Tuple[str, str]]) -> Tuple[str, str]:
         """Select best provider from available options based on priority and performance"""
@@ -964,10 +1156,26 @@ class AI_engine:
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
         Main chat completion method with smart provider rotation and autodecide feature
+        Supports provider-specific routing with format: provider_name/model_name
         """
         start_time = time.time()  # Track total request time
         preferred_provider = kwargs.get('preferred_provider')
         force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
+        
+        # Parse provider/model format (e.g., "openai/gpt-4" or "anthropic/claude-3")
+        original_model = model
+        if model and '/' in model:
+            provider_part, model_part = model.split('/', 1)
+            # Check if the provider part is a valid provider name
+            if provider_part in self.providers:
+                preferred_provider = provider_part
+                model = model_part
+                force_provider = True  # Force the specified provider
+                if self.verbose:
+                    verbose_print(f"🎯 Parsed provider-specific request: {provider_part}/{model_part}", self.verbose)
+            else:
+                if self.verbose:
+                    verbose_print(f"⚠️ Unknown provider in '{original_model}', treating as model name", self.verbose)
         
         # If force_provider is True and preferred_provider is specified, only use that provider
         if force_provider and preferred_provider:
