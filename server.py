@@ -19,7 +19,8 @@ import uvicorn
 try:
     from ai_engine import AI_engine
     from statistics_manager import get_stats_manager
-    from config import AI_CONFIGS, ENGINE_SETTINGS, verbose_print
+    from config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
+    from model_cache import shared_model_cache
     # Import chat module
     from chat_module.router import router as chat_router
 except ImportError as e:
@@ -31,65 +32,8 @@ except ImportError as e:
 engine = AI_engine(verbose=ENGINE_SETTINGS.get("verbose_mode", False))
 stats_manager = get_stats_manager()
 
-# Model caching system
-MODEL_CACHE_FILE = "model_cache.json"
-MODEL_CACHE_DURATION = 30 * 60  # 30 minutes in seconds
-model_cache = {
-    "cached_at": None,
-    "models": []
-}
-
-def save_model_cache(models_data):
-    """Save models data to cache file"""
-    global model_cache
-    try:
-        cache_data = {
-            "cached_at": time.time(),
-            "models": models_data
-        }
-        with open(MODEL_CACHE_FILE, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        model_cache = cache_data
-        verbose_print(f"💾 Saved {len(models_data)} models to cache")
-    except Exception as e:
-        verbose_print(f"❌ Error saving model cache: {e}")
-
-def load_model_cache():
-    """Load models data from cache file"""
-    global model_cache
-    try:
-        if os.path.exists(MODEL_CACHE_FILE):
-            with open(MODEL_CACHE_FILE, 'r') as f:
-                cache_data = json.load(f)
-            
-            # Check if cache is still valid (within 30 minutes)
-            if cache_data.get("cached_at"):
-                cache_age = time.time() - cache_data["cached_at"]
-                if cache_age <= MODEL_CACHE_DURATION:
-                    model_cache = cache_data
-                    verbose_print(f"📦 Loaded {len(cache_data['models'])} models from cache (age: {cache_age/60:.1f} minutes)")
-                    return True
-                else:
-                    verbose_print(f"⏰ Model cache expired (age: {cache_age/60:.1f} minutes)")
-            
-    except Exception as e:
-        verbose_print(f"❌ Error loading model cache: {e}")
-    
-    return False
-
-def is_cache_valid():
-    """Check if current cache is still valid"""
-    if not model_cache.get("cached_at"):
-        return False
-    
-    cache_age = time.time() - model_cache["cached_at"]
-    return cache_age <= MODEL_CACHE_DURATION
-
-def get_cached_models():
-    """Get models from cache if valid, otherwise return None"""
-    if is_cache_valid():
-        return model_cache.get("models", [])
-    return None
+# Initialize shared model cache
+shared_model_cache.load_cache()
 
 # Lifespan event handler for FastAPI
 @asynccontextmanager
@@ -119,14 +63,31 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             verbose_print(f"❌ Critical error in cache initialization: {e}")
     
+    def refresh_cache():
+        """Refresh cache function for auto-refresh"""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(discover_and_cache_models())
+                verbose_print(f"🔄 Auto-refresh completed: {len(result['data'])} models")
+            finally:
+                loop.close()
+        except Exception as e:
+            verbose_print(f"❌ Auto-refresh failed: {e}")
+    
     # Start fresh cache initialization in background thread
     cache_thread = threading.Thread(target=initialize_cache, daemon=True)
     cache_thread.start()
     verbose_print("🎯 Fresh model cache initialization started in background thread")
     
+    # Start auto-refresh background task
+    shared_model_cache.start_auto_refresh(refresh_cache)
+    
     yield  # Server is running
     
     # Shutdown (cleanup if needed)
+    shared_model_cache.stop_auto_refresh()
     verbose_print("🛑 Server shutting down...")
 
 # FastAPI app with lifespan handler
@@ -285,8 +246,8 @@ async def list_models():
     """List all available models across all providers in OpenAI format with caching"""
     
     # Check if we have valid cached models
-    cached_models = get_cached_models()
-    if cached_models:
+    if shared_model_cache.is_cache_valid():
+        cached_models = shared_model_cache.get_models()
         verbose_print(f"📦 Returning {len(cached_models)} models from cache")
         return {"object": "list", "data": cached_models}
     
@@ -406,7 +367,7 @@ async def discover_and_cache_models():
         verbose_print(f"✅ Model discovery completed. Found {len(all_models)} models total.")
 
         # Cache the discovered models
-        save_model_cache(all_models)
+        shared_model_cache.save_cache(all_models)
 
         return {
             "object": "list",
@@ -428,7 +389,7 @@ async def discover_and_cache_models():
                 })
         
         # Cache the basic models too
-        save_model_cache(basic_models)
+        shared_model_cache.save_cache(basic_models)
         
         return {
             "object": "list",

@@ -17,6 +17,7 @@ from dataclasses import dataclass
 # Import configuration from external config file
 try:
     from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
+    from model_cache import shared_model_cache
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
@@ -89,10 +90,8 @@ class AI_engine:
         # Initialize Statistics Manager
         self.stats_manager = get_stats_manager()
         
-        # Initialize Autodecide feature
+        # Initialize Autodecide feature - use shared cache
         self.autodecide_config = AUTODECIDE_CONFIG
-        self.autodecide_cache = self.autodecide_config.get("model_cache", {})
-        self.autodecide_cache_timestamps = {}  # Track when each model was cached
         
         # Enhanced tracking for intelligent key rotation
         self.key_usage_stats = {}  # Track usage per key
@@ -873,70 +872,21 @@ class AI_engine:
         return (time.time() - cache_time) < cache_duration
     
     def _discover_model_providers(self, requested_model: str) -> List[Tuple[str, str]]:
-        """Discover which providers have the requested model using threading for faster discovery"""
-        if self.verbose:
-            verbose_print(f"🔍 Discovering providers for model: {requested_model}", self.verbose)
+        """Discover which providers have the requested model using shared cache"""
+        verbose_print(f"🔍 Discovering providers for model: {requested_model}", self.verbose)
         
-        providers_with_model = []
+        # Use shared cache from server if available
+        if not shared_model_cache.is_cache_valid():
+            shared_model_cache.load_cache()
         
-        # Get enabled providers with model endpoints
-        providers_to_check = {
-            name: config for name, config in self.providers.items()
-            if config.get('enabled') and config.get('model_endpoint')
-        }
-        
-        if not providers_to_check:
-            if self.verbose:
-                verbose_print("⚠️ No providers available for model discovery", self.verbose)
+        if shared_model_cache.is_cache_valid():
+            providers_with_model = shared_model_cache.find_providers_for_model(requested_model)
+            verbose_print(f"� Found {len(providers_with_model)} providers for {requested_model} from shared cache", self.verbose)
             return providers_with_model
         
-        # Use threading to check all providers concurrently
-        model_results = {}
-        threads = []
-        max_workers = min(len(providers_to_check), 10)  # Limit concurrent requests
-        
-        verbose_print(f"🚀 Starting threaded discovery for {len(providers_to_check)} providers...", self.verbose)
-        
-        start_time = time.time()
-        
-        # Use ThreadPoolExecutor for better thread management
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_provider = {
-                executor.submit(self._get_provider_models_threaded, name, config, model_results, 5): name
-                for name, config in providers_to_check.items()
-            }
-            
-            # Wait for completion with timeout
-            try:
-                concurrent.futures.wait(future_to_provider, timeout=10)  # 10 second total timeout
-            except Exception as e:
-                if self.verbose:
-                    verbose_print(f"⚠️ Threading timeout or error: {e}", self.verbose)
-        
-        discovery_time = time.time() - start_time
-        
-        # Process results
-        for provider_name, models in model_results.items():
-            if not models:
-                continue
-                
-            # Check if requested model matches any available model
-            for available_model in models:
-                if self.model_matches(requested_model, available_model):
-                    providers_with_model.append((provider_name, available_model))
-                    if self.verbose:
-                        verbose_print(f"✅ Found {requested_model} as '{available_model}' in {provider_name}", self.verbose)
-                    break
-        
-        # Cache the result
-        self.autodecide_cache[requested_model] = providers_with_model
-        self.autodecide_cache_timestamps[requested_model] = time.time()
-        
-        verbose_print(f"📊 Found {len(providers_with_model)} providers for {requested_model} in {discovery_time:.2f}s", self.verbose)
-        verbose_print(f"🏆 Providers found: {[p[0] for p in providers_with_model]}", self.verbose)
-        
-        return providers_with_model
+        # Fallback to manual discovery if no shared cache
+        verbose_print("⚠️ No valid shared cache available for model discovery", self.verbose)
+        return []
     
     def _select_best_provider(self, available_providers: List[Tuple[str, str]]) -> Tuple[str, str]:
         """Select best provider from available options based on priority and performance"""
@@ -1015,6 +965,7 @@ class AI_engine:
         """
         Main chat completion method with smart provider rotation and autodecide feature
         """
+        start_time = time.time()  # Track total request time
         preferred_provider = kwargs.get('preferred_provider')
         force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
         
@@ -1084,20 +1035,31 @@ class AI_engine:
             model and 
             not preferred_provider):  # Don't override preferred provider
             
-            # Check cache first
-            if model not in self.autodecide_cache or not self._is_cache_valid(model):
-                self._discover_model_providers(model)
-            
-            # Get providers that have this model
-            available_providers = self.autodecide_cache.get(model, [])
+            # Discover providers for this model using shared cache
+            available_providers = self._discover_model_providers(model)
             if available_providers:
                 # Select best provider by priority
                 best_provider, actual_model = self._select_best_provider(available_providers)
                 if best_provider:
                     preferred_provider = best_provider
                     model = actual_model  # Use the exact model name from the provider
-                    if self.verbose:
-                        verbose_print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'", self.verbose)
+                    verbose_print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'", self.verbose)
+                else:
+                    # All providers are flagged/unavailable
+                    return RequestResult(
+                        success=False,
+                        error_message=f"Model '{model}' is available but all providers are currently unavailable or flagged",
+                        error_type="providers_unavailable",
+                        response_time=time.time() - start_time
+                    )
+            else:
+                # No providers found for the requested model - strict matching failed
+                return RequestResult(
+                    success=False,
+                    error_message=f"Model '{model}' is not available in any of the configured providers. Please check the model name or try a different model.",
+                    error_type="model_not_found",
+                    response_time=time.time() - start_time
+                )
         
         # If a preferred provider is specified, try it first
         if preferred_provider:
@@ -2122,22 +2084,17 @@ def main():
             print(f"🎯 Testing autodecide for model: {target_model}")
             print("-" * 50)
             
-            # First, discover providers for this model
-            print(f"🔍 Discovering providers for '{target_model}'...")
-            try:
-                providers = engine._discover_model_providers(target_model)
-                if providers:
-                    print(f"📋 Found {len(providers)} providers supporting '{target_model}':")
-                    for i, (provider_name, provider_model) in enumerate(providers[:5], 1):
-                        print(f"  {i}. {provider_name}: {provider_model}")
-                    if len(providers) > 5:
-                        print(f"     ... and {len(providers) - 5} more providers")
-                else:
-                    print(f"⚠️  No providers found for model '{target_model}'")
-                    print("🔄 Falling back to automatic provider selection...")
-            except Exception as e:
-                print(f"⚠️  Provider discovery failed: {e}")
-                print("🔄 Falling back to automatic provider selection...")
+            # Discover providers for this model
+            providers = engine._discover_model_providers(target_model)
+            if providers:
+                verbose_print(f"� Found {len(providers)} providers supporting '{target_model}':", engine.verbose)
+                for i, (provider_name, provider_model) in enumerate(providers[:5], 1):
+                    verbose_print(f"  {i}. {provider_name}: {provider_model}", engine.verbose)
+                if len(providers) > 5:
+                    verbose_print(f"     ... and {len(providers) - 5} more providers", engine.verbose)
+            else:
+                verbose_print(f"⚠️  No providers found for model '{target_model}'", engine.verbose)
+                verbose_print("🔄 Falling back to automatic provider selection...", engine.verbose)
             
             print(f"\n🚀 Making autodecide chat completion...")
             messages = [{"role": "user", "content": custom_message}]
