@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Timestamp Debug</title>
+</head>
+<body>
+    <h1>Timestamp Debugging</h1>
+    <div id="results"></div>
+
+    <script>
+        // Copy the exact function from chat.js
+        function formatRelativeTime(dateString) {
+            try {
+                if (!dateString) {
+                    return 'Just now';
+                }
+                
+                let date;
+                if (typeof dateString === 'string') {
+                    // Handle SQLite timestamp format: "2025-09-08 18:42:10"
+                    // Replace space with 'T' to make it ISO-like, but treat as local time
+                    if (dateString.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+                        // Parse as local time by splitting and using Date constructor
+                        const parts = dateString.split(' ');
+                        const datePart = parts[0]; // "2025-09-08"
+                        const timePart = parts[1]; // "18:42:10"
+                        
+                        const [year, month, day] = datePart.split('-').map(Number);
+                        const [hour, minute, second] = timePart.split(':').map(Number);
+                        
+                        // Create date as local time (month is 0-indexed in JavaScript)
+                        date = new Date(year, month - 1, day, hour, minute, second);
+                    } else {
+                        // Try other formats
+                        date = new Date(dateString);
+                    }
+                } else {
+                    date = new Date(dateString);
+                }
+                
+                if (isNaN(date.getTime())) {
+                    console.warn('Could not parse date:', dateString);
+                    return 'Unknown time';
+                }
+                
+                const now = new Date();
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                // Simple time format
+                const timeOptions = { 
+                    hour: 'numeric', 
+                    minute: '2-digit',
+                    hour12: true 
+                };
+                
+                const timeString = date.toLocaleTimeString('en-US', timeOptions);
+                
+                // If today, just show time
+                if (date.toDateString() === today.toDateString()) {
+                    return timeString;
+                }
+                
+                // If yesterday
+                if (date.toDateString() === yesterday.toDateString()) {
+                    return `Yesterday ${timeString}`;
+                }
+                
+                // Otherwise show date and time
+                const dateOptions = { 
+                    month: 'short', 
+                    day: 'numeric' 
+                };
+                
+                const dateString = date.toLocaleDateString('en-US', dateOptions);
+                return `${dateString}, ${timeString}`;
+                
+            } catch (error) {
+                console.error('Error formatting time:', error, 'Input:', dateString);
+                return 'Time error';
+            }
+        }
+
+        // Test with the actual timestamp from API
+        const testTimestamp = "2025-09-08 18:42:10";
+        const result = formatRelativeTime(testTimestamp);
+        
+        document.getElementById('results').innerHTML = `
+            <p><strong>Input:</strong> ${testTimestamp}</p>
+            <p><strong>Output:</strong> ${result}</p>
+            <p><strong>Debug Info:</strong></p>
+            <ul>
+                <li>Current Date: ${new Date()}</li>
+                <li>Test Match: ${testTimestamp.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/) ? 'YES' : 'NO'}</li>
+            </ul>
+        `;
+        
+        console.log('Testing timestamp parsing:');
+        console.log('Input:', testTimestamp);
+        console.log('Output:', result);
+        
+        // Test the parsing logic step by step
+        const parts = testTimestamp.split(' ');
+        const datePart = parts[0];
+        const timePart = parts[1];
+        const [year, month, day] = datePart.split('-').map(Number);
+        const [hour, minute, second] = timePart.split(':').map(Number);
+        const testDate = new Date(year, month - 1, day, hour, minute, second);
+        
+        console.log('Step by step:');
+        console.log('Parts:', parts);
+        console.log('Date part:', datePart);
+        console.log('Time part:', timePart);
+        console.log('Parsed values:', {year, month, day, hour, minute, second});
+        console.log('Created date:', testDate);
+        console.log('Is valid date:', !isNaN(testDate.getTime()));
+        console.log('Date string:', testDate.toString());
+    </script>
+</body>
+</html>

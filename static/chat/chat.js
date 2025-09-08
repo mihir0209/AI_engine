@@ -1060,27 +1060,24 @@ class ChatInterface {
         }
     }
 
-    // Enhanced time formatting - Fixed simpler version
+    // Enhanced time formatting - Fixed for SQLite UTC timestamp format
     formatRelativeTime(dateString) {
         try {
             if (!dateString) {
                 return 'Just now';
             }
             
-            // Handle different date formats that might come from the database
             let date;
             if (typeof dateString === 'string') {
-                // Try parsing ISO format first
-                date = new Date(dateString);
-                
-                // If that fails, try adding 'Z' for UTC parsing
-                if (isNaN(date.getTime())) {
-                    date = new Date(dateString + 'Z');
-                }
-                
-                // If still fails, try replacing space with 'T' for ISO format
-                if (isNaN(date.getTime())) {
-                    date = new Date(dateString.replace(' ', 'T') + 'Z');
+                // Handle SQLite timestamp format: "2025-09-08 18:42:10"
+                // Database stores UTC time, so we need to parse as UTC
+                if (dateString.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+                    // Parse as UTC time by adding 'Z' to make it ISO format
+                    const isoString = dateString.replace(' ', 'T') + 'Z';
+                    date = new Date(isoString);
+                } else {
+                    // Try other formats
+                    date = new Date(dateString);
                 }
             } else {
                 date = new Date(dateString);
@@ -1093,8 +1090,9 @@ class ChatInterface {
             
             const now = new Date();
             const today = new Date();
+            today.setHours(0, 0, 0, 0); // Start of today
             const yesterday = new Date(today);
-            yesterday.setDate(yesterday.getDate() - 1);
+            yesterday.setDate(yesterday.getDate() - 1); // Start of yesterday
             
             // Simple time format
             const timeOptions = { 
@@ -1105,13 +1103,13 @@ class ChatInterface {
             
             const timeString = date.toLocaleTimeString('en-US', timeOptions);
             
-            // If today, just show time
-            if (date.toDateString() === today.toDateString()) {
+            // Check if date is today (compare with start of today)
+            if (date >= today) {
                 return timeString;
             }
             
-            // If yesterday
-            if (date.toDateString() === yesterday.toDateString()) {
+            // Check if date is yesterday (between start of yesterday and start of today)
+            if (date >= yesterday) {
                 return `Yesterday ${timeString}`;
             }
             
@@ -1121,8 +1119,8 @@ class ChatInterface {
                 day: 'numeric' 
             };
             
-            const dateString = date.toLocaleDateString('en-US', dateOptions);
-            return `${dateString}, ${timeString}`;
+            const formattedDateString = date.toLocaleDateString('en-US', dateOptions);
+            return `${formattedDateString}, ${timeString}`;
             
         } catch (error) {
             console.error('Error formatting time:', error, 'Input:', dateString);
@@ -1397,4 +1395,65 @@ function toggleSystemPrompt() {
 let chatInterface;
 document.addEventListener('DOMContentLoaded', function() {
     chatInterface = new ChatInterface();
+});
+
+// Auto-delete temporary chats when leaving the page
+window.addEventListener('beforeunload', function(event) {
+    if (chatInterface && chatInterface.currentChatId) {
+        // Check if current chat is temporary
+        const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
+        if (chatElement && chatElement.classList.contains('temp-chat')) {
+            // Use fetch with keepalive for reliable delivery when page is unloading
+            try {
+                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                    method: 'DELETE',
+                    keepalive: true
+                }).catch(error => {
+                    console.warn('Could not delete temporary chat on page unload:', error);
+                });
+            } catch (error) {
+                console.warn('Could not delete temporary chat on page unload:', error);
+            }
+        }
+    }
+});
+
+// Also handle visibility change (tab switching, window minimization)
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+        if (chatInterface && chatInterface.currentChatId) {
+            const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
+            if (chatElement && chatElement.classList.contains('temp-chat')) {
+                // For visibility change, we can use a regular async request
+                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    keepalive: true // Ensure request completes even if page becomes hidden
+                }).catch(error => {
+                    console.warn('Could not delete temporary chat on visibility change:', error);
+                });
+            }
+        }
+    }
+});
+
+// Handle navigation away from chat page
+window.addEventListener('pagehide', function(event) {
+    if (chatInterface && chatInterface.currentChatId) {
+        const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
+        if (chatElement && chatElement.classList.contains('temp-chat')) {
+            try {
+                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                    method: 'DELETE',
+                    keepalive: true
+                }).catch(error => {
+                    console.warn('Could not delete temporary chat on page hide:', error);
+                });
+            } catch (error) {
+                console.warn('Could not delete temporary chat on page hide:', error);
+            }
+        }
+    }
 });
