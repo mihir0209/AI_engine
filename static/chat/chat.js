@@ -261,6 +261,17 @@ class ChatInterface {
             this.renderChatHeader(data.chat);
             this.renderMessages(data.messages);
             this.showChatInterface();
+            
+            // Load models for the chat's provider if set
+            if (data.chat.provider) {
+                await this.loadModelsForProvider(data.chat.provider, 'modelSelect');
+                // Set the provider and model in the interface
+                const providerSelect = document.getElementById('providerSelect');
+                const modelSelect = document.getElementById('modelSelect');
+                if (providerSelect) providerSelect.value = data.chat.provider;
+                if (modelSelect && data.chat.model) modelSelect.value = data.chat.model;
+            }
+            
             this.connectWebSocket();
 
             // Update chat list selection
@@ -281,6 +292,17 @@ class ChatInterface {
         } catch (error) {
             console.error('Error selecting chat:', error);
             this.showError('Failed to load chat');
+        }
+    }
+
+    async loadCurrentChatMessages() {
+        if (!this.currentChatId) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`);
+            const data = await response.json();
+            this.renderMessages(data.messages);
+        } catch (error) {
+            console.error('Error loading current chat messages:', error);
         }
     }
 
@@ -513,7 +535,7 @@ class ChatInterface {
         }
     }
 
-    handleWebSocketMessage(data) {
+    async handleWebSocketMessage(data) {
         switch (data.type) {
             case 'message_saved':
                 console.log('Message saved:', data.message_id);
@@ -532,7 +554,15 @@ class ChatInterface {
                 
             case 'ai_complete':
                 this.hideTypingIndicator();
-                this.loadChats(); // Refresh chat list
+                // Update the streaming message with final metadata
+                if (data.provider && data.model) {
+                    this.updateStreamingMessageMetadata(data);
+                }
+                // Refresh both chat list and current messages
+                await this.loadChats(); 
+                if (this.currentChatId) {
+                    await this.loadCurrentChatMessages();
+                }
                 break;
                 
             case 'ai_error':
@@ -682,11 +712,49 @@ class ChatInterface {
         this.hideTypingIndicator();
         const streamingMsg = document.getElementById('streamingResponse');
         if (streamingMsg) {
+            // Add message actions for immediate interaction
+            const messageActions = `
+                <div class="message-actions">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="chatInterface.copyStreamingMessage()" title="Copy">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            `;
+            streamingMsg.innerHTML += messageActions;
+            
             streamingMsg.removeAttribute('id');
             // Highlight any code blocks in the final response
             this.highlightCodeBlocks();
         }
         this.messageBuffer = '';
+        
+        // Note: Don't reload messages here, wait for ai_complete event with proper metadata
+    }
+
+    updateStreamingMessageMetadata(data) {
+        const streamingMsg = document.querySelector('.message.assistant:last-child');
+        if (streamingMsg && data.provider && data.model) {
+            const provider = data.provider;
+            const model = data.model;
+            const responseTime = data.response_time ? `${data.response_time.toFixed(2)}s` : '';
+            const timestamp = new Date().toISOString();
+            
+            // Remove any existing message info
+            const existingInfo = streamingMsg.querySelector('.message-info');
+            if (existingInfo) existingInfo.remove();
+            
+            // Add new message info with provider and model
+            const messageInfo = document.createElement('div');
+            messageInfo.className = 'message-info';
+            messageInfo.innerHTML = `
+                <span class="message-timestamp">${this.formatRelativeTime(timestamp)}</span>
+                <span class="message-provider-info">
+                    ${provider}/${model}${responseTime ? ` • ${responseTime}` : ''}
+                </span>
+            `;
+            
+            streamingMsg.appendChild(messageInfo);
+        }
     }
 
     async pollForNewMessages() {
@@ -950,30 +1018,46 @@ class ChatInterface {
     formatRelativeTime(dateString) {
         const date = new Date(dateString);
         const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
         
-        if (diffMins < 1) return 'now';
-        if (diffMins < 60) return `${diffMins}m`;
-        if (diffHours < 24) return `${diffHours}h`;
-        if (diffDays < 7) return `${diffDays}d`;
-        if (diffDays < 30) return `${Math.floor(diffDays / 7)}w`;
-        
-        // For older dates, show actual date
+        // Format as actual time: "2:30 PM" or "Sep 8, 2:30 PM"
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         
-        if (date.toDateString() === today.toDateString()) return 'today';
-        if (date.toDateString() === yesterday.toDateString()) return 'yesterday';
+        const timeOptions = { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        };
         
-        return date.toLocaleDateString('en-US', { 
+        const timeString = date.toLocaleTimeString('en-US', timeOptions);
+        
+        // If today, just show time
+        if (date.toDateString() === today.toDateString()) {
+            return timeString;
+        }
+        
+        // If yesterday, show "Yesterday 2:30 PM"
+        if (date.toDateString() === yesterday.toDateString()) {
+            return `Yesterday ${timeString}`;
+        }
+        
+        // If this year, show "Sep 8, 2:30 PM"
+        if (date.getFullYear() === today.getFullYear()) {
+            const dateString = date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            return `${dateString}, ${timeString}`;
+        }
+        
+        // If different year, show "Sep 8, 2023, 2:30 PM"
+        const dateString = date.toLocaleDateString('en-US', { 
             month: 'short', 
             day: 'numeric',
-            year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+            year: 'numeric'
         });
+        return `${dateString}, ${timeString}`;
     }
 
     // Text truncation utility
@@ -988,6 +1072,16 @@ class ChatInterface {
         navigator.clipboard.writeText(text).then(() => {
             this.showSuccess('Message copied to clipboard');
         });
+    }
+
+    copyStreamingMessage() {
+        const streamingElement = document.querySelector('.message.assistant:last-child .message-bubble');
+        if (streamingElement) {
+            const text = streamingElement.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                this.showSuccess('Message copied to clipboard');
+            });
+        }
     }
 
     clearInput() {
