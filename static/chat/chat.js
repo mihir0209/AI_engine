@@ -170,8 +170,11 @@ class ChatInterface {
     // Chat Management
     async loadChats() {
         try {
+            console.log('Loading chats...');
             const response = await fetch('/api/chat/chats?include_temporary=true&limit=50');
+            console.log('Chat response status:', response.status);
             const chats = await response.json();
+            console.log('Loaded chats:', chats.length, chats);
             this.renderChatList(chats);
         } catch (error) {
             console.error('Error loading chats:', error);
@@ -180,7 +183,13 @@ class ChatInterface {
     }
 
     renderChatList(chats) {
+        console.log('Rendering chat list with:', chats);
         const chatList = document.getElementById('chatList');
+        
+        if (!chatList) {
+            console.error('Chat list element not found!');
+            return;
+        }
         
         if (chats.length === 0) {
             chatList.innerHTML = `
@@ -507,8 +516,8 @@ class ChatInterface {
                 console.log('WebSocket connected');
             };
 
-            this.websocket.onmessage = (event) => {
-                this.handleWebSocketMessage(JSON.parse(event.data));
+            this.websocket.onmessage = async (event) => {
+                await this.handleWebSocketMessage(JSON.parse(event.data));
             };
 
             this.websocket.onclose = () => {
@@ -1014,50 +1023,51 @@ class ChatInterface {
         }
     }
 
-    // Enhanced time formatting
+    // Enhanced time formatting - Fixed simpler version
     formatRelativeTime(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        
-        // Format as actual time: "2:30 PM" or "Sep 8, 2:30 PM"
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        const timeOptions = { 
-            hour: 'numeric', 
-            minute: '2-digit',
-            hour12: true 
-        };
-        
-        const timeString = date.toLocaleTimeString('en-US', timeOptions);
-        
-        // If today, just show time
-        if (date.toDateString() === today.toDateString()) {
-            return timeString;
-        }
-        
-        // If yesterday, show "Yesterday 2:30 PM"
-        if (date.toDateString() === yesterday.toDateString()) {
-            return `Yesterday ${timeString}`;
-        }
-        
-        // If this year, show "Sep 8, 2:30 PM"
-        if (date.getFullYear() === today.getFullYear()) {
-            const dateString = date.toLocaleDateString('en-US', { 
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                return 'Invalid date';
+            }
+            
+            const now = new Date();
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            // Simple time format
+            const timeOptions = { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            };
+            
+            const timeString = date.toLocaleTimeString('en-US', timeOptions);
+            
+            // If today, just show time
+            if (date.toDateString() === today.toDateString()) {
+                return timeString;
+            }
+            
+            // If yesterday
+            if (date.toDateString() === yesterday.toDateString()) {
+                return `Yesterday ${timeString}`;
+            }
+            
+            // Otherwise show date and time
+            const dateOptions = { 
                 month: 'short', 
                 day: 'numeric' 
-            });
+            };
+            
+            const dateString = date.toLocaleDateString('en-US', dateOptions);
             return `${dateString}, ${timeString}`;
+            
+        } catch (error) {
+            console.error('Error formatting time:', error);
+            return 'Invalid time';
         }
-        
-        // If different year, show "Sep 8, 2023, 2:30 PM"
-        const dateString = date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric',
-            year: 'numeric'
-        });
-        return `${dateString}, ${timeString}`;
     }
 
     // Text truncation utility
