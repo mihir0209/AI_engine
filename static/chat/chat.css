@@ -619,3 +619,54 @@
         max-width: 90%;
     }
 }
+
+/* Code Block Styling */
+.code-block-wrapper {
+    margin: 8px 0;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+}
+
+.code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: #e9ecef;
+    border-bottom: 1px solid #dee2e6;
+    font-size: 0.875rem;
+}
+
+.code-language {
+    color: #495057;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.copy-code-btn {
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    border: none;
+    background-color: transparent;
+    color: #6c757d;
+    transition: all 0.2s ease;
+}
+
+.copy-code-btn:hover {
+    background-color: #f8f9fa;
+    color: #495057;
+    transform: scale(1.1);
+}
+
+.code-block-wrapper pre {
+    margin: 0;
+    background-color: #ffffff;
+    border: none;
+}
+
+.code-block-wrapper code {
+    background-color: transparent;
+}

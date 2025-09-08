@@ -170,11 +170,8 @@ class ChatInterface {
     // Chat Management
     async loadChats() {
         try {
-            console.log('Loading chats...');
             const response = await fetch('/api/chat/chats?include_temporary=true&limit=50');
-            console.log('Chat response status:', response.status);
             const chats = await response.json();
-            console.log('Loaded chats:', chats.length, chats);
             this.renderChatList(chats);
         } catch (error) {
             console.error('Error loading chats:', error);
@@ -183,7 +180,6 @@ class ChatInterface {
     }
 
     renderChatList(chats) {
-        console.log('Rendering chat list with:', chats);
         const chatList = document.getElementById('chatList');
         
         if (!chatList) {
@@ -436,11 +432,24 @@ class ChatInterface {
             try {
                 const renderer = new marked.Renderer();
                 
-                // Custom code block rendering for syntax highlighting
+                // Custom code block rendering for syntax highlighting with copy button
                 renderer.code = function(code, language) {
                     const validLanguage = language && Prism.languages[language] ? language : 'javascript';
                     const highlightedCode = Prism.highlight(code, Prism.languages[validLanguage], validLanguage);
-                    return `<pre class="line-numbers"><code class="language-${validLanguage}">${highlightedCode}</code></pre>`;
+                    const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                    return `
+                        <div class="code-block-wrapper">
+                            <div class="code-header">
+                                <span class="code-language">${language || 'code'}</span>
+                                <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                        onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                        title="Copy code">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <pre class="line-numbers" id="${codeId}"><code class="language-${validLanguage}">${highlightedCode}</code></pre>
+                        </div>
+                    `;
                 };
                 
                 return marked.parse(content, { 
@@ -464,12 +473,40 @@ class ChatInterface {
             .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            // Code blocks with basic syntax highlighting
+            // Code blocks with basic syntax highlighting and copy button
             .replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-                const language = lang || 'javascript';
-                return `<pre class="line-numbers"><code class="language-${language}">${code}</code></pre>`;
+                const language = lang || 'code';
+                const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-header">
+                            <span class="code-language">${language}</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                    onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                    title="Copy code">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <pre class="line-numbers" id="${codeId}"><code class="language-${language}">${this.escapeHtml(code)}</code></pre>
+                    </div>
+                `;
             })
-            .replace(/```([\s\S]*?)```/g, '<pre class="line-numbers"><code>$1</code></pre>')
+            .replace(/```([\s\S]*?)```/g, (match, code) => {
+                const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-header">
+                            <span class="code-language">code</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                    onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                    title="Copy code">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <pre class="line-numbers" id="${codeId}"><code>${this.escapeHtml(code)}</code></pre>
+                    </div>
+                `;
+            })
             // Inline code
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             // Links
@@ -1026,9 +1063,32 @@ class ChatInterface {
     // Enhanced time formatting - Fixed simpler version
     formatRelativeTime(dateString) {
         try {
-            const date = new Date(dateString);
+            if (!dateString) {
+                return 'Just now';
+            }
+            
+            // Handle different date formats that might come from the database
+            let date;
+            if (typeof dateString === 'string') {
+                // Try parsing ISO format first
+                date = new Date(dateString);
+                
+                // If that fails, try adding 'Z' for UTC parsing
+                if (isNaN(date.getTime())) {
+                    date = new Date(dateString + 'Z');
+                }
+                
+                // If still fails, try replacing space with 'T' for ISO format
+                if (isNaN(date.getTime())) {
+                    date = new Date(dateString.replace(' ', 'T') + 'Z');
+                }
+            } else {
+                date = new Date(dateString);
+            }
+            
             if (isNaN(date.getTime())) {
-                return 'Invalid date';
+                console.warn('Could not parse date:', dateString);
+                return 'Unknown time';
             }
             
             const now = new Date();
@@ -1065,8 +1125,8 @@ class ChatInterface {
             return `${dateString}, ${timeString}`;
             
         } catch (error) {
-            console.error('Error formatting time:', error);
-            return 'Invalid time';
+            console.error('Error formatting time:', error, 'Input:', dateString);
+            return 'Time error';
         }
     }
 
@@ -1090,6 +1150,29 @@ class ChatInterface {
             const text = streamingElement.textContent;
             navigator.clipboard.writeText(text).then(() => {
                 this.showSuccess('Message copied to clipboard');
+            });
+        }
+    }
+
+    copyCodeBlock(codeId) {
+        const codeElement = document.getElementById(codeId);
+        if (codeElement) {
+            const codeText = codeElement.textContent || codeElement.innerText;
+            navigator.clipboard.writeText(codeText).then(() => {
+                this.showSuccess('Code copied to clipboard');
+                
+                // Temporarily change button text to show success
+                const button = codeElement.parentElement.querySelector('.copy-code-btn i');
+                if (button) {
+                    const originalClass = button.className;
+                    button.className = 'fas fa-check';
+                    setTimeout(() => {
+                        button.className = originalClass;
+                    }, 1000);
+                }
+            }).catch(err => {
+                console.error('Failed to copy code:', err);
+                this.showError('Failed to copy code');
             });
         }
     }
