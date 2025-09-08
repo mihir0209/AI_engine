@@ -623,7 +623,7 @@ async def roll_provider_key(provider_name: str):
         
         # Check if provider has multiple keys
         api_keys = AI_CONFIGS[provider_name].get('api_keys', [])
-        print(f"🔑 Found {len(api_keys)} keys for {provider_name}")
+        verbose_print(f"🔑 Found {len(api_keys)} keys for {provider_name}")
         
         if len(api_keys) <= 1:
             return {"message": f"Provider {provider_name} has only one key, no rolling needed"}
@@ -631,7 +631,7 @@ async def roll_provider_key(provider_name: str):
         # Use the engine's key rolling functionality if available
         if hasattr(engine, 'roll_api_key'):
             result = engine.roll_api_key(provider_name)
-            print(f"✅ Key rolling result: {result}")
+            verbose_print(f"✅ Key rolling result: {result}")
             return {"message": f"API key rolled for {provider_name}: {result}"}
         else:
             verbose_print(f"⚠️ Engine does not have roll_api_key method")
@@ -717,24 +717,24 @@ async def discover_provider_models(provider_name: str):
     import requests  # Import at function level to handle exceptions properly
     
     try:
-        print(f"🔍 Discovering models for provider: {provider_name}")
+        verbose_print(f"🔍 Discovering models for provider: {provider_name}")
         
         if provider_name not in AI_CONFIGS:
             verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
             raise HTTPException(status_code=404, detail="Provider not found")
         
         provider_config = AI_CONFIGS[provider_name]
-        print(f"📋 Provider config: enabled={provider_config.get('enabled')}, model_endpoint={provider_config.get('model_endpoint')}")
+        verbose_print(f"📋 Provider config: enabled={provider_config.get('enabled')}, model_endpoint={provider_config.get('model_endpoint')}")
         
         # Check if provider supports model discovery
         if not provider_config.get('enabled', True):
-            print(f"⚠️ Provider '{provider_name}' is disabled")
+            verbose_print(f"⚠️ Provider '{provider_name}' is disabled")
             raise HTTPException(status_code=400, detail="Provider is disabled")
         
         # Check if provider has model endpoint configured
         models_endpoint = provider_config.get('model_endpoint')
         if not models_endpoint:
-            print(f"⚠️ Provider '{provider_name}' has no model_endpoint configured")
+            verbose_print(f"⚠️ Provider '{provider_name}' has no model_endpoint configured")
             return {
                 'provider': provider_name,
                 'models': [{
@@ -751,7 +751,7 @@ async def discover_provider_models(provider_name: str):
         api_keys = provider_config.get('api_keys', [])
         model_endpoint_auth = provider_config.get('model_endpoint_auth', True)
         
-        print(f"🔑 API keys available: {len([k for k in api_keys if k])}, Auth required: {model_endpoint_auth}")
+        verbose_print(f"🔑 API keys available: {len([k for k in api_keys if k])}, Auth required: {model_endpoint_auth}")
         
         # Check if authentication is required but no keys available
         if model_endpoint_auth and (not api_keys or not api_keys[0]):
@@ -764,7 +764,7 @@ async def discover_provider_models(provider_name: str):
         # Add authentication if required
         if model_endpoint_auth and api_keys and api_keys[0]:
             auth_type = provider_config.get('auth_type', 'bearer')
-            print(f"🔐 Using auth type: {auth_type}")
+            verbose_print(f"🔐 Using auth type: {auth_type}")
             
             if auth_type == 'bearer':
                 headers['Authorization'] = f'Bearer {api_keys[0]}'
@@ -781,14 +781,14 @@ async def discover_provider_models(provider_name: str):
             else:
                 headers['Authorization'] = f'Bearer {api_keys[0]}'
         
-        print(f"🌐 Making request to: {models_endpoint}")
-        print(f"📤 Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}")
+        verbose_print(f"🌐 Making request to: {models_endpoint}")
+        verbose_print(f"📤 Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}")
         
         # Make request to discover models
         response = requests.get(models_endpoint, headers=headers, timeout=10)
         
-        print(f"📥 Response status: {response.status_code}")
-        print(f"📥 Response headers: {dict(response.headers)}")
+        verbose_print(f"📥 Response status: {response.status_code}")
+        verbose_print(f"📥 Response headers: {dict(response.headers)}")
         
         if response.status_code == 200:
             try:
@@ -804,7 +804,7 @@ async def discover_provider_models(provider_name: str):
             
             if 'data' in models_data:
                 # OpenAI format
-                print("✅ Using OpenAI format (data key)")
+                verbose_print("✅ Using OpenAI format (data key)")
                 for model in models_data['data']:
                     models.append({
                         'id': model.get('id', ''),
@@ -814,7 +814,7 @@ async def discover_provider_models(provider_name: str):
                     })
             elif 'models' in models_data:
                 # Some providers return {models: [...]}
-                print("✅ Using models key format")
+                verbose_print("✅ Using models key format")
                 models_list = models_data['models']
                 if isinstance(models_list, list):
                     for model in models_list:
@@ -832,7 +832,7 @@ async def discover_provider_models(provider_name: str):
                             })
             elif isinstance(models_data, list):
                 # Direct list of models
-                print("✅ Using direct list format")
+                verbose_print("✅ Using direct list format")
                 for model in models_data:
                     if isinstance(model, dict):
                         models.append({
@@ -847,7 +847,7 @@ async def discover_provider_models(provider_name: str):
                             'owned_by': provider_name
                         })
             
-            print(f"✅ Successfully discovered {len(models)} models")
+            verbose_print(f"✅ Successfully discovered {len(models)} models")
             return {
                 'provider': provider_name,
                 'models': models,
@@ -976,8 +976,8 @@ async def test_model(request: Request):
         ]
         
         # Make request to AI Engine with specific provider and model
-        print(f"🧪 Starting test for {provider_name} with model {model_name}")
-        print(f"🔍 DEBUG: Requesting provider='{provider_name}', model='{model_name}'")
+        verbose_print(f"🧪 Starting test for {provider_name} with model {model_name}")
+        verbose_print(f"🔍 DEBUG: Requesting provider='{provider_name}', model='{model_name}'")
         test_start_time = time.time()
         
         result = engine.chat_completion(
@@ -988,8 +988,8 @@ async def test_model(request: Request):
         
         test_end_time = time.time()
         total_test_time = test_end_time - test_start_time
-        print(f"⏱️ Total test time: {total_test_time:.2f}s")
-        print(f"🔍 DEBUG: Result provider_used='{result.provider_used}', model_used='{result.model_used}'")
+        verbose_print(f"⏱️ Total test time: {total_test_time:.2f}s")
+        verbose_print(f"🔍 DEBUG: Result provider_used='{result.provider_used}', model_used='{result.model_used}'")
         
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()

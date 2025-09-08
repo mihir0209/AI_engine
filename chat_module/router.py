@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from .db import ChatDB
 from .websocket_manager import WebSocketManager
+from config import verbose_print
 
 logger = logging.getLogger(__name__)
 
@@ -433,7 +434,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         await websocket.send_text(json.dumps({"type": "ai_thinking", "provider": provider, "model": model}))
 
         ai = get_global_engine()
-        logger.info(f"Starting threaded AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
+        verbose_print(f"Starting threaded AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
         # Determine autodecide behavior and force provider based on chat settings
         use_autodecide = provider is None and not force_provider_setting

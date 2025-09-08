@@ -42,7 +42,7 @@ AI_CONFIGS = {
         "endpoint": "https://api.chatanywhere.tech/v1/chat/completions",
         "model_endpoint": "https://api.chatanywhere.tech/v1/models",
         "model_endpoint_auth": True,
-        "model": "gpt-4.1-mini",
+        "model": "gpt-4.1-ca",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 4096,
