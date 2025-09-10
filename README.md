@@ -46,21 +46,133 @@ AI Engine v3.0 is an enterprise-grade Python system for managing multiple AI pro
 - **Configurable Limits**: Adjustable failure thresholds and timeout settings
 - **Production Ready**: Enterprise-grade security and error handling
 
-## Quick Start
+## Installation & Setup Options
 
-### Installation
+AI Engine v3.0 offers flexible deployment options based on your needs. Choose the setup that matches your use case:
 
-1. Clone the repository:
+> **📋 Need detailed setup instructions?** See the complete [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step instructions for all use cases.
+
+### 🎯 Setup Options Overview
+
+| Use Case | Files Needed | Dependencies | Size | Best For |
+|----------|-------------|--------------|------|----------|
+| **Minimal API** | Core files only | 3 packages | ~20% | API integration, lightweight apps |
+| **Full Server** | All files | 9 packages | 100% | Web dashboard, chat interface |
+| **Production** | Core + server | 9 packages | ~80% | Clean deployment, no demos |
+| **Development** | All files | 9 packages | 100% | Testing, examples, debugging |
+
+---
+
+### 🔥 Option 1: Minimal API Setup (Lightweight)
+
+**Best for**: API integration, microservices, lightweight applications
+
 ```bash
+# 1. Clone repository
 git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
+
+# 2. Install core dependencies only (3 packages)
+pip install -r requirements_core.txt
+
+# 3. Keep only essential files:
+# ✅ ai_engine.py, config.py, statistics_manager.py, model_cache.py, .env
+# 🗑️ Remove: server.py, chat_module/, templates/, static/, test_*.py, demo_*.py
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-pip install -r requirements_server.txt  # For web server
+**Usage**:
+```python
+from ai_engine import AI_engine
+engine = AI_engine()
+result = engine.chat_completion([{"role": "user", "content": "Hello"}])
+print(result.content)
 ```
+
+**Size**: ~20% of full installation | **Dependencies**: requests, aiohttp, python-dotenv
+
+---
+
+### 🌐 Option 2: Full Server Setup (Complete Experience)
+
+**Best for**: Web dashboard, chat interface, full feature access
+
+```bash
+# 1. Clone repository
+git clone https://github.com/mihir0209/AI_engine.git
+cd AI_engine
+
+# 2. Install all dependencies
+pip install -r requirements_core.txt
+pip install -r requirements_server.txt
+
+# 3. Keep all files for full functionality
+```
+
+**Features**: Web dashboard, chat interface, real-time monitoring, model discovery UI
+
+**Size**: 100% of installation | **Dependencies**: 9 packages including FastAPI, Uvicorn
+
+---
+
+### 🚀 Option 3: Production Setup (Clean Deployment)
+
+**Best for**: Production environments, clean deployments
+
+```bash
+# 1. Clone repository
+git clone https://github.com/mihir0209/AI_engine.git
+cd AI_engine
+
+# 2. Install dependencies based on needs
+pip install -r requirements_core.txt
+pip install -r requirements_server.txt  # Only if web interface needed
+
+# 3. Remove development files:
+rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm -rf __pycache__/ *.log
+```
+
+**Size**: ~80% of installation | **Features**: Core + server without demos/tests
+
+---
+
+### 🛠️ Option 4: Development Setup (Full Features)
+
+**Best for**: Development, testing, learning the system
+
+```bash
+# 1. Clone repository
+git clone https://github.com/mihir0209/AI_engine.git
+cd AI_engine
+
+# 2. Install all dependencies
+pip install -r requirements_core.txt
+pip install -r requirements_server.txt
+
+# 3. Keep all files including demos and tests
+```
+
+**Features**: Examples, tests, demos, full documentation
+
+**Size**: 100% of installation | **Includes**: All demo files, test scripts, examples
+
+---
+
+### 📋 Dependency Details
+
+#### Core Dependencies (Always Required)
+```bash
+pip install requests aiohttp python-dotenv
+```
+
+#### Server Dependencies (Optional - Web Interface Only)
+```bash
+pip install fastapi uvicorn pydantic jinja2 python-multipart aiofiles
+```
+
+---
+
+### 🔧 Configuration
 
 3. Configure API keys in `.env` file:
 ```bash
@@ -586,6 +698,27 @@ CMD ["python", "server.py"]
 ## License
 
 MIT License - see LICENSE file for details.
+
+## 📚 Documentation & Setup Guides
+
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Complete setup guide for all use cases
+- **[SERVER_README.md](SERVER_README.md)** - Web server and API documentation  
+- **[AI_ENGINE_DOCUMENTATION.md](AI_ENGINE_DOCUMENTATION.md)** - Technical documentation
+- **[QUICKSTART.md](QUICKSTART.md)** - Quick start examples
+
+### Quick Setup Commands
+
+**For API Integration Only:**
+```bash
+pip install requests aiohttp python-dotenv
+# Use as Python library - no web interface
+```
+
+**For Full Web Interface:**
+```bash
+pip install requests aiohttp python-dotenv fastapi uvicorn pydantic jinja2 python-multipart aiofiles
+python server.py  # Access at http://localhost:8000
+```
 
 ## Support
 

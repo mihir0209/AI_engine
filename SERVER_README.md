@@ -6,6 +6,88 @@ A production-ready FastAPI server providing OpenAI-compatible APIs and a compreh
 
 The AI Engine server transforms the core AI Engine into a web service with REST APIs, real-time monitoring, and an intuitive management interface. It provides OpenAI-compatible endpoints for seamless integration with existing applications while adding advanced features like autodecide model routing and comprehensive provider management.
 
+## Server Setup Options
+
+Choose the setup that matches your deployment needs:
+
+### 🎯 Setup Decision Matrix
+
+| Deployment Type | Core Files | Server Files | Dependencies | Use Case |
+|-----------------|------------|-------------|--------------|----------|
+| **API Only** | ✅ | ❌ | 3 packages | Programmatic use, microservices |
+| **Web Interface** | ✅ | ✅ | 9 packages | Full dashboard, chat interface |
+| **Production** | ✅ | ✅ | 9 packages | Clean deployment, no demos |
+| **Development** | ✅ | ✅ | 9 packages | Testing, examples, debugging |
+
+---
+
+### 🔥 Option 1: Core Engine Only (No Server)
+
+**When to choose**: You only need AI Engine as a Python library
+
+```bash
+# Install minimal dependencies
+pip install requests aiohttp python-dotenv
+
+# Use in your Python code
+from ai_engine import AI_engine
+engine = AI_engine()
+result = engine.chat_completion([{"role": "user", "content": "Hello"}])
+```
+
+**What you don't need**:
+- `server.py` and server dependencies
+- `chat_module/` directory
+- `templates/` and `static/` directories
+- Web interface functionality
+
+---
+
+### 🌐 Option 2: Full Web Server
+
+**When to choose**: You want the complete web dashboard experience
+
+```bash
+# Install all dependencies
+pip install requests aiohttp python-dotenv
+pip install fastapi uvicorn pydantic jinja2 python-multipart aiofiles
+
+# Start the server
+python server.py
+```
+
+**What you get**:
+- Full web dashboard at `http://localhost:8000`
+- OpenAI-compatible API endpoints
+- Real-time monitoring and chat interface
+- Provider management tools
+
+---
+
+### 🚀 Option 3: Production Server
+
+**When to choose**: Clean production deployment
+
+```bash
+# Install server dependencies
+pip install -r requirements_core.txt -r requirements_server.txt
+
+# Remove development files
+rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm -rf __pycache__/ *.log
+
+# Deploy with production ASGI server
+uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+**Production considerations**:
+- Remove demo and test files
+- Use production ASGI server (Gunicorn + Uvicorn)
+- Set environment variables for security
+- Configure reverse proxy (Nginx)
+
+---
+
 ## Features
 
 ### REST API Endpoints
@@ -61,15 +143,48 @@ The AI Engine server transforms the core AI Engine into a web service with REST 
 
 ## Installation and Setup
 
+### Server Dependency Requirements
+
+Choose your installation based on your needs:
+
+#### Option 1: Core Engine Only (No Server)
+```bash
+# Minimal installation - API library only
+pip install -r requirements_core.txt
+# Contains: requests, aiohttp, python-dotenv
+
+# Usage: Python library only
+from ai_engine import AI_engine
+engine = AI_engine()
+result = engine.chat_completion([{"role": "user", "content": "Hello"}])
+```
+
+#### Option 2: Full Server Installation
+```bash
+# Complete installation - Web interface included
+pip install -r requirements_core.txt -r requirements_server.txt
+# Adds: fastapi, uvicorn, pydantic, jinja2, python-multipart, aiofiles
+
+# Usage: Full web server with dashboard
+python server.py
+```
+
+#### Option 3: Production Server Setup
+```bash
+# Install all dependencies
+pip install -r requirements_core.txt -r requirements_server.txt
+
+# Remove development files (20% size reduction)
+rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm -rf __pycache__/ *.log
+
+# Deploy with production ASGI server
+uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
 ### Prerequisites
 
-```bash
-# Core AI Engine dependencies
-pip install -r requirements.txt
-
-# Additional server dependencies
-pip install -r requirements_server.txt
-```
+For complete functionality, install both dependency sets:
 
 ### Environment Configuration
 
