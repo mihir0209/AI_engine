@@ -31,6 +31,7 @@ class ChatDB:
                     context_mode TEXT DEFAULT 'window',
                     summary TEXT,
                     is_temporary BOOLEAN DEFAULT 0,
+                    temporary_timer_minutes INTEGER DEFAULT 5,
                     force_provider BOOLEAN DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -44,6 +45,14 @@ class ChatDB:
                 # Column doesn't exist, add it
                 conn.execute("ALTER TABLE chats ADD COLUMN force_provider BOOLEAN DEFAULT 0")
                 logger.info("Added force_provider column to existing chats table")
+            
+            # Add temporary_timer_minutes column if it doesn't exist (migration)
+            try:
+                conn.execute("SELECT temporary_timer_minutes FROM chats LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                conn.execute("ALTER TABLE chats ADD COLUMN temporary_timer_minutes INTEGER DEFAULT 5")
+                logger.info("Added temporary_timer_minutes column to existing chats table")
             
             # Create messages table
             conn.execute("""
@@ -76,16 +85,17 @@ class ChatDB:
         return conn
 
     def create_chat(self, title: str, model: str = None, provider: str = None, 
-                   system_prompt: str = None, is_temporary: bool = False, force_provider: bool = False) -> int:
+                   system_prompt: str = None, is_temporary: bool = False, force_provider: bool = False, 
+                   temporary_timer_minutes: int = 5) -> int:
         """Create a new chat and return chat ID"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                INSERT INTO chats (title, model, provider, system_prompt, is_temporary, force_provider, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """, (title, model, provider, system_prompt, is_temporary, force_provider))
+                INSERT INTO chats (title, model, provider, system_prompt, is_temporary, force_provider, temporary_timer_minutes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (title, model, provider, system_prompt, is_temporary, force_provider, temporary_timer_minutes))
             chat_id = cursor.lastrowid
             conn.commit()
-            logger.info(f"Created chat {chat_id}: {title}")
+            logger.info(f"Created chat {chat_id}: {title} (temporary: {is_temporary}, timer: {temporary_timer_minutes} min)")
             return chat_id
 
     def get_chat(self, chat_id: int) -> Optional[Dict]:
@@ -109,6 +119,19 @@ class ChatDB:
             rows = conn.execute(query, (include_temporary, limit)).fetchall()
             return [dict(row) for row in rows]
 
+    def get_expired_temporary_chats(self) -> List[Dict]:
+        """Get temporary chats that have exceeded their timer"""
+        with self.get_connection() as conn:
+            query = """
+                SELECT id, title, created_at, temporary_timer_minutes
+                FROM chats 
+                WHERE is_temporary = 1 
+                AND datetime(created_at, '+' || temporary_timer_minutes || ' minutes') < datetime('now')
+                ORDER BY created_at ASC
+            """
+            rows = conn.execute(query).fetchall()
+            return [dict(row) for row in rows]
+
     def add_message(self, chat_id: int, role: str, content: str, 
                    metadata: Dict = None, tokens: int = 0, response_to: int = None) -> int:
         """Add message to chat"""
@@ -116,19 +139,29 @@ class ChatDB:
             metadata = {}
         
         with self.get_connection() as conn:
-            cursor = conn.execute("""
-                INSERT INTO messages (chat_id, role, content, metadata, tokens, response_to)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (chat_id, role, content, json.dumps(metadata), tokens, response_to))
+            # First check if the chat exists
+            chat_check = conn.execute("SELECT id FROM chats WHERE id = ?", (chat_id,)).fetchone()
+            if not chat_check:
+                raise ValueError(f"Chat {chat_id} does not exist")
             
-            message_id = cursor.lastrowid
-            
-            # Update chat timestamp
-            conn.execute("UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (chat_id,))
-            conn.commit()
-            
-            logger.debug(f"Added message {message_id} to chat {chat_id}: {role}")
-            return message_id
+            try:
+                cursor = conn.execute("""
+                    INSERT INTO messages (chat_id, role, content, metadata, tokens, response_to)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (chat_id, role, content, json.dumps(metadata), tokens, response_to))
+                
+                message_id = cursor.lastrowid
+                
+                # Update chat timestamp
+                conn.execute("UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (chat_id,))
+                conn.commit()
+                
+                logger.debug(f"Added message {message_id} to chat {chat_id}: {role}")
+                return message_id
+            except sqlite3.IntegrityError as e:
+                if "FOREIGN KEY constraint failed" in str(e):
+                    raise ValueError(f"Chat {chat_id} was deleted while adding message")
+                raise
 
     def get_messages(self, chat_id: int, limit: int = 100, after_id: int = None) -> List[Dict]:
         """Get messages for a chat"""
@@ -203,6 +236,29 @@ class ChatDB:
             query = f"UPDATE chats SET {', '.join(fields)} WHERE id = ?"
             conn.execute(query, values)
             conn.commit()
+            return True
+
+    def convert_chat_to_permanent(self, chat_id: int, new_title: str = None) -> bool:
+        """Convert a temporary chat to permanent"""
+        with self.get_connection() as conn:
+            # First check if the chat exists and is temporary
+            result = conn.execute("SELECT is_temporary, title FROM chats WHERE id = ?", (chat_id,)).fetchone()
+            if not result:
+                return False
+            
+            is_temporary, current_title = result
+            if not is_temporary:
+                return False  # Already permanent
+                
+            # Update the chat to be permanent
+            title_to_use = new_title if new_title else current_title
+            conn.execute("""
+                UPDATE chats 
+                SET is_temporary = 0, title = ?, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = ?
+            """, (title_to_use, chat_id))
+            conn.commit()
+            logger.info(f"Converted temporary chat {chat_id} to permanent with title: {title_to_use}")
             return True
 
     def delete_chat(self, chat_id: int) -> bool:

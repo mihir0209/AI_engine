@@ -537,6 +537,7 @@ class AI_engine:
         if provider_name in self.usage_stats:
             self.usage_stats[provider_name]['failures'] += 1
             self.usage_stats[provider_name]['consecutive_failures'] = consecutive_count
+            self.usage_stats[provider_name]['last_failure'] = datetime.now()
         
         if self.verbose:
             verbose_print(f"🔍 {provider_name} error classified as: {error_type}", self.verbose)
@@ -584,6 +585,7 @@ class AI_engine:
             stats['successes'] += 1
             stats['consecutive_failures'] = 0
             stats['last_used'] = datetime.now()
+            stats['last_success'] = datetime.now()
             stats['total_response_time'] += response_time
             
         # Unflag provider if it was flagged
@@ -591,6 +593,87 @@ class AI_engine:
             del self.flagged_keys[provider_name]
             if self.verbose:
                 verbose_print(f"🟢 {provider_name} unflagged after successful response", self.verbose)
+        
+        # Reset any rate-limited keys for this provider since it's working
+        self._reset_rate_limited_keys(provider_name)
+
+    def _reset_rate_limited_keys(self, provider_name: str):
+        """Reset rate limited status for provider keys after successful request"""
+        if provider_name in self.key_usage_stats:
+            reset_count = 0
+            for key_id, stats in self.key_usage_stats[provider_name].items():
+                if stats.get('rate_limited', False):
+                    stats['rate_limited'] = False
+                    reset_count += 1
+            
+            if reset_count > 0 and self.verbose:
+                verbose_print(f"🔄 Reset rate limit status for {reset_count} keys in {provider_name}", self.verbose)
+
+    def _check_provider_recovery(self, provider_name: str) -> bool:
+        """
+        Check if a provider has likely recovered from previous issues
+        Returns True if provider should be tried again
+        """
+        if provider_name not in self.usage_stats:
+            return True  # No history, worth trying
+        
+        stats = self.usage_stats[provider_name]
+        current_time = datetime.now()
+        
+        # If provider was flagged, check if flag has expired
+        if self._is_key_flagged(provider_name):
+            return False
+        
+        # Check if enough time has passed since last failure
+        last_failure = stats.get('last_failure')
+        if last_failure:
+            time_since_failure = current_time - last_failure
+            # Recovery time increases with consecutive failures
+            recovery_minutes = min(stats.get('consecutive_failures', 0) * 2, 30)
+            
+            if time_since_failure.total_seconds() < recovery_minutes * 60:
+                return False
+        
+        # Check success rate - if it's too low recently, wait longer
+        recent_requests = stats.get('requests', 0)
+        recent_successes = stats.get('successes', 0)
+        
+        if recent_requests > 5:  # Only check if we have enough data
+            success_rate = recent_successes / recent_requests
+            if success_rate < 0.3:  # Less than 30% success rate
+                return False
+        
+        return True
+
+    def _get_preferred_provider_order(self, preferred_provider: str = None) -> List[str]:
+        """
+        Get provider order prioritizing preferred provider and recovery checks
+        """
+        available_providers = []
+        
+        # First, add preferred provider if specified and available
+        if preferred_provider and preferred_provider in self.providers:
+            if self.providers[preferred_provider].get('enabled', True):
+                if self._check_provider_recovery(preferred_provider):
+                    available_providers.append(preferred_provider)
+                    if self.verbose:
+                        verbose_print(f"🎯 Prioritizing recovered preferred provider: {preferred_provider}", self.verbose)
+        
+        # Then add other providers based on priority and recovery status
+        for provider_name, config in self.providers.items():
+            if provider_name == preferred_provider:
+                continue  # Already handled above
+                
+            if not config.get('enabled', True):
+                continue
+                
+            if self._check_provider_recovery(provider_name):
+                available_providers.append(provider_name)
+        
+        # Sort by priority (assuming higher priority number = higher priority)
+        available_providers.sort(key=lambda p: self.providers[p].get('priority', 0), reverse=True)
+        
+        return available_providers
     
     def _flag_provider(self, provider_name: str, duration_minutes: int = 30):
         """Flag a provider temporarily due to consecutive failures"""
@@ -698,16 +781,18 @@ class AI_engine:
             
         return "unknown"
     
-    def _get_available_providers(self) -> List[Tuple[str, Dict]]:
-        """Get list of available providers sorted by priority"""
+    def _get_available_providers(self, preferred_provider: str = None) -> List[Tuple[str, Dict]]:
+        """Get list of available providers sorted by priority and recovery status"""
+        # Use the new provider ordering that considers recovery
+        provider_order = self._get_preferred_provider_order(preferred_provider)
+        
         available = []
+        for provider_name in provider_order:
+            if provider_name in self.providers:
+                config = self.providers[provider_name]
+                if config.get('enabled', True):
+                    available.append((provider_name, config))
         
-        for name, config in self.providers.items():
-            if not self._is_key_flagged(name):
-                available.append((name, config))
-        
-        # Sort by priority (lower number = higher priority)
-        available.sort(key=lambda x: x[1]['priority'])
         return available
     
     def _update_stats(self, provider_name: str, success: bool, response_time: float):
@@ -1299,8 +1384,8 @@ class AI_engine:
                 if self.verbose:
                     verbose_print(f"⚠️ Preferred provider {preferred_provider} not available or flagged", self.verbose)
         
-        # Fall back to normal provider rotation
-        available_providers = self._get_available_providers()
+        # Fall back to normal provider rotation with recovery awareness
+        available_providers = self._get_available_providers(preferred_provider)
         
         if not available_providers:
             return RequestResult(

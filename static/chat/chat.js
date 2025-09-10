@@ -6,6 +6,7 @@ class ChatInterface {
         this.providers = {};
         this.isConnected = false;
         this.messageBuffer = '';
+        this.isAIResponding = false; // Track if AI is currently responding
         
         this.init();
     }
@@ -24,17 +25,19 @@ class ChatInterface {
         // Track temporary chats opened in this session
         this.sessionTemporaryChats = new Set();
         
+        // DISABLED: Too aggressive cleanup that deletes chats immediately
         // Cleanup temporary chats when page is closed/refreshed
-        window.addEventListener('beforeunload', () => {
-            this.cleanupTemporaryChats();
-        });
+        // window.addEventListener('beforeunload', () => {
+        //     this.cleanupTemporaryChats();
+        // });
         
+        // DISABLED: This was deleting chats when tab loses focus
         // Also cleanup on visibility change (when tab is hidden)
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                this.cleanupTemporaryChats();
-            }
-        });
+        // document.addEventListener('visibilitychange', () => {
+        //     if (document.hidden) {
+        //         this.cleanupTemporaryChats();
+        //     }
+        // });
     }
 
     async cleanupTemporaryChats() {
@@ -315,6 +318,12 @@ class ChatInterface {
         document.getElementById('chatTitle').textContent = chat.title;
         document.getElementById('chatType').textContent = chat.is_temporary ? 'Temporary' : 'Permanent';
         document.getElementById('chatType').className = `badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'}`;
+        
+        // Show/hide convert to permanent button
+        const convertBtn = document.getElementById('convertToPermanentBtn');
+        if (convertBtn) {
+            convertBtn.style.display = chat.is_temporary ? 'inline-block' : 'none';
+        }
         
         // Show/hide force provider badge
         const forceProviderBadge = document.getElementById('forceProviderBadge');
@@ -611,6 +620,11 @@ class ChatInterface {
                 }
                 break;
                 
+            case 'chat_deleted':
+                // Handle chat deletion notification
+                await this.handleChatDeleted(data.chat_id);
+                break;
+                
             case 'ai_error':
                 this.hideTypingIndicator();
                 this.showError('AI Error: ' + data.content);
@@ -701,6 +715,7 @@ class ChatInterface {
     }
 
     showTypingIndicator() {
+        this.isAIResponding = true; // Track AI response state
         document.getElementById('typingIndicator').style.display = 'block';
         
         // Add loading message bubble
@@ -719,6 +734,7 @@ class ChatInterface {
     }
 
     hideTypingIndicator() {
+        this.isAIResponding = false; // Clear AI response state
         document.getElementById('typingIndicator').style.display = 'none';
         const loadingMsg = document.getElementById('loadingMessage');
         if (loadingMsg) {
@@ -815,8 +831,13 @@ class ChatInterface {
     }
 
     // Chat Creation
-    async createNewChat(isTemporary = false) {
+    async createNewChat(isTemporary = false, customTimer = 5) {
         document.getElementById('isTemporaryCheck').checked = isTemporary;
+        document.getElementById('temporaryTimerInput').value = customTimer;
+        
+        // Show/hide timer container based on temporary status
+        this.toggleTemporaryTimer(isTemporary);
+        
         const modal = new bootstrap.Modal(document.getElementById('createChatModal'));
         modal.show();
     }
@@ -831,6 +852,7 @@ class ChatInterface {
         const model = document.getElementById('chatModelSelect').value || null;
         const isTemporary = document.getElementById('isTemporaryCheck').checked;
         const forceProvider = document.getElementById('forceProviderCheck').checked;
+        const temporaryTimer = parseInt(document.getElementById('temporaryTimerInput').value) || 5;
 
         if (!title) {
             alert('Please enter a chat title');
@@ -855,7 +877,8 @@ class ChatInterface {
                     provider: provider,
                     model: model,
                     is_temporary: isTemporary,
-                    force_provider: forceProvider
+                    force_provider: forceProvider,
+                    temporary_timer_minutes: temporaryTimer
                 })
             });
 
@@ -1224,6 +1247,85 @@ class ChatInterface {
         }, 5000);
     }
 
+    async handleChatDeleted(chatId) {
+        // Remove chat from the sidebar without affecting current chat view
+        const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+        if (chatElement) {
+            chatElement.remove();
+            console.log(`Chat ${chatId} automatically deleted after 5 minutes`);
+        }
+        
+        // If the deleted chat is the current one, show a notification but don't navigate away
+        if (this.currentChatId == chatId) {
+            this.showAlert('info', 'This temporary chat has been automatically cleaned up after 5 minutes');
+            // Keep the interface as is - user can continue working
+        }
+        
+        // Update stats
+        await this.loadStats();
+    }
+
+    async getChat(chatId) {
+        try {
+            const response = await fetch(`/api/chat/chats/${chatId}`);
+            if (response.ok) {
+                return await response.json();
+            }
+        } catch (error) {
+            console.error('Error fetching chat:', error);
+        }
+        return null;
+    }
+
+    toggleTemporaryTimer(show) {
+        const container = document.getElementById('temporaryTimerContainer');
+        if (container) {
+            container.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    async convertCurrentChatToPermanent() {
+        if (!this.currentChatId) {
+            this.showError('No chat selected');
+            return;
+        }
+
+        const chatElement = document.querySelector(`[data-chat-id="${this.currentChatId}"]`);
+        if (!chatElement || chatElement.getAttribute('data-is-temporary') !== 'true') {
+            this.showError('This chat is already permanent');
+            return;
+        }
+
+        try {
+            const title = prompt('Enter a title for this permanent chat:', 'Untitled Chat');
+            if (!title) return; // User cancelled
+
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/convert-to-permanent?new_title=${encodeURIComponent(title)}`, {
+                method: 'POST'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showSuccess('Chat converted to permanent!');
+                await this.loadChats(); // Refresh chat list
+                
+                // Refresh the current chat to update header
+                if (this.currentChatId) {
+                    const chat = await this.getChat(this.currentChatId);
+                    if (chat) {
+                        this.renderChatHeader(chat);
+                    }
+                }
+            } else {
+                this.showError('Failed to convert chat: ' + (result.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error converting chat:', error);
+            this.showError('Failed to convert chat');
+        }
+    }
+
     // Quick temporary chat creation - bypasses modal
     async createQuickTempChat() {
         try {
@@ -1391,69 +1493,84 @@ function toggleSystemPrompt() {
     chatInterface.toggleSystemPrompt();
 }
 
+function convertCurrentChatToPermanent() {
+    if (chatInterface) {
+        chatInterface.convertCurrentChatToPermanent();
+    }
+}
+
+function createCustomTemporaryChat() {
+    if (chatInterface) {
+        chatInterface.createNewChat(true, 15); // Default to 15 minutes for custom
+    }
+}
+
 // Initialize chat interface when page loads
 let chatInterface;
 document.addEventListener('DOMContentLoaded', function() {
     chatInterface = new ChatInterface();
+    
+    // Add event listener for temporary checkbox
+    const isTemporaryCheck = document.getElementById('isTemporaryCheck');
+    if (isTemporaryCheck) {
+        isTemporaryCheck.addEventListener('change', function() {
+            if (chatInterface) {
+                chatInterface.toggleTemporaryTimer(this.checked);
+            }
+        });
+    }
 });
 
-// Auto-delete temporary chats when leaving the page
+// TEMPORARILY DISABLED - Auto-delete temporary chats when leaving the page
+/*
 window.addEventListener('beforeunload', function(event) {
     if (chatInterface && chatInterface.currentChatId) {
-        // Check if current chat is temporary
+        // Check if current chat is temporary AND has no messages yet
         const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
         if (chatElement && chatElement.classList.contains('temp-chat')) {
-            // Use fetch with keepalive for reliable delivery when page is unloading
-            try {
-                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
-                    method: 'DELETE',
-                    keepalive: true
-                }).catch(error => {
+            // Only delete if the chat has no meaningful content
+            const messagesList = document.getElementById('messagesList');
+            const messages = messagesList ? messagesList.children.length : 0;
+            
+            // Don't delete if there are messages or if AI is currently responding
+            if (messages <= 1 && !chatInterface.isAIResponding) {
+                try {
+                    fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                        method: 'DELETE',
+                        keepalive: true
+                    }).catch(error => {
+                        console.warn('Could not delete temporary chat on page unload:', error);
+                    });
+                } catch (error) {
                     console.warn('Could not delete temporary chat on page unload:', error);
-                });
-            } catch (error) {
-                console.warn('Could not delete temporary chat on page unload:', error);
+                }
             }
         }
     }
 });
 
-// Also handle visibility change (tab switching, window minimization)
-document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'hidden') {
-        if (chatInterface && chatInterface.currentChatId) {
-            const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
-            if (chatElement && chatElement.classList.contains('temp-chat')) {
-                // For visibility change, we can use a regular async request
-                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    keepalive: true // Ensure request completes even if page becomes hidden
-                }).catch(error => {
-                    console.warn('Could not delete temporary chat on visibility change:', error);
-                });
-            }
-        }
-    }
-});
-
-// Handle navigation away from chat page
+// Handle navigation away from chat page - be more conservative
 window.addEventListener('pagehide', function(event) {
     if (chatInterface && chatInterface.currentChatId) {
         const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
         if (chatElement && chatElement.classList.contains('temp-chat')) {
-            try {
-                fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
-                    method: 'DELETE',
-                    keepalive: true
-                }).catch(error => {
+            // Only delete empty temporary chats when page is actually being closed
+            const messagesList = document.getElementById('messagesList');
+            const messages = messagesList ? messagesList.children.length : 0;
+            
+            if (messages <= 1 && !chatInterface.isAIResponding) {
+                try {
+                    fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                        method: 'DELETE',
+                        keepalive: true
+                    }).catch(error => {
+                        console.warn('Could not delete temporary chat on page hide:', error);
+                    });
+                } catch (error) {
                     console.warn('Could not delete temporary chat on page hide:', error);
-                });
-            } catch (error) {
-                console.warn('Could not delete temporary chat on page hide:', error);
+                }
             }
         }
     }
 });
+*/

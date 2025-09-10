@@ -65,6 +65,49 @@ class WebSocketManager:
         })
         await self.broadcast_to_chat(message, chat_id)
 
+    async def notify_chat_deleted(self, chat_id: int):
+        """Notify all clients that a chat has been deleted and close connections to that chat"""
+        # First, handle connections specifically for this chat
+        if chat_id in self.active_connections:
+            connections = self.active_connections[chat_id].copy()  # Copy to avoid modification during iteration
+            for connection in connections:
+                try:
+                    await connection.send_text(json.dumps({
+                        "type": "chat_deleted", 
+                        "chat_id": chat_id, 
+                        "message": "This chat has been automatically deleted"
+                    }))
+                    # Close the WebSocket connection
+                    await connection.close()
+                except Exception as e:
+                    logger.error(f"Error notifying chat {chat_id} deletion: {e}")
+            
+            # Remove all connections for this chat
+            del self.active_connections[chat_id]
+            logger.info(f"Closed all WebSocket connections for deleted chat {chat_id}")
+        
+        # Broadcast to all other clients to update their chat lists
+        message = json.dumps({
+            "type": "chat_deleted",
+            "chat_id": chat_id
+        })
+        await self.broadcast_to_all(message)
+
+    async def broadcast_to_all(self, message: str):
+        """Send message to all active connections across all chats"""
+        disconnected = []
+        for chat_id, connections in self.active_connections.items():
+            for connection in connections:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    logger.error(f"Error broadcasting to all connections: {e}")
+                    disconnected.append((connection, chat_id))
+        
+        # Remove disconnected connections
+        for connection, chat_id in disconnected:
+            self.disconnect(connection, chat_id)
+
     def get_connection_count(self, chat_id: int) -> int:
         """Get number of active connections for a chat"""
         return len(self.active_connections.get(chat_id, []))

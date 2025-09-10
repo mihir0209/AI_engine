@@ -91,6 +91,14 @@ async def lifespan(app: FastAPI):
     # Start auto-refresh background task
     shared_model_cache.start_auto_refresh(refresh_cache)
     
+    # Start temporary chat cleanup task
+    try:
+        from chat_module.router import start_cleanup_task
+        start_cleanup_task()
+        verbose_print("🧹 Temporary chat cleanup task started")
+    except ImportError:
+        verbose_print("⚠️ Could not start temporary chat cleanup task")
+    
     yield  # Server is running
     
     # Shutdown (cleanup if needed)

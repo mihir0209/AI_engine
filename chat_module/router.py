@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -48,6 +48,7 @@ class CreateChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     is_temporary: bool = False
     force_provider: bool = False  # New field to force specific provider usage
+    temporary_timer_minutes: int = Field(default=5, ge=1, le=60)  # Timer in minutes (1-60)
 
 class SendMessageRequest(BaseModel):
     role: str = Field(..., pattern="^(user|system)$")
@@ -70,6 +71,7 @@ class ChatResponse(BaseModel):
     context_mode: str
     summary: Optional[str]
     is_temporary: bool
+    temporary_timer_minutes: int
     force_provider: bool
     created_at: str
     updated_at: str
@@ -89,6 +91,44 @@ class MessageResponse(BaseModel):
 # Initialize components
 chat_db = ChatDB()
 websocket_manager = WebSocketManager()
+
+# Background task for cleaning up temporary chats
+async def cleanup_expired_temporary_chats():
+    """Background task to delete temporary chats after their configured timer expires"""
+    while True:
+        try:
+            # Get all temporary chats that have exceeded their timer
+            expired_chats = chat_db.get_expired_temporary_chats()
+            
+            for chat in expired_chats:
+                chat_id = chat['id']
+                timer_minutes = chat.get('temporary_timer_minutes', 5)
+                verbose_print(f"Auto-deleting expired temporary chat {chat_id} (timer: {timer_minutes} minutes)")
+                
+                # Delete the chat from database
+                success = chat_db.delete_chat(chat_id)
+                
+                if success:
+                    # Notify all connected clients via WebSocket
+                    await websocket_manager.notify_chat_deleted(chat_id)
+                    verbose_print(f"Successfully auto-deleted temporary chat {chat_id}")
+                else:
+                    verbose_print(f"Failed to auto-delete temporary chat {chat_id}")
+                    
+        except Exception as e:
+            logger.error(f"Error in cleanup_expired_temporary_chats: {e}")
+        
+        # Sleep for 30 seconds before next check
+        await asyncio.sleep(30)
+
+# Start the cleanup task
+cleanup_task = None
+
+def start_cleanup_task():
+    """Start the background cleanup task"""
+    global cleanup_task
+    if cleanup_task is None:
+        cleanup_task = asyncio.create_task(cleanup_expired_temporary_chats())
 
 # Create router
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -113,7 +153,8 @@ async def create_chat(request: CreateChatRequest):
             provider=request.provider,
             system_prompt=request.system_prompt,
             is_temporary=request.is_temporary,
-            force_provider=request.force_provider
+            force_provider=request.force_provider,
+            temporary_timer_minutes=request.temporary_timer_minutes
         )
         
         chat = chat_db.get_chat(chat_id)
@@ -214,6 +255,37 @@ async def update_chat(chat_id: int, request: UpdateChatRequest):
         logger.error(f"Error updating chat {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update chat")
 
+@router.post("/chats/{chat_id}/convert-to-permanent")
+async def convert_chat_to_permanent(chat_id: int, new_title: Optional[str] = None):
+    """Convert a temporary chat to permanent"""
+    try:
+        # Verify chat exists and is temporary
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        if not chat['is_temporary']:
+            raise HTTPException(status_code=400, detail="Chat is already permanent")
+        
+        # Convert to permanent
+        success = chat_db.convert_chat_to_permanent(chat_id, new_title)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to convert chat")
+        
+        # Get updated chat
+        updated_chat = chat_db.get_chat(chat_id)
+        return {
+            "success": True,
+            "message": "Chat converted to permanent",
+            "chat": ChatResponse(**updated_chat)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error converting chat {chat_id} to permanent: {e}")
+        raise HTTPException(status_code=500, detail="Failed to convert chat")
+
 @router.delete("/chats/{chat_id}")
 async def delete_chat(chat_id: int):
     """Delete a chat"""
@@ -291,18 +363,29 @@ async def handle_websocket_message(websocket: WebSocket, chat_id: int, message_d
         chat = chat_db.get_chat(chat_id)
         if not chat:
             await websocket.send_text(json.dumps({
-                "type": "error",
-                "message": "Chat not found"
+                "type": "chat_deleted",
+                "message": "Chat no longer exists"
             }))
+            await websocket.close()
             return
         
         # Add user message
-        user_message_id = chat_db.add_message(
-            chat_id=chat_id,
-            role="user",
-            content=message_data["content"],
-            metadata=message_data.get("metadata", {})
-        )
+        try:
+            user_message_id = chat_db.add_message(
+                chat_id=chat_id,
+                role="user",
+                content=message_data["content"],
+                metadata=message_data.get("metadata", {})
+            )
+        except ValueError as e:
+            if "does not exist" in str(e) or "was deleted" in str(e):
+                await websocket.send_text(json.dumps({
+                    "type": "chat_deleted",
+                    "message": "Chat was deleted while sending message"
+                }))
+                await websocket.close()
+                return
+            raise
         
         # Send confirmation
         await websocket.send_text(json.dumps({
@@ -534,17 +617,26 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                 await asyncio.sleep(0.02)
 
             # Persist assistant message
-            assistant_message_id = chat_db.add_message(
-                chat_id=chat_id,
-                role="assistant",
-                content=response_content,
-                metadata={"provider": provider_used, "model": model_used, "response_time": response_time, "timestamp": datetime.now().isoformat()},
-                tokens=(len(response_content) // 4) if response_content else 0,
-                response_to=user_message_id
-            )
-
-            # Notify client of completion
-            await websocket.send_text(json.dumps({"type": "ai_complete", "message_id": assistant_message_id, "provider": provider_used, "model": model_used, "response_time": response_time}))
+            try:
+                assistant_message_id = chat_db.add_message(
+                    chat_id=chat_id,
+                    role="assistant",
+                    content=response_content,
+                    metadata={"provider": provider_used, "model": model_used, "response_time": response_time, "timestamp": datetime.now().isoformat()},
+                    tokens=(len(response_content) // 4) if response_content else 0,
+                    response_to=user_message_id
+                )
+                
+                # Notify client of completion
+                await websocket.send_text(json.dumps({"type": "ai_complete", "message_id": assistant_message_id, "provider": provider_used, "model": model_used, "response_time": response_time}))
+            except ValueError as e:
+                if "does not exist" in str(e) or "was deleted" in str(e):
+                    # Chat was deleted while processing
+                    logger.warning(f"Chat {chat_id} was deleted while processing AI response")
+                    await websocket.send_text(json.dumps({"type": "chat_deleted", "message": "Chat was deleted"}))
+                    await websocket.close()
+                    return
+                raise
         else:
             error_msg = getattr(result, 'error_message', 'Unknown error') if result is not None else 'AI call failed'
             logger.error(f"AI returned error for chat {chat_id}: {error_msg}")
@@ -552,7 +644,15 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                 await websocket.send_text(json.dumps({"type": "ai_error", "content": f"Error: {error_msg}"}))
             except Exception:
                 pass
-            chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {error_msg}", metadata={"error": True}, response_to=user_message_id)
+            
+            # Try to save error message, but handle chat deletion gracefully
+            try:
+                chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {error_msg}", metadata={"error": True}, response_to=user_message_id)
+            except ValueError as e:
+                if "does not exist" in str(e) or "was deleted" in str(e):
+                    logger.warning(f"Chat {chat_id} was deleted while saving error message")
+                else:
+                    raise
 
     except Exception as e:
         logger.exception(f"Error processing AI response stream for chat {chat_id}: {e}")
