@@ -16,7 +16,7 @@ Choose the setup that matches your deployment needs:
 |-----------------|------------|-------------|--------------|----------|
 | **API Only** | ✅ | ❌ | 3 packages | Programmatic use, microservices |
 | **Web Interface** | ✅ | ✅ | 9 packages | Full dashboard, chat interface |
-| **Production** | ✅ | ✅ | 9 packages | Clean deployment, no demos |
+| **Production** | ✅ | ✅ | 9 packages | Clean deployment, no tests |
 | **Development** | ✅ | ✅ | 9 packages | Testing, examples, debugging |
 
 ---
@@ -73,7 +73,7 @@ python server.py
 pip install -r requirements_core.txt -r requirements_server.txt
 
 # Remove development files
-rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm test_*.py PROVIDER_TESTING_REPORT.py
 rm -rf __pycache__/ *.log
 
 # Deploy with production ASGI server
@@ -81,7 +81,7 @@ uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 **Production considerations**:
-- Remove demo and test files
+- Remove test files
 - Use production ASGI server (Gunicorn + Uvicorn)
 - Set environment variables for security
 - Configure reverse proxy (Nginx)
@@ -175,7 +175,7 @@ python server.py
 pip install -r requirements_core.txt -r requirements_server.txt
 
 # Remove development files (20% size reduction)
-rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm test_*.py PROVIDER_TESTING_REPORT.py
 rm -rf __pycache__/ *.log
 
 # Deploy with production ASGI server

@@ -50,15 +50,13 @@ AI Engine v3.0 is an enterprise-grade Python system for managing multiple AI pro
 
 AI Engine v3.0 offers flexible deployment options based on your needs. Choose the setup that matches your use case:
 
-> **📋 Need detailed setup instructions?** See the complete [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step instructions for all use cases.
-
 ### 🎯 Setup Options Overview
 
 | Use Case | Files Needed | Dependencies | Size | Best For |
 |----------|-------------|--------------|------|----------|
 | **Minimal API** | Core files only | 3 packages | ~20% | API integration, lightweight apps |
 | **Full Server** | All files | 9 packages | 100% | Web dashboard, chat interface |
-| **Production** | Core + server | 9 packages | ~80% | Clean deployment, no demos |
+| **Production** | Core + server | 9 packages | ~80% | Clean deployment, no tests |
 | **Development** | All files | 9 packages | 100% | Testing, examples, debugging |
 
 ---
@@ -73,11 +71,11 @@ git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
 
 # 2. Install core dependencies only (3 packages)
-pip install -r requirements_core.txt
+pip install -r requirements.txt
 
 # 3. Keep only essential files:
 # ✅ ai_engine.py, config.py, statistics_manager.py, model_cache.py, .env
-# 🗑️ Remove: server.py, chat_module/, templates/, static/, test_*.py, demo_*.py
+# 🗑️ Remove: server.py, chat_module/, templates/, static/, test_*.py
 ```
 
 **Usage**:
@@ -102,7 +100,7 @@ git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
 
 # 2. Install all dependencies
-pip install -r requirements_core.txt
+pip install -r requirements.txt
 pip install -r requirements_server.txt
 
 # 3. Keep all files for full functionality
@@ -124,15 +122,15 @@ git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
 
 # 2. Install dependencies based on needs
-pip install -r requirements_core.txt
+pip install -r requirements.txt
 pip install -r requirements_server.txt  # Only if web interface needed
 
 # 3. Remove development files:
-rm test_*.py demo_*.py PROVIDER_TESTING_REPORT.py
+rm test_*.py PROVIDER_TESTING_REPORT.py
 rm -rf __pycache__/ *.log
 ```
 
-**Size**: ~80% of installation | **Features**: Core + server without demos/tests
+**Size**: ~80% of installation | **Features**: Core + server without tests
 
 ---
 
@@ -146,29 +144,15 @@ git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
 
 # 2. Install all dependencies
-pip install -r requirements_core.txt
+pip install -r requirements.txt
 pip install -r requirements_server.txt
 
-# 3. Keep all files including demos and tests
+# 3. Keep all files including tests
 ```
 
-**Features**: Examples, tests, demos, full documentation
+**Features**: Examples, tests, full documentation
 
-**Size**: 100% of installation | **Includes**: All demo files, test scripts, examples
-
----
-
-### 📋 Dependency Details
-
-#### Core Dependencies (Always Required)
-```bash
-pip install requests aiohttp python-dotenv
-```
-
-#### Server Dependencies (Optional - Web Interface Only)
-```bash
-pip install fastapi uvicorn pydantic jinja2 python-multipart aiofiles
-```
+**Size**: 100% of installation | **Includes**: All test files, test scripts, examples
 
 ---
 
@@ -238,9 +222,6 @@ python server.py
 📚 API Docs: http://localhost:8000/docs
 🔴 ReDoc: http://localhost:8000/redoc
 📝 Server logs: ai_engine_server.log
-
-# Debug startup (verbose_mode: True)
-# Shows full model discovery progress with threading details
 ```
 
 ### Verbose Mode Control
@@ -501,23 +482,7 @@ ANTHROPIC_API_KEY=your_key
 
 # Other providers
 GROQ_API_KEY=your_key
-PAXSENIX_API_KEY=your_key
-CHI_API_KEY=your_key
-SAMURAI_API_KEY=your_key
-A4F_API_KEY=your_key
-MANGO_API_KEY=your_key
-WOW_TYPEGPT_API_KEY=your_key
-COHERE_API_KEY=your_key
-CLOUDFLARE_API_KEY=your_key
-CLOUDFLARE_ACCOUNT_ID=your_id
-OPENROUTER_API_KEY=your_key
-NVIDIA_API_KEY=your_key
-VERCEL_API_KEY=your_key
-GITHUB_API_KEY=your_key
-PAWAN_API_KEY=your_key
-CEREBRAS_API_KEY=your_key
-FLOWITH_API_KEY=your_key
-MINIMAX_API_KEY=your_key
+etc etc
 ```
 
 ### Engine Settings
@@ -623,20 +588,7 @@ Based on recent testing (results may vary):
 
 *Performance Score = (Success Rate × 60%) + (Speed Score × 40%)*
 
-## Development & Testing
-
-### Running Tests
-
-```bash
-# Basic functionality tests
-python test_autodecide_basic.py
-
-# Comprehensive autodecide tests
-python test_autodecide_comprehensive.py
-
-# Server API tests (requires running server)
-python test_autodecide_server.py
-```
+## Development 
 
 ### Development Setup
 
@@ -680,25 +632,6 @@ CMD ["python", "server.py"]
 - Use a production ASGI server (Gunicorn + Uvicorn)
 - Set up health checks and auto-restart
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes with tests
-4. Ensure all tests pass
-5. Submit a pull request
-
-### Code Standards
-
-- Follow PEP 8 style guidelines
-- Include docstrings for all public methods
-- Add unit tests for new features
-- Update documentation for changes
-
-## License
-
-MIT License - see LICENSE file for details.
-
 ## 📚 Documentation & Setup Guides
 
 - **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Complete setup guide for all use cases
@@ -706,41 +639,11 @@ MIT License - see LICENSE file for details.
 - **[AI_ENGINE_DOCUMENTATION.md](AI_ENGINE_DOCUMENTATION.md)** - Technical documentation
 - **[QUICKSTART.md](QUICKSTART.md)** - Quick start examples
 
-### Quick Setup Commands
-
-**For API Integration Only:**
-```bash
-pip install requests aiohttp python-dotenv
-# Use as Python library - no web interface
-```
-
-**For Full Web Interface:**
-```bash
-pip install requests aiohttp python-dotenv fastapi uvicorn pydantic jinja2 python-multipart aiofiles
-python server.py  # Access at http://localhost:8000
-```
-
 ## Support
 
 - GitHub Issues: Report bugs and request features
 - Documentation: Comprehensive guides and API reference
-- Examples: See the `examples/` directory for usage patterns
 
-## Changelog
-
-### v3.0.0
-- Added autodecide feature for intelligent model-to-provider matching
-- Implemented FastAPI web server with dashboard
-- Enhanced error handling with 8 classification types
-- Added comprehensive testing suite
-- Improved security with environment-based configuration
-- Added support for 24 AI providers
-- Implemented intelligent caching for 10x performance improvement
-
-### v2.x
-- Multi-provider support with automatic failover
-- API key rotation system
-- Basic error handling and logging
-
-### v1.x
-- Initial release with basic provider support
+## Contribute
+- If you want to contribute in this project, feel free to do it.
+- If you know some more free tier providers then please contribute here in config file...
