@@ -1,12 +1,15 @@
 """
 Intelligent routing module for AI Engine
-Provides task-based model selection and cost optimization
+Provides task-based model selection, cost optimization, latency tracking, and A/B testing
 """
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import json
 import os
+import random
+import time
+from collections import defaultdict
 
 
 @dataclass
@@ -30,6 +33,46 @@ class ModelPricing:
     output_cost_per_1k: float  # Cost per 1000 output tokens
     rpm_limit: int = 60
     daily_limit: int = 1000
+
+
+@dataclass
+class LatencyStats:
+    """Latency statistics for a provider"""
+    provider: str
+    model: str
+    total_requests: int = 0
+    total_latency: float = 0.0
+    min_latency: float = float('inf')
+    max_latency: float = 0.0
+    p50_latency: float = 0.0
+    p95_latency: float = 0.0
+    p99_latency: float = 0.0
+    recent_latencies: List[float] = field(default_factory=list)
+    
+    def record(self, latency: float):
+        """Record a latency measurement"""
+        self.total_requests += 1
+        self.total_latency += latency
+        self.min_latency = min(self.min_latency, latency)
+        self.max_latency = max(self.max_latency, latency)
+        
+        # Keep last 100 measurements for percentile calculation
+        self.recent_latencies.append(latency)
+        if len(self.recent_latencies) > 100:
+            self.recent_latencies.pop(0)
+        
+        # Update percentiles
+        if self.recent_latencies:
+            sorted_lat = sorted(self.recent_latencies)
+            n = len(sorted_lat)
+            self.p50_latency = sorted_lat[n // 2]
+            self.p95_latency = sorted_lat[int(n * 0.95)]
+            self.p99_latency = sorted_lat[int(n * 0.99)]
+    
+    @property
+    def avg_latency(self) -> float:
+        """Average latency"""
+        return self.total_latency / self.total_requests if self.total_requests > 0 else 0.0
 
 
 # Task profiles for different use cases
@@ -123,12 +166,112 @@ MODEL_PRICING: List[ModelPricing] = [
 
 
 class IntelligentRouter:
-    """Smart routing based on task type, cost, and quality"""
+    """Smart routing based on task type, cost, quality, and latency"""
     
     def __init__(self):
         self.task_profiles = TASK_PROFILES
         self.model_pricing = {f"{p.provider}/{p.model_name}": p for p in MODEL_PRICING}
         self.usage_cache = {}  # Track usage for cost optimization
+        self.latency_stats: Dict[str, LatencyStats] = {}  # Track latency per provider
+        self.ab_tests: Dict[str, Dict] = {}  # A/B test configurations
+        self.ab_test_results: Dict[str, List[Dict]] = defaultdict(list)  # A/B test results
+    
+    def record_latency(self, provider: str, model: str, latency: float, success: bool = True):
+        """Record latency for a provider"""
+        key = f"{provider}/{model}"
+        if key not in self.latency_stats:
+            self.latency_stats[key] = LatencyStats(provider=provider, model=model)
+        self.latency_stats[key].record(latency)
+    
+    def get_latency_stats(self, provider: str = None) -> Dict:
+        """Get latency statistics"""
+        if provider:
+            return {k: v for k, v in self.latency_stats.items() if v.provider == provider}
+        return {k: {
+            "provider": v.provider,
+            "model": v.model,
+            "total_requests": v.total_requests,
+            "avg_latency": round(v.avg_latency, 3),
+            "p50_latency": round(v.p50_latency, 3),
+            "p95_latency": round(v.p95_latency, 3),
+            "p99_latency": round(v.p99_latency, 3),
+            "min_latency": round(v.min_latency, 3) if v.min_latency != float('inf') else 0,
+            "max_latency": round(v.max_latency, 3)
+        } for k, v in self.latency_stats.items()}
+    
+    def create_ab_test(self, test_id: str, providers: List[str], traffic_split: List[float]):
+        """Create an A/B test with traffic splitting"""
+        if len(providers) != len(traffic_split):
+            raise ValueError("providers and traffic_split must have same length")
+        if abs(sum(traffic_split) - 1.0) > 0.01:
+            raise ValueError("traffic_split must sum to 1.0")
+        
+        self.ab_tests[test_id] = {
+            "providers": providers,
+            "traffic_split": traffic_split,
+            "created_at": datetime.now().isoformat(),
+            "active": True
+        }
+    
+    def select_ab_test_provider(self, test_id: str) -> Optional[str]:
+        """Select provider for A/B test based on traffic split"""
+        if test_id not in self.ab_tests or not self.ab_tests[test_id]["active"]:
+            return None
+        
+        test = self.ab_tests[test_id]
+        providers = test["providers"]
+        split = test["traffic_split"]
+        
+        # Random selection based on traffic split
+        rand = random.random()
+        cumulative = 0.0
+        for i, weight in enumerate(split):
+            cumulative += weight
+            if rand <= cumulative:
+                return providers[i]
+        
+        return providers[-1]
+    
+    def record_ab_test_result(self, test_id: str, provider: str, success: bool, latency: float):
+        """Record A/B test result"""
+        self.ab_test_results[test_id].append({
+            "provider": provider,
+            "success": success,
+            "latency": latency,
+            "timestamp": datetime.now().isoformat()
+        })
+    
+    def get_ab_test_results(self, test_id: str) -> Dict:
+        """Get A/B test results summary"""
+        if test_id not in self.ab_test_results:
+            return {}
+        
+        results = self.ab_test_results[test_id]
+        provider_stats = defaultdict(lambda: {"total": 0, "successes": 0, "latencies": []})
+        
+        for r in results:
+            provider_stats[r["provider"]]["total"] += 1
+            if r["success"]:
+                provider_stats[r["provider"]]["successes"] += 1
+            provider_stats[r["provider"]]["latencies"].append(r["latency"])
+        
+        summary = {}
+        for provider, stats in provider_stats.items():
+            latencies = stats["latencies"]
+            summary[provider] = {
+                "total_requests": stats["total"],
+                "successes": stats["successes"],
+                "success_rate": round(stats["successes"] / stats["total"], 4) if stats["total"] > 0 else 0,
+                "avg_latency": round(sum(latencies) / len(latencies), 3) if latencies else 0,
+                "p95_latency": round(sorted(latencies)[int(len(latencies) * 0.95)], 3) if len(latencies) > 1 else 0
+            }
+        
+        return {
+            "test_id": test_id,
+            "config": self.ab_tests.get(test_id, {}),
+            "results": summary,
+            "total_requests": len(results)
+        }
     
     def detect_task_type(self, messages: List[Dict]) -> str:
         """Automatically detect task type from messages"""
