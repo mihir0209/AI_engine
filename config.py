@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List, Any, Optional, Tuple
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 # Load environment variables
 load_dotenv()
@@ -9,6 +9,8 @@ load_dotenv()
 
 class ProviderConfig(BaseModel):
     """Pydantic model for provider configuration validation"""
+    model_config = ConfigDict(protected_namespaces=())
+    
     id: int
     priority: int = Field(ge=1, le=100)
     api_keys: List[Optional[str]] = []
@@ -652,7 +654,52 @@ AI_CONFIGS = {
         "daily_limit": 1000,
         "current_key_index": 0,
         "consecutive_failures": 0
-    }
+    },
+    # Azure OpenAI Configuration
+    # Uncomment and configure with your Azure deployment details
+    # "azure_openai": {
+    #     "id": 24,
+    #     "priority": 12,
+    #     "api_keys": [os.getenv("AZURE_OPENAI_API_KEY")],
+    #     "endpoint": "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT/chat/completions?api-version=2024-02-01",
+    #     "model_endpoint": None,
+    #     "model_endpoint_auth": False,
+    #     "model": "gpt-4",
+    #     "method": "POST",
+    #     "auth_type": "api_key",
+    #     "max_tokens": 4096,
+    #     "temperature": 0.7,
+    #     "timeout": 60,
+    #     "retries": 4,
+    #     "backoff": 5,
+    #     "format": "azure_openai",
+    #     "enabled": False,  # Enable when configured
+    #     "current_key_index": 0,
+    #     "consecutive_failures": 0
+    # },
+    # AWS Bedrock Configuration
+    # Uncomment and configure with your AWS credentials
+    # "bedrock": {
+    #     "id": 25,
+    #     "priority": 13,
+    #     "api_keys": [os.getenv("AWS_ACCESS_KEY_ID")],
+    #     "endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-opus-20240229-v1:0/invoke",
+    #     "model_endpoint": None,
+    #     "model_endpoint_auth": False,
+    #     "model": "claude-3-opus",
+    #     "method": "POST",
+    #     "auth_type": "aws",
+    #     "max_tokens": 4096,
+    #     "temperature": 0.7,
+    #     "timeout": 60,
+    #     "retries": 3,
+    #     "backoff": 5,
+    #     "format": "bedrock",
+    #     "enabled": False,  # Enable when configured
+    #     "aws_region": "us-east-1",
+    #     "current_key_index": 0,
+    #     "consecutive_failures": 0
+    # }
 }
 
 # Global Engine Settings
