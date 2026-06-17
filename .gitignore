@@ -55,9 +55,6 @@ yarn-error.log*
 *.sublime-*
 *.swp
 *.tmp
-*TEST*
-*Test*
-*test*
 .next/
 __pycache__/
 key_statistics.json
@@ -65,3 +62,8 @@ temp/
 tmp/
 
 model_cache.json
+.coverage
+.pytest_cache/
+
+# Agent
+.agent/

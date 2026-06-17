@@ -1,9 +1,72 @@
 import os
 from typing import Dict, List, Any, Optional, Tuple
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, field_validator
 
 # Load environment variables
 load_dotenv()
+
+
+class ProviderConfig(BaseModel):
+    """Pydantic model for provider configuration validation"""
+    id: int
+    priority: int = Field(ge=1, le=100)
+    api_keys: List[Optional[str]] = []
+    endpoint: str
+    model_endpoint: Optional[str] = None
+    model_endpoint_auth: bool = True
+    model: str
+    method: str = "POST"
+    auth_type: Optional[str] = None
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = Field(None, ge=0, le=2)
+    timeout: int = Field(60, ge=1, le=300)
+    retries: int = Field(3, ge=0, le=10)
+    backoff: int = Field(5, ge=0, le=60)
+    format: str = "openai"
+    enabled: bool = True
+    rpm_limit: Optional[int] = None
+    daily_limit: Optional[int] = None
+    current_key_index: int = 0
+    consecutive_failures: int = 0
+
+    @field_validator('format')
+    @classmethod
+    def validate_format(cls, v):
+        valid_formats = {'openai', 'gemini', 'cohere', 'a3z_get', 'cloudflare', 'ollama', 'flowith', 'minimax'}
+        if v not in valid_formats:
+            raise ValueError(f'format must be one of {valid_formats}')
+        return v
+
+    @field_validator('method')
+    @classmethod
+    def validate_method(cls, v):
+        if v not in ('GET', 'POST'):
+            raise ValueError('method must be GET or POST')
+        return v
+
+
+class EngineSettings(BaseModel):
+    """Pydantic model for engine settings validation"""
+    default_timeout: int = Field(60, ge=1, le=300)
+    max_retries: int = Field(3, ge=0, le=10)
+    enable_auto_rotation: bool = True
+    consecutive_failure_limit: int = Field(5, ge=1, le=100)
+    key_rotation_enabled: bool = True
+    provider_rotation_enabled: bool = True
+    verbose_mode: bool = False
+
+
+def validate_provider_configs(configs: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate all provider configs and return validated dict"""
+    validated = {}
+    for name, config in configs.items():
+        try:
+            validated[name] = ProviderConfig(**config).model_dump()
+        except Exception as e:
+            print(f"⚠️ Warning: Provider '{name}' config invalid: {e}")
+            validated[name] = config  # Keep original if validation fails
+    return validated
 
 # AI Engine Configuration - All 22 Providers with multiple API keys for rotation
 AI_CONFIGS = {
@@ -648,3 +711,47 @@ def verbose_print(message: str, verbose_override: bool = None):
             # Fallback: replace problematic Unicode characters
             safe_message = message.encode('ascii', 'replace').decode('ascii')
             print(safe_message)
+
+
+# Config version for tracking
+CONFIG_VERSION = "3.1.0"
+
+# Hot-reload support
+_config_last_modified = 0
+
+def check_config_reload():
+    """Check if config file has been modified and reload if needed"""
+    global _config_last_modified, AI_CONFIGS, ENGINE_SETTINGS
+    
+    try:
+        import config as _config_module
+        current_modified = os.path.getmtime(_config_module.__file__)
+        
+        if current_modified > _config_last_modified and _config_last_modified > 0:
+            verbose_print("🔄 Config file changed, reloading...")
+            # Reload the module
+            import importlib
+            importlib.reload(_config_module)
+            AI_CONFIGS = _config_module.AI_CONFIGS
+            ENGINE_SETTINGS = _config_module.ENGINE_SETTINGS
+            verbose_print("✅ Config reloaded successfully")
+        
+        _config_last_modified = current_modified
+    except Exception as e:
+        verbose_print(f"⚠️ Config reload check failed: {e}")
+
+
+def get_config_summary() -> Dict[str, Any]:
+    """Get summary of current configuration"""
+    enabled_count = sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
+    total_keys = sum(len([k for k in c.get('api_keys', []) if k]) for c in AI_CONFIGS.values())
+    
+    return {
+        'version': CONFIG_VERSION,
+        'total_providers': len(AI_CONFIGS),
+        'enabled_providers': enabled_count,
+        'disabled_providers': len(AI_CONFIGS) - enabled_count,
+        'total_api_keys': total_keys,
+        'engine_settings': ENGINE_SETTINGS,
+        'autodecide_enabled': AUTODECIDE_CONFIG.get('enabled', True)
+    }

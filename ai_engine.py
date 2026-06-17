@@ -82,6 +82,11 @@ class AI_engine:
         self.consecutive_failures = {}   # Track consecutive failures per provider
         self.current_provider = None
         
+        # Thread safety locks for shared mutable state
+        self._flagged_keys_lock = threading.Lock()
+        self._usage_stats_lock = threading.Lock()
+        self._key_rotation_lock = threading.Lock()
+        
         # Enhanced tracking for intelligent key rotation
         self.key_usage_stats = {}  # Track usage per key
         self.key_last_used = {}    # Track last usage time per key
@@ -92,11 +97,7 @@ class AI_engine:
         
         # Initialize Autodecide feature - use shared cache
         self.autodecide_config = AUTODECIDE_CONFIG
-        
-        # Enhanced tracking for intelligent key rotation
-        self.key_usage_stats = {}  # Track usage per key
-        self.key_last_used = {}    # Track last usage time per key
-        self.key_request_count = {} # Track requests per key per minute
+        self.autodecide_cache_timestamps = {}  # Track cache timestamps for autodecide
         
         # Initialize comprehensive stats for all providers
         for provider_name, config in self.providers.items():
@@ -129,7 +130,7 @@ class AI_engine:
                         key_id = f"key_{i}"
                         
                         # Load persistent statistics for this key from StatisticsManager
-                        persistent_key_stats = self.stats_manager.get_statistics(provider_name, key_id)
+                        persistent_key_stats = self.stats_manager.get_statistics(provider_name, key_id) if self.stats_manager else None
                         
                         if persistent_key_stats:
                             # Use persistent data
@@ -245,21 +246,22 @@ class AI_engine:
     
     def _is_key_flagged(self, provider_name: str) -> bool:
         """Check if a provider's key is currently flagged"""
-        if provider_name not in self.flagged_keys:
-            return False
-        
-        flag_info = self.flagged_keys[provider_name]
-        current_time = datetime.now()
-        
-        # Check if enough time has passed since flagging
-        if current_time > flag_info['flag_until']:
-            # Remove the flag
-            del self.flagged_keys[provider_name]
-            if self.verbose:
-                verbose_print(f"🟢 {provider_name} key unflagged - retry available", self.verbose)
-            return False
-        
-        return True
+        with self._flagged_keys_lock:
+            if provider_name not in self.flagged_keys:
+                return False
+            
+            flag_info = self.flagged_keys[provider_name]
+            current_time = datetime.now()
+            
+            # Check if enough time has passed since flagging
+            if current_time > flag_info['flag_until']:
+                # Remove the flag
+                del self.flagged_keys[provider_name]
+                if self.verbose:
+                    verbose_print(f"🟢 {provider_name} key unflagged - retry available", self.verbose)
+                return False
+            
+            return True
     
     def _get_current_api_key(self, provider_name: str) -> Optional[str]:
         """Get the optimal API key for a provider using intelligent load balancing"""
@@ -423,7 +425,8 @@ class AI_engine:
             key_stats['last_used'] = datetime.now()
             
             # Update StatisticsManager with the results
-            self.stats_manager.update_statistics(provider_name, key_id, success, response_time)
+            if self.stats_manager:
+                self.stats_manager.update_statistics(provider_name, key_id, success, response_time)
     
     def _mark_key_rate_limited(self, provider_name: str, key_index: int):
         """Mark a specific key as rate limited and update persistent storage"""
@@ -434,7 +437,8 @@ class AI_engine:
             self.key_usage_stats[provider_name][key_id]['weight'] = 2.0  # Heavy penalty
             
             # Update StatisticsManager
-            self.stats_manager.mark_rate_limited(provider_name, key_id)
+            if self.stats_manager:
+                self.stats_manager.mark_rate_limited(provider_name, key_id)
             
             if self.verbose:
                 verbose_print(f"🔴 Key #{key_index + 1} for {provider_name} marked as rate limited", self.verbose)
@@ -453,7 +457,7 @@ class AI_engine:
                 key_id = f"key_{i}"
                 
                 # Get statistics from StatisticsManager
-                persistent_stats = self.stats_manager.get_statistics(provider_name, key_id)
+                persistent_stats = self.stats_manager.get_statistics(provider_name, key_id) if self.stats_manager else None
                 memory_stats = self.key_usage_stats.get(provider_name, {}).get(key_id, {})
                 
                 if persistent_stats:
@@ -529,15 +533,17 @@ class AI_engine:
         # Classify the error to determine appropriate response
         error_type = self._classify_error(error_message, status_code, response_json)
         
-        # Increment consecutive failures
-        self.consecutive_failures[provider_name] = self.consecutive_failures.get(provider_name, 0) + 1
-        consecutive_count = self.consecutive_failures[provider_name]
+        # Increment consecutive failures (thread-safe)
+        with self._key_rotation_lock:
+            self.consecutive_failures[provider_name] = self.consecutive_failures.get(provider_name, 0) + 1
+            consecutive_count = self.consecutive_failures[provider_name]
         
-        # Update usage stats
-        if provider_name in self.usage_stats:
-            self.usage_stats[provider_name]['failures'] += 1
-            self.usage_stats[provider_name]['consecutive_failures'] = consecutive_count
-            self.usage_stats[provider_name]['last_failure'] = datetime.now()
+        # Update usage stats (thread-safe)
+        with self._usage_stats_lock:
+            if provider_name in self.usage_stats:
+                self.usage_stats[provider_name]['failures'] += 1
+                self.usage_stats[provider_name]['consecutive_failures'] = consecutive_count
+                self.usage_stats[provider_name]['last_failure'] = datetime.now()
         
         if self.verbose:
             verbose_print(f"🔍 {provider_name} error classified as: {error_type}", self.verbose)
@@ -576,23 +582,26 @@ class AI_engine:
     
     def _handle_provider_success(self, provider_name: str, response_time: float):
         """Handle successful provider response"""
-        # Reset consecutive failures
-        self.consecutive_failures[provider_name] = 0
+        # Reset consecutive failures (thread-safe)
+        with self._key_rotation_lock:
+            self.consecutive_failures[provider_name] = 0
         
-        # Update usage stats
-        if provider_name in self.usage_stats:
-            stats = self.usage_stats[provider_name]
-            stats['successes'] += 1
-            stats['consecutive_failures'] = 0
-            stats['last_used'] = datetime.now()
-            stats['last_success'] = datetime.now()
-            stats['total_response_time'] += response_time
+        # Update usage stats (thread-safe)
+        with self._usage_stats_lock:
+            if provider_name in self.usage_stats:
+                stats = self.usage_stats[provider_name]
+                stats['successes'] += 1
+                stats['consecutive_failures'] = 0
+                stats['last_used'] = datetime.now()
+                stats['last_success'] = datetime.now()
+                stats['total_response_time'] += response_time
             
-        # Unflag provider if it was flagged
-        if provider_name in self.flagged_keys:
-            del self.flagged_keys[provider_name]
-            if self.verbose:
-                verbose_print(f"🟢 {provider_name} unflagged after successful response", self.verbose)
+        # Unflag provider if it was flagged (thread-safe)
+        with self._flagged_keys_lock:
+            if provider_name in self.flagged_keys:
+                del self.flagged_keys[provider_name]
+                if self.verbose:
+                    verbose_print(f"🟢 {provider_name} unflagged after successful response", self.verbose)
         
         # Reset any rate-limited keys for this provider since it's working
         self._reset_rate_limited_keys(provider_name)
@@ -678,15 +687,17 @@ class AI_engine:
     def _flag_provider(self, provider_name: str, duration_minutes: int = 30):
         """Flag a provider temporarily due to consecutive failures"""
         flag_until = datetime.now() + timedelta(minutes=duration_minutes)
-        self.flagged_keys[provider_name] = {
-            'flagged_at': datetime.now(),
-            'flag_until': flag_until,
-            'reason': 'consecutive_failures'
-        }
+        with self._flagged_keys_lock:
+            self.flagged_keys[provider_name] = {
+                'flagged_at': datetime.now(),
+                'flag_until': flag_until,
+                'reason': 'consecutive_failures'
+            }
         
         # Mark provider as flagged in usage stats
-        if provider_name in self.usage_stats:
-            self.usage_stats[provider_name]['flagged'] = True
+        with self._usage_stats_lock:
+            if provider_name in self.usage_stats:
+                self.usage_stats[provider_name]['flagged'] = True
     
     def _flag_key(self, provider_name: str, error_type: str = "unknown"):
         """Flag a provider's key based on error type"""
@@ -703,12 +714,13 @@ class AI_engine:
             # Default: flag for 30 minutes
             flag_until = current_time + timedelta(minutes=30)
         
-        self.flagged_keys[provider_name] = {
-            'flagged_at': current_time,
-            'flag_until': flag_until,
-            'error_type': error_type,
-            'consecutive_failures': self.usage_stats[provider_name]['consecutive_failures']
-        }
+        with self._flagged_keys_lock:
+            self.flagged_keys[provider_name] = {
+                'flagged_at': current_time,
+                'flag_until': flag_until,
+                'error_type': error_type,
+                'consecutive_failures': self.usage_stats.get(provider_name, {}).get('consecutive_failures', 0)
+            }
         
         if self.verbose:
             duration = (flag_until - current_time).total_seconds() / 60
@@ -1231,12 +1243,6 @@ class AI_engine:
                 verbose_print(f"🔄 Alternatives available: {alt_info}", self.verbose)
         
         return best_provider_name, best_model_name
-        
-        # If all are flagged, return the first one anyway
-        provider_name, model_name = sorted_providers[0]
-        if self.verbose:
-            verbose_print(f"⚠️ Selected {provider_name} with model '{model_name}' (flagged but best available, self.verbose)")
-        return provider_name, model_name
 
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
@@ -1442,7 +1448,7 @@ class AI_engine:
                 self._handle_provider_failure(provider_name, str(e), 0, None)
                 
                 if self.verbose:
-                    verbose_print(f"💥 {provider_name} exception: {str(e, self.verbose)}")
+                    verbose_print(f"💥 {provider_name} exception: {str(e)}")
                 
                 # Continue to next provider (automatic provider rotation)
                 continue
@@ -1453,6 +1459,52 @@ class AI_engine:
             error_message="All providers failed",
             error_type="all_failed"
         )
+    
+    def chat_completion_stream(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs):
+        """
+        Streaming chat completion method - yields chunks as they arrive
+        Supports provider-specific routing with format: provider_name/model_name
+        """
+        preferred_provider = kwargs.get('preferred_provider')
+        
+        # Parse provider/model format
+        if model and '/' in model:
+            provider_part, model_part = model.split('/', 1)
+            if provider_part in self.providers:
+                preferred_provider = provider_part
+                model = model_part
+        
+        # Get available providers
+        available_providers = self._get_available_providers(preferred_provider)
+        
+        if not available_providers:
+            yield {'error': 'No available providers', 'done': True}
+            return
+        
+        # Try providers until one streams successfully
+        for provider_name, provider_config in available_providers:
+            if provider_config.get('format') not in ('openai',):
+                continue  # Only OpenAI format supports streaming
+            
+            try:
+                if self.verbose:
+                    verbose_print(f"🔄 Streaming from {provider_name}...", self.verbose)
+                
+                for chunk in self._make_streaming_request(provider_name, provider_config, messages, model):
+                    if chunk.get('error'):
+                        yield chunk
+                        break
+                    if chunk.get('done'):
+                        yield {'done': True, 'provider': provider_name, 'model': model or provider_config.get('model')}
+                        return
+                    yield chunk
+                return
+            except Exception as e:
+                if self.verbose:
+                    verbose_print(f"❌ {provider_name} streaming failed: {e}", self.verbose)
+                continue
+        
+        yield {'error': 'All providers failed for streaming', 'done': True}
     
     def _make_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
         """Make a request to a specific provider"""
@@ -1482,6 +1534,62 @@ class AI_engine:
                 error_message=str(e),
                 error_type="request_exception"
             )
+
+    def _make_streaming_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs):
+        """Make a streaming request to a provider (yields chunks)"""
+        url = config['endpoint']
+        headers = {'Content-Type': 'application/json'}
+        
+        # Add authentication
+        if config.get('auth_type') == 'bearer':
+            api_key = self._get_current_api_key(provider_name)
+            if api_key:
+                headers['Authorization'] = f"Bearer {api_key}"
+        
+        # Prepare data with stream enabled
+        used_model = model or config['model']
+        data = {
+            'model': used_model,
+            'messages': messages,
+            'stream': True
+        }
+        
+        # Add optional parameters
+        if config.get('max_tokens'):
+            data['max_tokens'] = config['max_tokens']
+        if config.get('temperature') is not None:
+            data['temperature'] = config['temperature']
+        
+        import requests as req
+        try:
+            response = req.post(
+                url,
+                json=data,
+                headers=headers,
+                timeout=config.get('timeout', 120),
+                stream=True
+            )
+            
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        if line_str.startswith('data: '):
+                            json_str = line_str[6:]
+                            if json_str.strip() == '[DONE]':
+                                yield {'done': True}
+                                break
+                            try:
+                                chunk_data = json.loads(json_str)
+                                content = chunk_data.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                                if content:
+                                    yield {'content': content, 'done': False}
+                            except json.JSONDecodeError:
+                                continue
+            else:
+                yield {'error': f"HTTP {response.status_code}: {response.text[:200]}", 'done': True}
+        except Exception as e:
+            yield {'error': str(e), 'done': True}
     
     def _make_openai_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
         """Make OpenAI-compatible request"""
@@ -2178,7 +2286,7 @@ class AI_engine:
             self._update_stats(provider_name, False, response_time)
             
             if self.verbose:
-                verbose_print(f"💥 {provider_name} exception: {str(e, self.verbose)}")
+                verbose_print(f"💥 {provider_name} exception: {str(e)}")
             
             return RequestResult(
                 success=False,

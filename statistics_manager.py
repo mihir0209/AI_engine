@@ -59,7 +59,7 @@ class KeyStatistics:
         if 'last_used' in data and data['last_used']:
             try:
                 data['last_used'] = datetime.fromisoformat(data['last_used'])
-            except:
+            except (ValueError, TypeError):
                 data['last_used'] = None
         
         # Handle backward compatibility for missing successful_response_time field

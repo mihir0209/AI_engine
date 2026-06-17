@@ -12,8 +12,26 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 import uvicorn
+import logging
+
+# Structured logging setup
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"time":"%(asctime)s","level":"%(levelname)s","module":"%(module)s","message":"%(message)s"}'
+)
+logger = logging.getLogger(__name__)
+
+# Prometheus metrics
+REQUEST_COUNT = Counter('ai_engine_requests_total', 'Total requests', ['endpoint', 'method', 'status'])
+REQUEST_LATENCY = Histogram('ai_engine_request_latency_seconds', 'Request latency', ['endpoint'])
+CHAT_COMPLETIONS = Counter('ai_engine_chat_completions_total', 'Total chat completions', ['provider', 'success'])
+ACTIVE_PROVIDERS = Gauge('ai_engine_active_providers', 'Number of active providers')
 
 # Import AI Engine components
 try:
@@ -31,6 +49,20 @@ except ImportError as e:
 # Initialize AI Engine with global verbose setting
 engine = AI_engine(verbose=ENGINE_SETTINGS.get("verbose_mode", False))
 stats_manager = get_stats_manager()
+
+# API Key Authentication for management endpoints
+# Set ADMIN_API_KEY environment variable to enable (leave empty to disable)
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+
+def verify_admin_api_key(api_key: str = Header(None, alias="X-API-Key")) -> bool:
+    """Verify admin API key for management endpoints"""
+    if not ADMIN_API_KEY:
+        return True  # No key configured, allow all
+    if not api_key:
+        raise HTTPException(status_code=401, detail="API key required")
+    if api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    return True
 
 # Set the global engine in chat module to prevent duplicate initialization
 try:
@@ -116,10 +148,21 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Rate limiting configuration
+# Default: 60 requests per minute for API, 10 per minute for chat completions
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Add CORS middleware
+# In production, set CORS_ORIGINS environment variable (comma-separated)
+import os
+cors_origins_str = os.getenv("CORS_ORIGINS", "*")
+cors_origins = [origin.strip() for origin in cors_origins_str.split(",")] if cors_origins_str != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -132,10 +175,37 @@ templates = Jinja2Templates(directory="templates")
 # Include chat router
 app.include_router(chat_router)
 
+# Request validation and sanitization
+import re
+
+def sanitize_input(text: str) -> str:
+    """Sanitize user input to prevent injection attacks"""
+    if not text:
+        return text
+    # Remove null bytes
+    text = text.replace('\x00', '')
+    # Limit length to prevent DoS
+    max_length = 100000  # 100KB
+    if len(text) > max_length:
+        text = text[:max_length]
+    return text
+
 # Pydantic models for API
 class ChatMessage(BaseModel):
     role: str  # "system", "user", "assistant"
     content: str
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v):
+        if v not in ('system', 'user', 'assistant'):
+            raise ValueError('role must be system, user, or assistant')
+        return v
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v):
+        return sanitize_input(v)
 
 class ChatCompletionRequest(BaseModel):
     model: str = "auto"
@@ -227,17 +297,19 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
 
 # API Routes
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
-async def chat_completions(request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
+@limiter.limit("10/minute")
+async def chat_completions(request: Request, chat_request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
     """OpenAI-compatible chat completions endpoint with standardized response format"""
     try:
         # Convert ChatMessage objects to dict format for AI Engine
-        messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+        messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
 
-        # Make request to AI Engine with preferred provider
+        # Make request to AI Engine with preferred provider (non-blocking)
         start_time = asyncio.get_event_loop().time()
-        result = engine.chat_completion(
+        result = await asyncio.to_thread(
+            engine.chat_completion,
             messages=messages,
-            model=request.model if request.model != "auto" else None,
+            model=chat_request.model if chat_request.model != "auto" else None,
             preferred_provider=x_preferred_provider
         )
         end_time = asyncio.get_event_loop().time()
@@ -249,12 +321,71 @@ async def chat_completions(request: ChatCompletionRequest, background_tasks: Bac
             raise HTTPException(status_code=500, detail=result.error_message)
 
         # Format response to OpenAI standard regardless of provider
-        response = format_openai_response(result, messages, request, start_time)
+        response = format_openai_response(result, messages, chat_request, start_time)
         
         return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/chat/completions/stream")
+@limiter.limit("10/minute")
+async def chat_completions_stream(request: Request, chat_request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
+    """OpenAI-compatible streaming chat completions endpoint with true upstream streaming"""
+    from fastapi.responses import StreamingResponse
+    
+    async def generate_stream():
+        messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
+        completion_id = f"chatcmpl-{int(time.time() * 1000000) % 999999999}"
+        
+        # Use true streaming from upstream provider
+        def stream_from_engine():
+            for chunk in engine.chat_completion_stream(
+                messages=messages,
+                model=chat_request.model if chat_request.model != "auto" else None,
+                preferred_provider=x_preferred_provider
+            ):
+                yield chunk
+        
+        # Run streaming in thread and yield chunks
+        loop = asyncio.get_event_loop()
+        stream_iter = stream_from_engine()
+        
+        try:
+            while True:
+                chunk = await loop.run_in_executor(None, lambda: next(stream_iter, None))
+                if chunk is None:
+                    break
+                
+                if chunk.get('error'):
+                    yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
+                    break
+                
+                if chunk.get('done'):
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                if chunk.get('content'):
+                    chunk_data = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": chat_request.model or "auto",
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk['content']},
+                            "finish_reason": None
+                        }]
+                    }
+                    yield f"data: {json.dumps(chunk_data)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+        
+        # Save statistics in background
+        background_tasks.add_task(save_statistics_async)
+    
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 @app.get("/v1/models")
 async def list_models():
@@ -312,7 +443,7 @@ async def discover_and_cache_models():
             for provider_name, config in enabled_providers.items():
                 if not config.get('model_endpoint'):
                     current_model = config.get('model', 'unknown')
-                    all_models.append(f"{provider_name}/{current_model}")
+                    all_models.append(f"{provider_name}|{current_model}")
             
             # Collect results with proper timeout handling
             try:
@@ -351,7 +482,7 @@ async def discover_and_cache_models():
                         # Cancel and add fallback
                         future.cancel()
                         current_model = config.get('model', 'unknown')
-                        all_models.append(f"{provider_name}/{current_model}")
+                        all_models.append(f"{provider_name}|{current_model}")
                         unfinished_count += 1
                 verbose_print(f"⚠️ {unfinished_count} providers timed out, used fallbacks")
 
@@ -554,8 +685,9 @@ async def get_providers():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/providers/{provider_name}/toggle")
-async def toggle_provider(provider_name: str, request: Request):
-    """Toggle a provider's enabled status"""
+async def toggle_provider(provider_name: str, request: Request, x_api_key: str = Header(None, alias="X-API-Key")):
+    """Toggle a provider's enabled status (requires API key)"""
+    verify_admin_api_key(x_api_key)
     try:
         verbose_print(f"🔄 Toggle request for provider: {provider_name}")
         body = await request.json()
@@ -619,8 +751,9 @@ async def toggle_provider(provider_name: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/providers/{provider_name}/roll-key")
-async def roll_provider_key(provider_name: str):
-    """Roll to the next API key for a provider"""
+async def roll_provider_key(provider_name: str, x_api_key: str = Header(None, alias="X-API-Key")):
+    """Roll to the next API key for a provider (requires API key)"""
+    verify_admin_api_key(x_api_key)
     try:
         verbose_print(f"🔑 Roll key request for provider: {provider_name}")
         
@@ -882,8 +1015,9 @@ async def discover_provider_models(provider_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/providers/{provider_name}/change-model")
-async def change_provider_model(provider_name: str, request: Request):
-    """Change the model for a specific provider"""
+async def change_provider_model(provider_name: str, request: Request, x_api_key: str = Header(None, alias="X-API-Key")):
+    """Change the model for a specific provider (requires API key)"""
+    verify_admin_api_key(x_api_key)
     try:
         body = await request.json()
         new_model = body.get('model')
@@ -964,6 +1098,7 @@ async def save_config_to_file(provider_name: str, field: str, new_value):
         # The in-memory config is already updated, file persistence is a bonus
 
 @app.post("/api/test-model")
+@limiter.limit("5/minute")
 async def test_model(request: Request):
     """Test a specific model with a provider"""
     try:
@@ -1172,6 +1307,28 @@ async def save_statistics_async():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+# Prometheus metrics endpoint
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+# Request metrics middleware
+@app.middleware("http")
+async def track_metrics(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    REQUEST_COUNT.labels(
+        endpoint=request.url.path,
+        method=request.method,
+        status=response.status_code
+    ).inc()
+    REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
+    
+    return response
 
 def create_directories():
     """Create necessary directories for templates and static files"""

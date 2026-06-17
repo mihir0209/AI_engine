@@ -171,16 +171,14 @@ class ChatDB:
                     SELECT * FROM messages 
                     WHERE chat_id = ? AND id > ? 
                     ORDER BY created_at ASC 
-                    LIMIT ?
-                """
+                    LIMIT ?"""
                 rows = conn.execute(query, (chat_id, after_id, limit)).fetchall()
             else:
                 query = """
                     SELECT * FROM messages 
                     WHERE chat_id = ? 
                     ORDER BY created_at ASC 
-                    LIMIT ?
-                """
+                    LIMIT ?"""
                 rows = conn.execute(query, (chat_id, limit)).fetchall()
             
             messages = []
@@ -192,6 +190,69 @@ class ChatDB:
                     msg['metadata'] = {}
                 messages.append(msg)
             
+            return messages
+
+    def edit_message(self, message_id: int, content: str) -> bool:
+        """Edit a message's content"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "UPDATE messages SET content = ? WHERE id = ?",
+                (content, message_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_message(self, message_id: int) -> Optional[Dict]:
+        """Get a single message by ID"""
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+            if row:
+                msg = dict(row)
+                try:
+                    msg['metadata'] = json.loads(msg['metadata']) if msg['metadata'] else {}
+                except json.JSONDecodeError:
+                    msg['metadata'] = {}
+                return msg
+            return None
+
+    def delete_messages_after(self, chat_id: int, message_id: int) -> int:
+        """Delete all messages after a given message ID (for regeneration)"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM messages WHERE chat_id = ? AND id > ?",
+                (chat_id, message_id)
+            )
+            conn.commit()
+            return cursor.rowcount
+
+    def search_messages(self, query: str, chat_id: int = None, limit: int = 50) -> List[Dict]:
+        """Search messages by content"""
+        with self.get_connection() as conn:
+            if chat_id:
+                sql = """
+                    SELECT m.*, c.title as chat_title FROM messages m
+                    JOIN chats c ON m.chat_id = c.id
+                    WHERE m.chat_id = ? AND m.content LIKE ?
+                    ORDER BY m.created_at DESC LIMIT ?
+                """
+                rows = conn.execute(sql, (chat_id, f"%{query}%", limit)).fetchall()
+            else:
+                sql = """
+                    SELECT m.*, c.title as chat_title FROM messages m
+                    JOIN chats c ON m.chat_id = c.id
+                    WHERE m.content LIKE ?
+                    ORDER BY m.created_at DESC LIMIT ?
+                """
+                rows = conn.execute(sql, (f"%{query}%", limit)).fetchall()
+            
+            messages = []
+            for row in rows:
+                msg = dict(row)
+                try:
+                    msg['metadata'] = json.loads(msg['metadata']) if msg['metadata'] else {}
+                except json.JSONDecodeError:
+                    msg['metadata'] = {}
+                messages.append(msg)
             return messages
 
     def get_context_messages(self, chat_id: int, max_tokens: int = 4000) -> List[Dict]:
@@ -277,8 +338,8 @@ class ChatDB:
             cursor = conn.execute("""
                 DELETE FROM chats 
                 WHERE is_temporary = 1 
-                AND created_at < datetime('now', '-{} hours')
-            """.format(max_age_hours))
+                AND created_at < datetime('now', '-' || ? || ' hours')
+            """, (str(max_age_hours),))
             deleted = cursor.rowcount
             conn.commit()
             if deleted > 0:

@@ -55,6 +55,14 @@ class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=1)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+class EditMessageRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    chat_id: Optional[int] = None
+    limit: int = Field(default=50, ge=1, le=200)
+
 class UpdateChatRequest(BaseModel):
     title: Optional[str] = None
     model: Optional[str] = None
@@ -236,7 +244,7 @@ async def update_chat(chat_id: int, request: UpdateChatRequest):
             raise HTTPException(status_code=404, detail="Chat not found")
         
         # Update with non-None values
-        update_data = {k: v for k, v in request.dict().items() if v is not None}
+        update_data = {k: v for k, v in request.model_dump().items() if v is not None}
         
         if update_data:
             success = chat_db.update_chat(chat_id, **update_data)
@@ -329,6 +337,133 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve statistics")
+
+@router.put("/messages/{message_id}")
+async def edit_message(message_id: int, request: EditMessageRequest):
+    """Edit a message's content"""
+    try:
+        message = chat_db.get_message(message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+        
+        success = chat_db.edit_message(message_id, request.content)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to edit message")
+        
+        updated_message = chat_db.get_message(message_id)
+        return {"success": True, "message": MessageResponse(**updated_message)}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error editing message {message_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to edit message")
+
+@router.post("/chats/{chat_id}/regenerate/{message_id}")
+async def regenerate_response(chat_id: int, message_id: int, background_tasks: BackgroundTasks):
+    """Regenerate assistant response from a specific user message"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        message = chat_db.get_message(message_id)
+        if not message:
+            raise HTTPException(status_code=404, detail="Message not found")
+        
+        if message['role'] != 'user':
+            raise HTTPException(status_code=400, detail="Can only regenerate from user messages")
+        
+        # Delete messages after this one
+        deleted_count = chat_db.delete_messages_after(chat_id, message_id)
+        
+        # Trigger new AI response
+        background_tasks.add_task(
+            process_ai_response,
+            chat_id=chat_id,
+            user_message_id=message_id,
+            model=chat.get('model'),
+            provider=chat.get('provider')
+        )
+        
+        return {
+            "success": True,
+            "message": f"Regenerating response (deleted {deleted_count} messages)",
+            "deleted_count": deleted_count
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating response for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to regenerate response")
+
+@router.post("/search")
+async def search_messages(request: SearchRequest):
+    """Search messages across chats"""
+    try:
+        messages = chat_db.search_messages(
+            query=request.query,
+            chat_id=request.chat_id,
+            limit=request.limit
+        )
+        return {
+            "success": True,
+            "query": request.query,
+            "results": [MessageResponse(**msg) for msg in messages],
+            "total": len(messages)
+        }
+    except Exception as e:
+        logger.error(f"Error searching messages: {e}")
+        raise HTTPException(status_code=500, detail="Failed to search messages")
+
+@router.get("/chats/{chat_id}/export")
+async def export_chat(chat_id: int, format: str = "markdown"):
+    """Export chat conversation in Markdown or JSON format"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        messages = chat_db.get_messages(chat_id, limit=1000)
+        
+        if format == "json":
+            return {
+                "chat": {
+                    "id": chat["id"],
+                    "title": chat["title"],
+                    "model": chat.get("model"),
+                    "provider": chat.get("provider"),
+                    "created_at": chat.get("created_at"),
+                    "updated_at": chat.get("updated_at")
+                },
+                "messages": [
+                    {
+                        "role": msg["role"],
+                        "content": msg["content"],
+                        "created_at": msg.get("created_at"),
+                        "metadata": msg.get("metadata", {})
+                    }
+                    for msg in messages
+                ]
+            }
+        else:  # markdown
+            lines = [f"# {chat['title']}\n"]
+            lines.append(f"*Model: {chat.get('model', 'auto')} | Provider: {chat.get('provider', 'auto')}*\n")
+            lines.append("---\n")
+            
+            for msg in messages:
+                role = msg["role"].capitalize()
+                content = msg["content"]
+                lines.append(f"**{role}:**\n{content}\n")
+            
+            return {"export": "\n".join(lines), "format": "markdown"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exporting chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to export chat")
 
 @router.websocket("/chats/{chat_id}/stream")
 async def websocket_endpoint(websocket: WebSocket, chat_id: int):
