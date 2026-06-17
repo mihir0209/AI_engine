@@ -1330,6 +1330,59 @@ async def track_metrics(request: Request, call_next):
     
     return response
 
+@app.get("/api/providers/health")
+async def get_provider_health():
+    """Get health status of all providers"""
+    try:
+        health_status = {}
+        
+        for provider_name, config in AI_CONFIGS.items():
+            if not config.get('enabled', True):
+                health_status[provider_name] = {"status": "disabled", "healthy": None}
+                continue
+            
+            # Check if provider has API keys
+            api_keys = config.get('api_keys', [])
+            valid_keys = [k for k in api_keys if k]
+            
+            if not valid_keys and config.get('auth_type'):
+                health_status[provider_name] = {"status": "no_keys", "healthy": False}
+                continue
+            
+            # Check if provider is flagged
+            if hasattr(engine, '_is_key_flagged') and engine._is_key_flagged(provider_name):
+                health_status[provider_name] = {"status": "flagged", "healthy": False}
+                continue
+            
+            # Check usage stats
+            if provider_name in engine.usage_stats:
+                stats = engine.usage_stats[provider_name]
+                consecutive_failures = stats.get('consecutive_failures', 0)
+                if consecutive_failures > 0:
+                    health_status[provider_name] = {
+                        "status": "degraded",
+                        "healthy": True,
+                        "consecutive_failures": consecutive_failures
+                    }
+                else:
+                    health_status[provider_name] = {"status": "healthy", "healthy": True}
+            else:
+                health_status[provider_name] = {"status": "unknown", "healthy": None}
+        
+        healthy_count = sum(1 for h in health_status.values() if h.get('healthy') is True)
+        total_enabled = sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
+        
+        return {
+            "providers": health_status,
+            "summary": {
+                "total_enabled": total_enabled,
+                "healthy": healthy_count,
+                "unhealthy": total_enabled - healthy_count
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 def create_directories():
     """Create necessary directories for templates and static files"""
     os.makedirs("templates", exist_ok=True)

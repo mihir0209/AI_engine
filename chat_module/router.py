@@ -417,6 +417,79 @@ async def search_messages(request: SearchRequest):
         logger.error(f"Error searching messages: {e}")
         raise HTTPException(status_code=500, detail="Failed to search messages")
 
+@router.post("/chats/{chat_id}/branch/{message_id}")
+async def create_branch(chat_id: int, message_id: int):
+    """Create a new branch from a specific message"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        new_branch_id = chat_db.create_branch(chat_id, message_id)
+        
+        return {
+            "success": True,
+            "branch_id": new_branch_id,
+            "message": f"Created branch {new_branch_id} from message {message_id}"
+        }
+    
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating branch for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create branch")
+
+@router.get("/chats/{chat_id}/branches")
+async def get_branches(chat_id: int):
+    """Get all branches for a chat"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        branches = chat_db.get_branches(chat_id)
+        return {"success": True, "branches": branches}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting branches for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get branches")
+
+@router.get("/chats/{chat_id}/branches/{branch_id}")
+async def get_branch_messages(chat_id: int, branch_id: int):
+    """Get messages for a specific branch"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        messages = chat_db.get_branch_messages(chat_id, branch_id)
+        return {"success": True, "branch_id": branch_id, "messages": [MessageResponse(**msg) for msg in messages]}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting branch messages for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get branch messages")
+
+@router.post("/chats/{chat_id}/branches/{branch_id}/switch")
+async def switch_branch(chat_id: int, branch_id: int):
+    """Switch to a different branch"""
+    try:
+        chat = chat_db.get_chat(chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        success = chat_db.switch_branch(chat_id, branch_id)
+        return {"success": success, "message": f"Switched to branch {branch_id}"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error switching branch for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to switch branch")
+
 @router.get("/chats/{chat_id}/export")
 async def export_chat(chat_id: int, format: str = "markdown"):
     """Export chat conversation in Markdown or JSON format"""

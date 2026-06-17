@@ -42,7 +42,6 @@ class ChatDB:
             try:
                 conn.execute("SELECT force_provider FROM chats LIMIT 1")
             except sqlite3.OperationalError:
-                # Column doesn't exist, add it
                 conn.execute("ALTER TABLE chats ADD COLUMN force_provider BOOLEAN DEFAULT 0")
                 logger.info("Added force_provider column to existing chats table")
             
@@ -50,11 +49,10 @@ class ChatDB:
             try:
                 conn.execute("SELECT temporary_timer_minutes FROM chats LIMIT 1")
             except sqlite3.OperationalError:
-                # Column doesn't exist, add it
                 conn.execute("ALTER TABLE chats ADD COLUMN temporary_timer_minutes INTEGER DEFAULT 5")
                 logger.info("Added temporary_timer_minutes column to existing chats table")
             
-            # Create messages table
+            # Create messages table with branching support
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,13 +63,26 @@ class ChatDB:
                     tokens INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     response_to INTEGER,
+                    branch_id INTEGER DEFAULT 0,
+                    parent_message_id INTEGER,
+                    is_active BOOLEAN DEFAULT 1,
                     FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
                     FOREIGN KEY (response_to) REFERENCES messages(id)
                 )
             """)
             
+            # Add branch columns if they don't exist (migration)
+            try:
+                conn.execute("SELECT branch_id FROM messages LIMIT 1")
+            except sqlite3.OperationalError:
+                conn.execute("ALTER TABLE messages ADD COLUMN branch_id INTEGER DEFAULT 0")
+                conn.execute("ALTER TABLE messages ADD COLUMN parent_message_id INTEGER")
+                conn.execute("ALTER TABLE messages ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                logger.info("Added branching columns to messages table")
+            
             # Create indexes for performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_branch ON messages(chat_id, branch_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_updated ON chats(updated_at DESC)")
             
             conn.commit()
@@ -362,3 +373,87 @@ class ChatDB:
             stats['assistant_messages'] = conn.execute("SELECT COUNT(*) FROM messages WHERE role = 'assistant'").fetchone()[0]
             
             return stats
+
+    def get_max_branch_id(self, chat_id: int) -> int:
+        """Get the maximum branch_id for a chat"""
+        with self.get_connection() as conn:
+            result = conn.execute(
+                "SELECT COALESCE(MAX(branch_id), 0) FROM messages WHERE chat_id = ?",
+                (chat_id,)
+            ).fetchone()
+            return result[0] if result else 0
+
+    def create_branch(self, chat_id: int, from_message_id: int) -> int:
+        """Create a new branch from a specific message, returns new branch_id"""
+        with self.get_connection() as conn:
+            # Get current max branch_id
+            max_branch = self.get_max_branch_id(chat_id)
+            new_branch_id = max_branch + 1
+            
+            # Get the message to branch from
+            message = conn.execute("SELECT * FROM messages WHERE id = ? AND chat_id = ?", 
+                                  (from_message_id, chat_id)).fetchone()
+            if not message:
+                raise ValueError(f"Message {from_message_id} not found in chat {chat_id}")
+            
+            # Copy messages from main branch up to and including the branch point
+            # These become the new branch's history
+            conn.execute("""
+                INSERT INTO messages (chat_id, role, content, metadata, tokens, response_to, branch_id, parent_message_id, is_active)
+                SELECT chat_id, role, content, metadata, tokens, response_to, ?, id, 1
+                FROM messages 
+                WHERE chat_id = ? AND branch_id = 0 AND id <= ? AND is_active = 1
+            """, (new_branch_id, chat_id, from_message_id))
+            
+            conn.commit()
+            logger.info(f"Created branch {new_branch_id} from message {from_message_id} in chat {chat_id}")
+            return new_branch_id
+
+    def get_branch_messages(self, chat_id: int, branch_id: int, limit: int = 100) -> List[Dict]:
+        """Get messages for a specific branch"""
+        with self.get_connection() as conn:
+            query = """
+                SELECT * FROM messages 
+                WHERE chat_id = ? AND branch_id = ? AND is_active = 1
+                ORDER BY created_at ASC 
+                LIMIT ?
+            """
+            rows = conn.execute(query, (chat_id, branch_id, limit)).fetchall()
+            messages = []
+            for row in rows:
+                msg = dict(row)
+                try:
+                    msg['metadata'] = json.loads(msg['metadata']) if msg['metadata'] else {}
+                except json.JSONDecodeError:
+                    msg['metadata'] = {}
+                messages.append(msg)
+            return messages
+
+    def switch_branch(self, chat_id: int, branch_id: int) -> bool:
+        """Switch active branch (deactivate old branch messages, activate new branch)"""
+        with self.get_connection() as conn:
+            # Deactivate all messages in this chat
+            conn.execute("UPDATE messages SET is_active = 0 WHERE chat_id = ?", (chat_id,))
+            
+            # Activate messages for the target branch
+            conn.execute(
+                "UPDATE messages SET is_active = 1 WHERE chat_id = ? AND branch_id = ?",
+                (chat_id, branch_id)
+            )
+            
+            conn.commit()
+            return True
+
+    def get_branches(self, chat_id: int) -> List[Dict]:
+        """Get all branches for a chat"""
+        with self.get_connection() as conn:
+            rows = conn.execute("""
+                SELECT branch_id, COUNT(*) as message_count, 
+                       MIN(created_at) as created_at
+                FROM messages 
+                WHERE chat_id = ?
+                GROUP BY branch_id
+                ORDER BY branch_id
+            """, (chat_id,)).fetchall()
+            
+            return [{"branch_id": r[0], "message_count": r[1], "created_at": r[2]} for r in rows]
