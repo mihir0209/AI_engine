@@ -5,10 +5,13 @@ import asyncio
 import json
 import logging
 import time
+import os
+import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
@@ -17,6 +20,13 @@ from .websocket_manager import WebSocketManager
 from config import verbose_print
 
 logger = logging.getLogger(__name__)
+
+# Upload configuration
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.py', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml'}
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 # Global engine instance - will be set by server
 _global_engine = None
@@ -416,6 +426,108 @@ async def search_messages(request: SearchRequest):
     except Exception as e:
         logger.error(f"Error searching messages: {e}")
         raise HTTPException(status_code=500, detail="Failed to search messages")
+
+@router.post("/upload")
+async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = None):
+    """Upload a file (text or image)"""
+    try:
+        # Check file size
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE // (1024*1024)}MB")
+        
+        # Get file extension
+        file_ext = Path(file.filename).suffix.lower() if file.filename else ""
+        
+        # Validate file type
+        all_allowed = ALLOWED_EXTENSIONS | ALLOWED_IMAGE_EXTENSIONS
+        if file_ext not in all_allowed:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File type '{file_ext}' not allowed. Allowed: {', '.join(sorted(all_allowed))}"
+            )
+        
+        # Generate unique filename
+        file_hash = hashlib.md5(content).hexdigest()[:8]
+        safe_filename = f"{file_hash}_{int(time.time())}{file_ext}"
+        file_path = UPLOAD_DIR / safe_filename
+        
+        # Save file
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # Determine file type
+        is_image = file_ext in ALLOWED_IMAGE_EXTENSIONS
+        file_type = "image" if is_image else "document"
+        
+        # Read content for text files
+        file_content = None
+        if not is_image and file_ext in ALLOWED_EXTENSIONS:
+            try:
+                file_content = content.decode('utf-8')
+            except UnicodeDecodeError:
+                file_content = None
+        
+        result = {
+            "success": True,
+            "filename": file.filename,
+            "saved_as": safe_filename,
+            "path": str(file_path),
+            "size": len(content),
+            "type": file_type,
+            "extension": file_ext
+        }
+        
+        # If chat_id provided, add file reference as message
+        if chat_id:
+            chat = chat_db.get_chat(chat_id)
+            if chat:
+                file_ref = f"[File: {file.filename}]({file_path})"
+                if is_image:
+                    file_ref = f"![{file.filename}]({file_path})"
+                
+                metadata = {
+                    "file_upload": True,
+                    "filename": file.filename,
+                    "file_path": str(file_path),
+                    "file_type": file_type,
+                    "file_size": len(content)
+                }
+                
+                msg_id = chat_db.add_message(
+                    chat_id=chat_id,
+                    role="user",
+                    content=file_ref,
+                    metadata=metadata
+                )
+                result["message_id"] = msg_id
+        
+        return result
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload file")
+
+@router.get("/uploads/{filename}")
+async def get_upload(filename: str):
+    """Get uploaded file info"""
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    stat = file_path.stat()
+    file_ext = file_path.suffix.lower()
+    
+    return {
+        "filename": filename,
+        "path": str(file_path),
+        "size": stat.st_size,
+        "type": "image" if file_ext in ALLOWED_IMAGE_EXTENSIONS else "document",
+        "extension": file_ext,
+        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+    }
 
 @router.post("/chats/{chat_id}/branch/{message_id}")
 async def create_branch(chat_id: int, message_id: int):
