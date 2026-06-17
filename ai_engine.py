@@ -1513,6 +1513,10 @@ class AI_engine:
             
             if format_type == 'openai':
                 return self._make_openai_request(provider_name, config, messages, model, **kwargs)
+            elif format_type == 'anthropic':
+                return self._make_anthropic_request(provider_name, config, messages, model, **kwargs)
+            elif format_type == 'vertex_ai':
+                return self._make_vertex_ai_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'gemini':
                 return self._make_gemini_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'cohere':
@@ -1590,6 +1594,132 @@ class AI_engine:
                 yield {'error': f"HTTP {response.status_code}: {response.text[:200]}", 'done': True}
         except Exception as e:
             yield {'error': str(e), 'done': True}
+    
+    def _make_anthropic_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
+        """Make Anthropic Messages API request"""
+        url = config['endpoint']
+        headers = {
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01'
+        }
+        
+        # Add API key
+        api_key = self._get_current_api_key(provider_name)
+        if api_key:
+            headers['x-api-key'] = api_key
+        
+        # Extract system message (Anthropic uses separate system parameter)
+        system_prompt = ""
+        user_messages = []
+        for msg in messages:
+            if msg.get('role') == 'system':
+                system_prompt = msg.get('content', '')
+            else:
+                user_messages.append(msg)
+        
+        # Prepare data
+        used_model = model or config['model']
+        data = {
+            'model': used_model,
+            'messages': user_messages
+        }
+        
+        if system_prompt:
+            data['system'] = system_prompt
+        
+        # Add optional parameters
+        if config.get('max_tokens'):
+            data['max_tokens'] = config['max_tokens']
+        if config.get('temperature') is not None:
+            data['temperature'] = config['temperature']
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=config.get('timeout', 60))
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                # Anthropic response format
+                content = response_data.get('content', [{}])[0].get('text', '')
+                
+                if not content or content.strip() == '':
+                    return RequestResult(
+                        success=False,
+                        error_message="Empty response from Anthropic",
+                        status_code=response.status_code,
+                        error_type="empty_response"
+                    )
+                
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    status_code=response.status_code,
+                    model_used=used_model,
+                    raw_response=response_data
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=response.text[:500],
+                    status_code=response.status_code,
+                    error_type="http_error"
+                )
+        except requests.exceptions.Timeout:
+            return RequestResult(success=False, error_message="Request timeout", error_type="timeout")
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
+    
+    def _make_vertex_ai_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
+        """Make Google Vertex AI request"""
+        url = config['endpoint']
+        api_key = self._get_current_api_key(provider_name)
+        
+        if api_key:
+            separator = '&' if '?' in url else '?'
+            url = f"{url}{separator}key={api_key}"
+        
+        headers = {'Content-Type': 'application/json'}
+        
+        # Convert messages to Vertex AI format
+        contents = []
+        for msg in messages:
+            role = "user" if msg.get('role') in ('user', 'system') else "model"
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg.get('content', '')}]
+            })
+        
+        used_model = model or config['model']
+        data = {
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": config.get('max_tokens', 1024),
+                "temperature": config.get('temperature', 0.7)
+            }
+        }
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=config.get('timeout', 60))
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                content = response_data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+                
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    status_code=response.status_code,
+                    model_used=used_model,
+                    raw_response=response_data
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=response.text[:500],
+                    status_code=response.status_code,
+                    error_type="http_error"
+                )
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
     
     def _make_openai_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
         """Make OpenAI-compatible request"""
