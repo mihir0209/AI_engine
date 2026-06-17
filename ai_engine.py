@@ -1517,6 +1517,10 @@ class AI_engine:
                 return self._make_anthropic_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'vertex_ai':
                 return self._make_vertex_ai_request(provider_name, config, messages, model, **kwargs)
+            elif format_type == 'azure_openai':
+                return self._make_azure_openai_request(provider_name, config, messages, model, **kwargs)
+            elif format_type == 'bedrock':
+                return self._make_bedrock_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'gemini':
                 return self._make_gemini_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'cohere':
@@ -1538,6 +1542,126 @@ class AI_engine:
                 error_message=str(e),
                 error_type="request_exception"
             )
+
+    def _make_azure_openai_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
+        """Make Azure OpenAI API request"""
+        # Azure OpenAI uses different URL format
+        # Endpoint: https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions?api-version=2024-02-01
+        url = config['endpoint']
+        headers = {
+            'Content-Type': 'application/json',
+            'api-key': self._get_current_api_key(provider_name) or ''
+        }
+        
+        used_model = model or config['model']
+        data = {
+            'messages': messages
+        }
+        
+        # Add optional parameters
+        if config.get('max_tokens'):
+            data['max_tokens'] = config['max_tokens']
+        if config.get('temperature') is not None:
+            data['temperature'] = config['temperature']
+        
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=config.get('timeout', 60))
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                content = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                
+                if not content or content.strip() == '':
+                    return RequestResult(
+                        success=False,
+                        error_message="Empty response from Azure OpenAI",
+                        status_code=response.status_code,
+                        error_type="empty_response"
+                    )
+                
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    status_code=response.status_code,
+                    model_used=used_model,
+                    raw_response=response_data
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=response.text[:500],
+                    status_code=response.status_code,
+                    error_type="http_error"
+                )
+        except requests.exceptions.Timeout:
+            return RequestResult(success=False, error_message="Request timeout", error_type="timeout")
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
+
+    def _make_bedrock_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
+        """Make AWS Bedrock request (using invoke model API)"""
+        # Bedrock uses AWS Signature - simplified version using requests
+        url = config['endpoint']
+        
+        # AWS credentials should be in config or environment
+        access_key = config.get('aws_access_key_id') or os.getenv('AWS_ACCESS_KEY_ID')
+        secret_key = config.get('aws_secret_access_key') or os.getenv('AWS_SECRET_ACCESS_KEY')
+        region = config.get('aws_region', 'us-east-1')
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        
+        # Format messages for Bedrock (Anthropic format)
+        system_prompt = ""
+        user_messages = []
+        for msg in messages:
+            if msg.get('role') == 'system':
+                system_prompt = msg.get('content', '')
+            else:
+                user_messages.append({
+                    'role': msg.get('role', 'user'),
+                    'content': msg.get('content', '')
+                })
+        
+        used_model = model or config['model']
+        data = {
+            'anthropic_version': 'bedrock-2023-05-31',
+            'messages': user_messages,
+            'max_tokens': config.get('max_tokens', 4096)
+        }
+        
+        if system_prompt:
+            data['system'] = system_prompt
+        if config.get('temperature') is not None:
+            data['temperature'] = config['temperature']
+        
+        try:
+            # Note: In production, you'd use boto3 for proper AWS SigV4 signing
+            # This is a simplified version assuming direct endpoint access
+            response = requests.post(url, json=data, headers=headers, timeout=config.get('timeout', 60))
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                content = response_data.get('content', [{}])[0].get('text', '')
+                
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    status_code=response.status_code,
+                    model_used=used_model,
+                    raw_response=response_data
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=response.text[:500],
+                    status_code=response.status_code,
+                    error_type="http_error"
+                )
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
 
     def _make_streaming_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs):
         """Make a streaming request to a provider (yields chunks)"""
