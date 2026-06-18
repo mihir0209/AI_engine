@@ -48,496 +48,159 @@ class EngineSettings(BaseModel):
     verbose_mode: bool = False
 
 
-# AI Engine Configuration - Free/Generous Free-Tier Providers Only
+# AI Engine Configuration - Free Providers Only
 # Last verified: 2026-06-18
 #
-# PROVIDER STRATEGY (3 categories):
-#
-# CATEGORY 1: TRULY FREE (No API Key Required - Self-hosted)
-# - GPT4Free (g4f): docker run -p 8080:8080 hlohaus789/g4f
-# - Ollama: Local inference with open-source models
-#
-# CATEGORY 2: FREE TIER (Need Signup, get free quota)
-# - Groq: 30 RPM, 14,400 RPD free
-# - SambaNova: Generous daily limits free
-# - Together/DeepInfra: $1 credit on signup
-# - OpenRouter: 200 credits + 23 free models
-# - NVIDIA/Cerebras/Gemini/GitHub/Cloudflare: Various free tiers
-#
-# CATEGORY 3: DISCORD-BASED FREE APIs (from zukixa/cool-ai-stuff)
-# - NagaAI, NavyAPI, ElectronHub, ZanityAI, VoidAI, MNN AI
-# - Join Discord → Get free API key → Use free models
+# PROVIDER STRATEGY:
+# 1. Self-hosted (g4f, Ollama) - TRULY FREE
+# 2. Free tier APIs with generous limits
+# 3. Custom providers added via CLI
 
 AI_CONFIGS = {
-    # === SELF-HOSTED GPT4FREE (TRULY FREE - RECOMMENDED) ===
-    # Run: docker run -p 8080:8080 hlohaus789/g4f
-    # Or install: pip install g4f && python -m g4f
+    # === SELF-HOSTED (TRULY FREE) ===
     "g4f": {
-        "id": 1,
-        "priority": 1,  # Highest priority - truly free
-        "api_keys": [None],  # No API key needed
+        "id": 1, "priority": 1,
+        "api_keys": [None],
         "endpoint": os.getenv("G4F_ENDPOINT", "http://localhost:8080/v1/chat/completions"),
         "model_endpoint": os.getenv("G4F_MODELS_ENDPOINT", "http://localhost:8080/v1/models"),
-        "model_endpoint_auth": False,
-        "model": "gpt-4o",
-        "method": "POST",
-        "auth_type": None,
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 120,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": True,
-        "rpm_limit": None,  # No limit
-        "daily_limit": None,  # No limit
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": False, "model": "gpt-4o",
+        "method": "POST", "auth_type": None, "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 120, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": True, "rpm_limit": None,
+        "daily_limit": None, "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # === LOCAL OLLAMA (FREE - NEEDS OLLAMA INSTALLED) ===
-    # Install: curl -fsSL https://ollama.com/install.sh | sh
-    # Then: ollama pull llama3.1
     "ollama": {
-        "id": 2,
-        "priority": 2,
+        "id": 2, "priority": 2,
         "api_keys": [None],
         "endpoint": "http://localhost:11434/api/generate",
         "model_endpoint": "http://localhost:11434/api/tags",
-        "model_endpoint_auth": False,
-        "model": "llama3.1",
-        "method": "POST",
-        "auth_type": None,
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 120,
-        "retries": 3,
-        "backoff": 2,
-        "format": "ollama",
-        "enabled": False,  # Enable if Ollama is installed
-        "rpm_limit": None,
-        "daily_limit": None,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": False, "model": "llama3.1",
+        "method": "POST", "auth_type": None, "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 120, "retries": 3, "backoff": 2,
+        "format": "ollama", "enabled": False,
+        "rpm_limit": None, "daily_limit": None,
+        "current_key_index": 0, "consecutive_failures": 0
     },
 
-    # === PROVIDERS WITH FREE TIERS (need API key but have free quota) ===
-
-    # Groq - Free tier: 30 RPM, 14,400 RPD
-    # Sign up: https://console.groq.com
+    # === FREE TIER APIs (generous limits) ===
     "groq": {
-        "id": 3,
-        "priority": 3,
+        "id": 3, "priority": 3,
         "api_keys": [os.getenv("GROQ_API_KEY")],
         "endpoint": "https://api.groq.com/openai/v1/chat/completions",
         "model_endpoint": "https://api.groq.com/openai/v1/models",
-        "model_endpoint_auth": True,
-        "model": "llama-3.3-70b-versatile",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 4,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("GROQ_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 14400,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "llama-3.3-70b-versatile",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 60, "retries": 4, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("GROQ_API_KEY")),
+        "rpm_limit": 30, "daily_limit": 14400,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # SambaNova - Free tier: generous daily limits
-    # Sign up: https://cloud.sambanova.ai
-    "sambanova": {
-        "id": 4,
-        "priority": 4,
-        "api_keys": [os.getenv("SAMBANOVA_API_KEY")],
-        "endpoint": "https://api.sambanova.ai/v1/chat/completions",
-        "model_endpoint": "https://api.sambanova.ai/v1/models",
-        "model_endpoint_auth": True,
-        "model": "Meta-Llama-3.3-70B-Instruct",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("SAMBANOVA_API_KEY")),
-        "rpm_limit": 20,
-        "daily_limit": 1000,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # Together AI - Free tier: $1 credit on signup
-    # Sign up: https://api.together.xyz
-    "together": {
-        "id": 5,
-        "priority": 5,
-        "api_keys": [os.getenv("TOGETHER_API_KEY")],
-        "endpoint": "https://api.together.xyz/v1/chat/completions",
-        "model_endpoint": "https://api.together.xyz/v1/models",
-        "model_endpoint_auth": True,
-        "model": "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("TOGETHER_API_KEY")),
-        "rpm_limit": 60,
-        "daily_limit": 1000,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # DeepInfra - Free tier: $1 credit on signup
-    # Sign up: https://deepinfra.com
-    "deepinfra": {
-        "id": 6,
-        "priority": 6,
-        "api_keys": [os.getenv("DEEPINFRA_API_KEY")],
-        "endpoint": "https://api.deepinfra.com/v1/openai/chat/completions",
-        "model_endpoint": "https://api.deepinfra.com/v1/openai/models",
-        "model_endpoint_auth": True,
-        "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("DEEPINFRA_API_KEY")),
-        "rpm_limit": 60,
-        "daily_limit": 1000,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # OpenRouter - Free tier: 200 free credits on signup
-    # Sign up: https://openrouter.ai
-    # Use free models: model:free suffix
     "openrouter": {
-        "id": 7,
-        "priority": 7,
+        "id": 4, "priority": 4,
         "api_keys": [os.getenv("OPENROUTER_API_KEY")],
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "model_endpoint": "https://openrouter.ai/api/v1/models",
-        "model_endpoint_auth": True,
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("OPENROUTER_API_KEY")),
-        "rpm_limit": 20,
-        "daily_limit": 200,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 60, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("OPENROUTER_API_KEY")),
+        "rpm_limit": 20, "daily_limit": 200,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # NVIDIA NIM - Free tier: 1000 credits/month
-    # Sign up: https://build.nvidia.com
+    "gemini": {
+        "id": 5, "priority": 5,
+        "api_keys": [os.getenv("GEMINI_API_KEY")],
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "model_endpoint": None, "model_endpoint_auth": False,
+        "model": "gemini-2.0-flash",
+        "method": "POST", "auth_type": "query_param", "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 60, "retries": 4, "backoff": 5,
+        "format": "gemini", "enabled": bool(os.getenv("GEMINI_API_KEY")),
+        "rpm_limit": 15, "daily_limit": 1500,
+        "current_key_index": 0, "consecutive_failures": 0
+    },
     "nvidia": {
-        "id": 8,
-        "priority": 8,
+        "id": 6, "priority": 6,
         "api_keys": [os.getenv("NVIDIA_API_KEY")],
         "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
         "model_endpoint": "https://integrate.api.nvidia.com/v1/models",
-        "model_endpoint_auth": True,
-        "model": "deepseek-ai/deepseek-r1",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 512,
-        "temperature": 1.0,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("NVIDIA_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "deepseek-ai/deepseek-r1",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 512,
+        "temperature": 1.0, "timeout": 60, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("NVIDIA_API_KEY")),
+        "rpm_limit": 30, "daily_limit": 500,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # Cerebras - Free tier: 30 RPM
-    # Sign up: https://cloud.cerebras.ai
     "cerebras": {
-        "id": 9,
-        "priority": 9,
+        "id": 7, "priority": 7,
         "api_keys": [os.getenv("CEREBRAS_API_KEY")],
         "endpoint": "https://api.cerebras.ai/v1/chat/completions",
         "model_endpoint": "https://api.cerebras.ai/v1/models",
-        "model_endpoint_auth": True,
-        "model": "llama-3.3-70b",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 4,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("CEREBRAS_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 1000,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "llama-3.3-70b",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 60, "retries": 4, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("CEREBRAS_API_KEY")),
+        "rpm_limit": 30, "daily_limit": 1000,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # Cloudflare Workers AI - Free tier: 10,000 neurons/day
-    # Sign up: https://dash.cloudflare.com
     "cloudflare": {
-        "id": 10,
-        "priority": 10,
+        "id": 8, "priority": 8,
         "api_keys": [os.getenv("CLOUDFLARE_API_KEY")],
         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
         "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
-        "model_endpoint": None,
-        "model_endpoint_auth": False,
+        "model_endpoint": None, "model_endpoint_auth": False,
         "model": "@cf/meta/llama-3.1-8b-instruct",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": None,
-        "temperature": 1,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
+        "method": "POST", "auth_type": "bearer", "max_tokens": None,
+        "temperature": 1, "timeout": 60, "retries": 3, "backoff": 5,
         "format": "cloudflare",
         "enabled": bool(os.getenv("CLOUDFLARE_API_KEY") and os.getenv("CLOUDFLARE_ACCOUNT_ID")),
-        "rpm_limit": 100,
-        "daily_limit": 10000,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "rpm_limit": 100, "daily_limit": 10000,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # Google Gemini - Free tier: 15 RPM, 1M tokens/day
-    # Sign up: https://aistudio.google.com
-    "gemini": {
-        "id": 11,
-        "priority": 11,
-        "api_keys": [os.getenv("GEMINI_API_KEY")],
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-        "model_endpoint": None,
-        "model_endpoint_auth": False,
-        "model": "gemini-2.0-flash",
-        "method": "POST",
-        "auth_type": "query_param",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 4,
-        "backoff": 5,
-        "format": "gemini",
-        "enabled": bool(os.getenv("GEMINI_API_KEY")),
-        "rpm_limit": 15,
-        "daily_limit": 1500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # GitHub Models - Free tier: 15 RPM
-    # Sign up: https://github.com/marketplace/models
     "github": {
-        "id": 12,
-        "priority": 12,
+        "id": 9, "priority": 9,
         "api_keys": [os.getenv("GITHUB_API_KEY")],
         "endpoint": "https://models.github.ai/inference/chat/completions",
         "model_endpoint": "https://models.github.ai/inference/models",
-        "model_endpoint_auth": True,
-        "model": "openai/gpt-4o-mini",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4000,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("GITHUB_API_KEY")),
-        "rpm_limit": 15,
-        "daily_limit": 150,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "openai/gpt-4o-mini",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 4000,
+        "temperature": 0.7, "timeout": 60, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("GITHUB_API_KEY")),
+        "rpm_limit": 15, "daily_limit": 150,
+        "current_key_index": 0, "consecutive_failures": 0
     },
-
-    # Vercel AI Gateway - Free tier available
     "vercel": {
-        "id": 13,
-        "priority": 13,
+        "id": 10, "priority": 10,
         "api_keys": [os.getenv("VERCEL_API_KEY")],
         "endpoint": "https://ai-gateway.vercel.sh/v1/chat/completions",
         "model_endpoint": "https://ai-gateway.vercel.sh/v1/models",
-        "model_endpoint_auth": True,
-        "model": "anthropic/claude-sonnet-4",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4000,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("VERCEL_API_KEY")),
-        "rpm_limit": 15,
-        "daily_limit": 150,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # === DISCORD-BASED FREE APIs (from zukixa/cool-ai-stuff) ===
-    # Join Discord → Get free API key → Use free models
-
-    # NagaAI - Free tier available
-    # Discord: https://discord.gg/8ywEPhnJy4
-    "nagaai": {
-        "id": 14,
-        "priority": 14,
-        "api_keys": [os.getenv("NAGAAI_API_KEY")],
-        "endpoint": "https://api.naga.ac/v1/chat/completions",
-        "model_endpoint": "https://api.naga.ac/v1/models",
-        "model_endpoint_auth": True,
-        "model": "claude-3.5-sonnet",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("NAGAAI_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # NavyAPI - Free tier available
-    # Discord: https://discord.gg/ezXZ8wpprc
-    "navyapi": {
-        "id": 15,
-        "priority": 15,
-        "api_keys": [os.getenv("NAVY_API_KEY")],
-        "endpoint": "https://api.navy/v1/chat/completions",
-        "model_endpoint": "https://api.navy/v1/models",
-        "model_endpoint_auth": True,
-        "model": "gpt-4o",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("NAVY_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # ElectronHub - Free tier available
-    # Discord: https://discord.gg/4xg2TM3mNP
-    "electronhub": {
-        "id": 16,
-        "priority": 16,
-        "api_keys": [os.getenv("ELECTRONHUB_API_KEY")],
-        "endpoint": "https://api.electronhub.ai/v1/chat/completions",
-        "model_endpoint": "https://api.electronhub.ai/v1/models",
-        "model_endpoint_auth": True,
-        "model": "gpt-4o",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("ELECTRONHUB_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
-    },
-
-    # MNN AI - Free tier available
-    # Discord: https://discord.gg/xKmsCCzUFW
-    "mnnai": {
-        "id": 17,
-        "priority": 17,
-        "api_keys": [os.getenv("MNN_API_KEY")],
-        "endpoint": "https://api.mnnai.ru/v1/chat/completions",
-        "model_endpoint": "https://api.mnnai.ru/v1/models",
-        "model_endpoint_auth": True,
-        "model": "gpt-4o",
-        "method": "POST",
-        "auth_type": "bearer",
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 60,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": bool(os.getenv("MNN_API_KEY")),
-        "rpm_limit": 30,
-        "daily_limit": 500,
-        "current_key_index": 0,
-        "consecutive_failures": 0
+        "model_endpoint_auth": True, "model": "anthropic/claude-sonnet-4",
+        "method": "POST", "auth_type": "bearer", "max_tokens": 4000,
+        "temperature": 0.7, "timeout": 60, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": bool(os.getenv("VERCEL_API_KEY")),
+        "rpm_limit": 15, "daily_limit": 150,
+        "current_key_index": 0, "consecutive_failures": 0
     }
 }
 
-
 ENGINE_SETTINGS = {
-    "default_timeout": 60,
-    "max_retries": 3,
-    "enable_auto_rotation": True,
-    "consecutive_failure_limit": 5,
-    "key_rotation_enabled": True,
-    "provider_rotation_enabled": True,
-    "verbose_mode": False,
+    "default_timeout": 60, "max_retries": 3, "enable_auto_rotation": True,
+    "consecutive_failure_limit": 5, "key_rotation_enabled": True,
+    "provider_rotation_enabled": True, "verbose_mode": False,
     "stress_test_settings": {
-        "min_pass_percentage": 75,
-        "test_iterations": 3,
-        "test_timeout": 30,
-        "concurrent_tests": 2,
-        "test_prompt": "Hello! Please respond with exactly: 'Test successful - AI Engine v3.0 working!'",
+        "min_pass_percentage": 75, "test_iterations": 3, "test_timeout": 30,
+        "concurrent_tests": 2, "test_prompt": "Hello! Please respond with exactly: 'Test successful - AI Engine v3.0 working!'",
         "expected_keywords": ["test successful", "ai engine", "v3.0", "working"]
     },
     "priority_settings": {
-        "enable_dynamic_priority": True,
-        "success_rate_weight": 0.4,
-        "response_time_weight": 0.3,
-        "cost_weight": 0.2,
-        "reliability_weight": 0.1,
-        "rerank_interval_hours": 24
+        "enable_dynamic_priority": True, "success_rate_weight": 0.4,
+        "response_time_weight": 0.3, "cost_weight": 0.2,
+        "reliability_weight": 0.1, "rerank_interval_hours": 24
     }
 }
 
-AUTODECIDE_CONFIG = {
-    "enabled": True,
-    "cache_duration": 1800,
-    "model_cache": {}
-}
-
-CONFIG_VERSION = "5.0.0"
-
+AUTODECIDE_CONFIG = {"enabled": True, "cache_duration": 1800, "model_cache": {}}
+CONFIG_VERSION = "6.0.0"
 _config_last_modified = 0
 
 
@@ -562,12 +225,9 @@ def get_config_summary() -> Dict[str, Any]:
     enabled_count = sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
     total_keys = sum(len([k for k in c.get('api_keys', []) if k]) for c in AI_CONFIGS.values())
     return {
-        'version': CONFIG_VERSION,
-        'total_providers': len(AI_CONFIGS),
-        'enabled_providers': enabled_count,
-        'disabled_providers': len(AI_CONFIGS) - enabled_count,
-        'total_api_keys': total_keys,
-        'engine_settings': ENGINE_SETTINGS,
+        'version': CONFIG_VERSION, 'total_providers': len(AI_CONFIGS),
+        'enabled_providers': enabled_count, 'disabled_providers': len(AI_CONFIGS) - enabled_count,
+        'total_api_keys': total_keys, 'engine_settings': ENGINE_SETTINGS,
         'autodecide_enabled': AUTODECIDE_CONFIG.get('enabled', True)
     }
 
