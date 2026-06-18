@@ -17,7 +17,7 @@ def client():
 def test_create_branch(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Branch Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     # Add messages
     msg1_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Message 1"
@@ -30,7 +30,7 @@ def test_create_branch(client):
         "role": "user", "content": "Message 3"
     })
     msg3_id = msg3_resp.json()["message_id"]
-    
+
     # Create branch from message 3
     response = client.post(f"/api/chat/chats/{chat_id}/branch/{msg3_id}")
     assert response.status_code == 200
@@ -42,7 +42,7 @@ def test_create_branch(client):
 def test_create_branch_invalid_message(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     response = client.post(f"/api/chat/chats/{chat_id}/branch/99999")
     assert response.status_code == 404
 
@@ -55,13 +55,13 @@ def test_create_branch_chat_not_found(client):
 def test_get_branches(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Hello"
     })
     msg_id = msg_resp.json()["message_id"]
     client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
-    
+
     response = client.get(f"/api/chat/chats/{chat_id}/branches")
     assert response.status_code == 200
     data = response.json()
@@ -72,7 +72,7 @@ def test_get_branches(client):
 def test_get_branch_messages(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Hello"
     })
@@ -80,11 +80,11 @@ def test_get_branch_messages(client):
     client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "system", "content": "Hi!"
     })
-    
+
     # Create branch
     branch_resp = client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
     branch_id = branch_resp.json()["branch_id"]
-    
+
     response = client.get(f"/api/chat/chats/{chat_id}/branches/{branch_id}")
     assert response.status_code == 200
     data = response.json()
@@ -95,16 +95,16 @@ def test_get_branch_messages(client):
 def test_switch_branch(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Hello"
     })
     msg_id = msg_resp.json()["message_id"]
-    
+
     # Create branch
     branch_resp = client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
     branch_id = branch_resp.json()["branch_id"]
-    
+
     response = client.post(f"/api/chat/chats/{chat_id}/branches/{branch_id}/switch")
     assert response.status_code == 200
     assert response.json()["success"] is True

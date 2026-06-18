@@ -51,10 +51,10 @@ def test_session_expiration(session_manager):
 def test_update_activity(session_manager):
     session = session_manager.create_session(user_id="user_1")
     old_expires = session.expires_at
-    
+
     time.sleep(0.5)
     session_manager.update_activity(session.id)
-    
+
     updated = session_manager.get_session(session.id)
     assert updated.expires_at != old_expires
 
@@ -69,7 +69,7 @@ def test_destroy_user_sessions(session_manager):
     session_manager.create_session(user_id="user_1")
     session_manager.create_session(user_id="user_1")
     session_manager.create_session(user_id="user_2")
-    
+
     count = session_manager.destroy_user_sessions("user_1")
     assert count == 2
     assert len(session_manager.get_user_sessions("user_1")) == 0
@@ -79,7 +79,7 @@ def test_destroy_user_sessions(session_manager):
 def test_cleanup_expired(session_manager):
     session_manager.create_session(user_id="user_1")
     session_manager.create_session(user_id="user_2")
-    
+
     time.sleep(2.5)
     cleaned = session_manager.cleanup_expired()
     assert cleaned >= 2
@@ -88,7 +88,7 @@ def test_cleanup_expired(session_manager):
 def test_get_stats(session_manager):
     session_manager.create_session(user_id="user_1")
     session_manager.create_session(user_id="user_2")
-    
+
     stats = session_manager.get_stats()
     assert stats["total_sessions"] == 2
     assert stats["unique_users"] == 2
@@ -104,10 +104,10 @@ def test_backup_sqlite(backup_utils):
     conn.execute("INSERT INTO test VALUES (1, 'test')")
     conn.commit()
     conn.close()
-    
+
     backup_path = backup_utils.backup_sqlite(db_path)
     assert os.path.exists(backup_path)
-    
+
     # Verify backup
     conn = sqlite3.connect(backup_path)
     result = conn.execute("SELECT * FROM test").fetchone()
@@ -118,7 +118,7 @@ def test_backup_sqlite(backup_utils):
 def test_backup_json(backup_utils):
     data = {"key": "value", "number": 42}
     path = backup_utils.backup_json(data, "test_backup.json")
-    
+
     assert os.path.exists(path)
     with open(path) as f:
         loaded = json.load(f)
@@ -130,7 +130,7 @@ def test_list_backups(backup_utils):
     for i in range(3):
         with open(os.path.join(backup_utils.backup_dir, f"backup_{i}.db"), "w") as f:
             f.write("test")
-    
+
     backups = backup_utils.list_backups()
     assert len(backups) == 3
 
@@ -140,10 +140,10 @@ def test_cleanup_old_backups(backup_utils):
     for i in range(10):
         with open(os.path.join(backup_utils.backup_dir, f"backup_{i}.db"), "w") as f:
             f.write("test")
-    
+
     removed = backup_utils.cleanup_old_backups(keep_count=3)
     assert removed == 7
-    
+
     backups = backup_utils.list_backups()
     assert len(backups) == 3
 

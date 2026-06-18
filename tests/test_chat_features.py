@@ -1,5 +1,4 @@
 """Tests for new chat features: edit, regenerate, search, export"""
-import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,7 +22,7 @@ def test_edit_message(client):
         "role": "user", "content": "Original content"
     })
     message_id = msg_resp.json()["message_id"]
-    
+
     # Edit the message
     response = client.put(f"/api/chat/messages/{message_id}", json={
         "content": "Edited content"
@@ -47,7 +46,7 @@ def test_edit_message_empty_content(client):
         "role": "user", "content": "Original"
     })
     message_id = msg_resp.json()["message_id"]
-    
+
     response = client.put(f"/api/chat/messages/{message_id}", json={
         "content": ""
     })
@@ -63,7 +62,7 @@ def test_regenerate_response(client):
         "role": "user", "content": "Hello"
     })
     message_id = msg_resp.json()["message_id"]
-    
+
     response = client.post(f"/api/chat/chats/{chat_id}/regenerate/{message_id}")
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -77,7 +76,7 @@ def test_regenerate_from_assistant_message(client):
         "role": "system", "content": "System prompt"
     })
     message_id = msg_resp.json()["message_id"]
-    
+
     response = client.post(f"/api/chat/chats/{chat_id}/regenerate/{message_id}")
     assert response.status_code == 400  # Can only regenerate from user messages
 
@@ -101,7 +100,7 @@ def test_search_messages(client):
     client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Something else"
     })
-    
+
     response = client.post("/api/chat/search", json={
         "query": "world"
     })
@@ -117,7 +116,7 @@ def test_search_messages_specific_chat(client):
     client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "unique_term"
     })
-    
+
     response = client.post("/api/chat/search", json={
         "query": "unique_term",
         "chat_id": chat_id
@@ -152,7 +151,7 @@ def test_export_markdown(client):
     client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "system", "content": "Hi there!"
     })
-    
+
     response = client.get(f"/api/chat/chats/{chat_id}/export?format=markdown")
     assert response.status_code == 200
     data = response.json()
@@ -167,7 +166,7 @@ def test_export_json(client):
     client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Hello"
     })
-    
+
     response = client.get(f"/api/chat/chats/{chat_id}/export?format=json")
     assert response.status_code == 200
     data = response.json()

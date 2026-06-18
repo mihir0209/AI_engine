@@ -5,14 +5,12 @@ import asyncio
 import json
 import logging
 import time
-import os
 import hashlib
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, BackgroundTasks, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .db import ChatDB
@@ -516,11 +514,11 @@ async def get_upload(filename: str):
     # Security: prevent path traversal
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
+
     file_path = UPLOAD_DIR / filename
     if not file_path.resolve().is_relative_to(UPLOAD_DIR.resolve()):
         raise HTTPException(status_code=400, detail="Invalid file path")
-    
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 

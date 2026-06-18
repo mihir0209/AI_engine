@@ -7,7 +7,6 @@ import re
 import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
-import random
 import logging
 import concurrent.futures
 import threading
@@ -107,7 +106,7 @@ class AI_engine:
         self._flagged_keys_lock = threading.Lock()
         self._usage_stats_lock = threading.Lock()
         self._key_rotation_lock = threading.Lock()
-        
+
         # Connection pooling - shared session for HTTP requests
         self._http_session = requests.Session()
         self._http_session.headers.update({'User-Agent': 'AI-Engine/3.0'})
@@ -401,14 +400,14 @@ class AI_engine:
         """Track usage of a specific key and update persistent storage"""
         key_id = f"key_{key_index}"
         current_time = datetime.now()
-        
+
         with self._key_rotation_lock:
             # Update request count tracking
             if provider_name in self.key_request_count:
                 if key_id not in self.key_request_count[provider_name]:
                     self.key_request_count[provider_name][key_id] = []
                 self.key_request_count[provider_name][key_id].append(current_time)
-            
+
             # Update usage stats
             if provider_name in self.key_usage_stats and key_id in self.key_usage_stats[provider_name]:
                 self.key_usage_stats[provider_name][key_id]['requests'] += 1
@@ -1279,7 +1278,7 @@ class AI_engine:
         preferred_provider = kwargs.get('preferred_provider')
         force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
         use_cache = kwargs.get('use_cache', True)  # Option to bypass cache
-        
+
         # Check cache first (if enabled)
         if use_cache and not force_provider:
             try:
@@ -1470,7 +1469,7 @@ class AI_engine:
                         try:
                             from response_cache import response_cache
                             response_cache.set(
-                                messages, 
+                                messages,
                                 model or "auto",
                                 {
                                     "content": result.content,
@@ -1759,7 +1758,7 @@ class AI_engine:
                 timeout=config.get('timeout', 120),
                 stream=True
             )
-            
+
             if response.status_code == 200:
                 for line in response.iter_lines():
                     if line:
@@ -2005,6 +2004,8 @@ class AI_engine:
         api_key = self._get_current_api_key(provider_name)
         if api_key:
             url += f"?key={api_key}"
+
+        headers = {'Content-Type': 'application/json'}
 
         # Determine the model to use
         used_model = model or config['model']

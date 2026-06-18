@@ -1,5 +1,4 @@
 """Tests for CLI tool"""
-import pytest
 
 
 def test_format_api_key_env_var():

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """AI Engine CLI - Provider management tool"""
-import os
 import re
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def format_provider(name, config):
     max_tokens = str(config["max_tokens"]) if config.get("max_tokens") else "None"
     rpm = str(config["rpm_limit"]) if config.get("rpm_limit") else "None"
     daily = str(config["daily_limit"]) if config.get("daily_limit") else "None"
-    
+
     return f'''    "{name}": {{
         "id": {config["id"]}, "priority": {config["priority"]},
         "api_keys": {api_keys_str},
@@ -73,28 +72,27 @@ def save_provider(name, config):
     config_path = Path(__file__).parent / "config.py"
     with open(config_path, 'r') as f:
         content = f.read()
-    
+
     # Find the line with closing brace of AI_CONFIGS (before ENGINE_SETTINGS)
     # Pattern: look for "}" that is followed by ENGINE_SETTINGS
     pattern = r'(\n\})(\s*\n\s*ENGINE_SETTINGS)'
     match = re.search(pattern, content)
-    
+
     if not match:
         print("Error: Could not find AI_CONFIGS end")
         return
-    
+
     # Insert provider before the closing brace
     insert_pos = match.start()
     provider_code = ",\n" + format_provider(name, config)
-    
+
     content = content[:insert_pos] + provider_code + content[insert_pos:]
-    
+
     with open(config_path, 'w') as f:
         f.write(content)
 
 
 def list_providers():
-    import importlib
     import sys
     # Force reload config
     if 'config' in sys.modules:
@@ -111,27 +109,27 @@ def list_providers():
 def add_provider():
     print("\n--- Add New Provider ---\n")
     name = get_input("Provider name", required=True)
-    
+
     print("\nFormats: openai, gemini, cohere, a3z_get, cloudflare, ollama, flowith, minimax")
     fmt = get_input("Format", default="openai")
-    
+
     base_url = get_input("Base URL", required=True)
     chat_path = get_input("Chat endpoint path", default="/v1/chat/completions")
     models_path = get_input("Models endpoint path (empty for none)", default="/v1/models")
-    
+
     full_endpoint = base_url.rstrip('/') + chat_path
     full_models = base_url.rstrip('/') + models_path if models_path else None
-    
+
     print("\nAuth types: bearer, api_key, query_param, none")
     auth_type = get_input("Auth type", default="bearer")
-    
+
     raw_key = None
     api_key_code = "None"
     if auth_type != 'none':
         raw_key = get_input("API key (env var name like MY_KEY or actual key)", required=True)
         api_key_code = format_api_key(raw_key)
         print(f"  Stored as: {api_key_code}")
-    
+
     model = get_input("Default model", default="gpt-4")
     rpm = get_input("RPM limit (empty for none)", default=None)
     daily = get_input("Daily limit (empty for none)", default=None)
@@ -139,10 +137,10 @@ def add_provider():
     temp = get_input("Temperature", default="0.7")
     timeout = get_input("Timeout seconds", default="60")
     priority = get_input("Priority (1=highest)", default="10")
-    
+
     from config import AI_CONFIGS
     next_id = max(c.get('id', 0) for c in AI_CONFIGS.values()) + 1 if AI_CONFIGS else 1
-    
+
     config = {
         "id": next_id,
         "priority": int(priority),
@@ -159,9 +157,9 @@ def add_provider():
         "rpm_limit": int(rpm) if rpm else None,
         "daily_limit": int(daily) if daily else None,
     }
-    
+
     print(f"\n--- Preview ---\n{format_provider(name, config)}")
-    
+
     if get_yes_no("Save?"):
         save_provider(name, config)
         print(f"\n'{name}' added!")
@@ -173,11 +171,11 @@ def show_status():
     """Show provider status"""
     import requests
     from config import AI_CONFIGS
-    
+
     print("\n--- Provider Status ---\n")
     print(f"{'Name':<15} {'Status':<10} {'Endpoint'}")
     print("-" * 60)
-    
+
     for name, config in AI_CONFIGS.items():
         endpoint = config.get('endpoint', '')
         try:
@@ -185,7 +183,7 @@ def show_status():
             status = "OK" if resp.status_code < 500 else f"ERR {resp.status_code}"
         except:
             status = "UNREACHABLE"
-        
+
         print(f"{name:<15} {status:<10} {endpoint[:30]}")
 
 
@@ -193,16 +191,16 @@ def test_all_providers():
     """Test all providers"""
     import requests
     from config import AI_CONFIGS
-    
+
     print("\n--- Testing All Providers ---\n")
-    
+
     passed = 0
     failed = 0
-    
+
     for name, config in AI_CONFIGS.items():
         endpoint = config.get('endpoint', '')
         models_endpoint = config.get('model_endpoint')
-        
+
         if models_endpoint:
             try:
                 resp = requests.get(models_endpoint, timeout=10)
@@ -219,16 +217,16 @@ def test_all_providers():
                 failed += 1
         else:
             print(f"  {name}: No models endpoint")
-    
+
     print(f"\nResults: {passed} passed, {failed} failed")
 
 
 def show_stats():
     """Show usage statistics"""
     import requests
-    
+
     print("\n--- Usage Statistics ---\n")
-    
+
     try:
         resp = requests.get("http://localhost:8000/api/statistics", timeout=5)
         if resp.status_code == 200:
@@ -252,7 +250,7 @@ def main():
         print("  4. Test all providers")
         print("  5. Usage stats")
         print("  6. Exit")
-        
+
         choice = input("\nSelect: ").strip()
         if choice == '1': list_providers()
         elif choice == '2': add_provider()

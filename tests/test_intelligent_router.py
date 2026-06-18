@@ -1,5 +1,4 @@
 """Tests for intelligent router"""
-import pytest
 
 
 # === Task Detection Tests ===
@@ -106,12 +105,12 @@ def test_select_ab_test_provider():
     from intelligent_router import IntelligentRouter
     router = IntelligentRouter()
     router.create_ab_test("test1", ["openai", "anthropic"], [0.7, 0.3])
-    
+
     results = set()
     for _ in range(100):
         provider = router.select_ab_test_provider("test1")
         results.add(provider)
-    
+
     assert len(results) == 2  # Both should be selected at some point
 
 
@@ -120,7 +119,7 @@ def test_record_ab_test_result():
     router = IntelligentRouter()
     router.create_ab_test("test1", ["openai"], [1.0])
     router.record_ab_test_result("test1", "openai", True, 0.5)
-    
+
     results = router.get_ab_test_results("test1")
     assert results["total_requests"] == 1
 
@@ -138,7 +137,7 @@ def test_record_latency():
     from intelligent_router import IntelligentRouter
     router = IntelligentRouter()
     router.record_latency("openai", "gpt-4", 0.5, True)
-    
+
     stats = router.get_latency_stats()
     assert "openai/gpt-4" in stats
 
@@ -148,7 +147,7 @@ def test_get_latency_stats():
     router = IntelligentRouter()
     router.record_latency("openai", "gpt-4", 0.5, True)
     router.record_latency("openai", "gpt-4", 0.8, True)
-    
+
     stats = router.get_latency_stats("openai")
     assert len(stats) == 1
 
@@ -168,6 +167,6 @@ def test_select_optimal_provider():
     router = IntelligentRouter()
     messages = [{"role": "user", "content": "Write code"}]
     providers = [("openai", {"model": "gpt-4"}), ("anthropic", {"model": "claude-3"})]
-    
+
     provider, model, profile = router.select_optimal_provider(messages, providers)
     assert provider in ["openai", "anthropic"]

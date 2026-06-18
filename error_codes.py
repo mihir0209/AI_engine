@@ -16,13 +16,13 @@ class ErrorCode(Enum):
     CONFLICT = "CONFLICT"
     UNPROCESSABLE = "UNPROCESSABLE"
     RATE_LIMITED = "RATE_LIMITED"
-    
+
     # Server errors (5xx)
     INTERNAL_ERROR = "INTERNAL_ERROR"
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
     GATEWAY_TIMEOUT = "GATEWAY_TIMEOUT"
-    
+
     # AI Engine specific errors
     PROVIDER_ERROR = "PROVIDER_ERROR"
     PROVIDER_NOT_FOUND = "PROVIDER_NOT_FOUND"
@@ -32,28 +32,28 @@ class ErrorCode(Enum):
     PROVIDER_RATE_LIMITED = "PROVIDER_RATE_LIMITED"
     PROVIDER_AUTH_FAILED = "PROVIDER_AUTH_FAILED"
     PROVIDER_QUOTA_EXCEEDED = "PROVIDER_QUOTA_EXCEEDED"
-    
+
     MODEL_NOT_FOUND = "MODEL_NOT_FOUND"
     MODEL_UNAVAILABLE = "MODEL_UNAVAILABLE"
-    
+
     NO_PROVIDERS_AVAILABLE = "NO_PROVIDERS_AVAILABLE"
     ALL_PROVIDERS_FAILED = "ALL_PROVIDERS_FAILED"
-    
+
     CHAT_NOT_FOUND = "CHAT_NOT_FOUND"
     MESSAGE_NOT_FOUND = "MESSAGE_NOT_FOUND"
-    
+
     FILE_TOO_LARGE = "FILE_TOO_LARGE"
     INVALID_FILE_TYPE = "INVALID_FILE_TYPE"
     UPLOAD_FAILED = "UPLOAD_FAILED"
-    
+
     CACHE_ERROR = "CACHE_ERROR"
-    
+
     WORKFLOW_NOT_FOUND = "WORKFLOW_NOT_FOUND"
     WORKFLOW_EXECUTION_FAILED = "WORKFLOW_EXECUTION_FAILED"
-    
+
     PLUGIN_NOT_FOUND = "PLUGIN_NOT_FOUND"
     PLUGIN_LOAD_FAILED = "PLUGIN_LOAD_FAILED"
-    
+
     CIRCUIT_BREAKER_OPEN = "CIRCUIT_BREAKER_OPEN"
 
 
@@ -65,7 +65,7 @@ class ErrorResponse:
     message: str
     details: Optional[Dict[str, Any]] = None
     suggestion: Optional[str] = None
-    
+
     def to_dict(self) -> Dict:
         result = {
             "error": self.error,
@@ -81,7 +81,7 @@ class ErrorResponse:
 
 class ErrorFactory:
     """Factory for creating standardized errors"""
-    
+
     @staticmethod
     def provider_not_found(provider: str) -> ErrorResponse:
         return ErrorResponse(
@@ -90,7 +90,7 @@ class ErrorFactory:
             message=f"Provider '{provider}' not found in configuration",
             suggestion="Check available providers with GET /api/providers"
         )
-    
+
     @staticmethod
     def model_not_found(model: str) -> ErrorResponse:
         return ErrorResponse(
@@ -99,7 +99,7 @@ class ErrorFactory:
             message=f"Model '{model}' not available in any provider",
             suggestion="Check available models with GET /v1/models"
         )
-    
+
     @staticmethod
     def no_providers() -> ErrorResponse:
         return ErrorResponse(
@@ -108,7 +108,7 @@ class ErrorFactory:
             message="No AI providers are currently available",
             suggestion="Configure at least one provider in config.py"
         )
-    
+
     @staticmethod
     def provider_failed(provider: str, reason: str) -> ErrorResponse:
         return ErrorResponse(
@@ -117,7 +117,7 @@ class ErrorFactory:
             message=f"Provider '{provider}' failed: {reason}",
             details={"provider": provider, "reason": reason}
         )
-    
+
     @staticmethod
     def chat_not_found(chat_id: int) -> ErrorResponse:
         return ErrorResponse(
@@ -125,7 +125,7 @@ class ErrorFactory:
             code=ErrorCode.CHAT_NOT_FOUND,
             message=f"Chat with ID {chat_id} not found"
         )
-    
+
     @staticmethod
     def rate_limited(retry_after: int = 60) -> ErrorResponse:
         return ErrorResponse(
@@ -135,7 +135,7 @@ class ErrorFactory:
             details={"retry_after": retry_after},
             suggestion=f"Wait {retry_after} seconds before retrying"
         )
-    
+
     @staticmethod
     def unauthorized(detail: str = None) -> ErrorResponse:
         return ErrorResponse(
@@ -144,7 +144,7 @@ class ErrorFactory:
             message=detail or "Authentication required",
             suggestion="Provide a valid API key in X-API-Key header"
         )
-    
+
     @staticmethod
     def forbidden(detail: str = None) -> ErrorResponse:
         return ErrorResponse(
@@ -152,7 +152,7 @@ class ErrorFactory:
             code=ErrorCode.FORBIDDEN,
             message=detail or "Insufficient permissions"
         )
-    
+
     @staticmethod
     def internal_error(detail: str = None) -> ErrorResponse:
         return ErrorResponse(
@@ -160,7 +160,7 @@ class ErrorFactory:
             code=ErrorCode.INTERNAL_ERROR,
             message=detail or "An internal error occurred"
         )
-    
+
     @staticmethod
     def circuit_breaker_open(provider: str) -> ErrorResponse:
         return ErrorResponse(

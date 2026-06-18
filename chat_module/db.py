@@ -4,9 +4,7 @@ Database models and operations for chat functionality
 import sqlite3
 import json
 import logging
-from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pathlib import Path
+from typing import List, Optional, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +238,7 @@ class ChatDB:
         """Search messages by content"""
         # Security: escape LIKE special characters
         safe_query = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        
+
         with self.get_connection() as conn:
             if chat_id:
                 sql = """

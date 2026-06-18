@@ -3,9 +3,8 @@ Load testing framework for AI Engine
 Simulates concurrent users and measures performance
 """
 import time
-import threading
 import statistics
-from typing import Dict, List, Any, Callable, Optional
+from typing import Dict, List, Callable
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
@@ -32,10 +31,10 @@ class LoadTestResult:
 
 class LoadTester:
     """Load testing framework"""
-    
+
     def __init__(self):
         self.results: List[LoadTestResult] = []
-    
+
     def run_load_test(
         self,
         test_name: str,
@@ -48,7 +47,7 @@ class LoadTester:
         response_times = []
         errors = []
         start_time = time.time()
-        
+
         def make_request():
             try:
                 req_start = time.time()
@@ -57,10 +56,10 @@ class LoadTester:
                 return req_time, None
             except Exception as e:
                 return 0, str(e)
-        
+
         with ThreadPoolExecutor(max_workers=concurrent_users) as executor:
             futures = [executor.submit(make_request) for _ in range(num_requests)]
-            
+
             for future in as_completed(futures, timeout=timeout):
                 try:
                     req_time, error = future.result(timeout=10)
@@ -70,12 +69,12 @@ class LoadTester:
                         response_times.append(req_time)
                 except Exception as e:
                     errors.append(str(e))
-        
+
         total_duration = time.time() - start_time
-        
+
         # Calculate statistics
         sorted_times = sorted(response_times) if response_times else [0]
-        
+
         result = LoadTestResult(
             test_name=test_name,
             total_requests=num_requests,
@@ -92,10 +91,10 @@ class LoadTester:
             total_duration=total_duration,
             errors=errors[:10]  # Keep first 10 errors
         )
-        
+
         self.results.append(result)
         return result
-    
+
     def print_results(self, result: LoadTestResult):
         """Print load test results"""
         print(f"\n{'='*60}")
@@ -114,23 +113,23 @@ class LoadTester:
         print(f"  P50:               {result.p50_response_time*1000:.2f}ms")
         print(f"  P95:               {result.p95_response_time*1000:.2f}ms")
         print(f"  P99:               {result.p99_response_time*1000:.2f}ms")
-        
+
         if result.errors:
             print(f"\nSample Errors:")
             for error in result.errors[:5]:
                 print(f"  - {error[:100]}")
-        
+
         print(f"{'='*60}\n")
-    
+
     def get_summary(self) -> Dict:
         """Get summary of all test results"""
         if not self.results:
             return {}
-        
+
         return {
             "total_tests": len(self.results),
             "total_requests": sum(r.total_requests for r in self.results),
-            "overall_success_rate": sum(r.successful_requests for r in self.results) / 
+            "overall_success_rate": sum(r.successful_requests for r in self.results) /
                                     sum(r.total_requests for r in self.results) * 100,
             "avg_response_time": statistics.mean([r.avg_response_time for r in self.results]),
             "tests": [
@@ -144,7 +143,7 @@ class LoadTester:
                 for r in self.results
             ]
         }
-    
+
     def export_results(self, filepath: str):
         """Export results to JSON"""
         summary = self.get_summary()
@@ -169,7 +168,7 @@ def mock_chat_request():
 def run_quick_load_test():
     """Run a quick load test"""
     tester = LoadTester()
-    
+
     # Test API endpoints
     result = tester.run_load_test(
         test_name="API Health Check",
@@ -178,7 +177,7 @@ def run_quick_load_test():
         concurrent_users=5
     )
     tester.print_results(result)
-    
+
     return tester
 
 

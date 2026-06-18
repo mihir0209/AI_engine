@@ -50,7 +50,7 @@ __author__ = "Mihir Patil @ https://github.com/mihir0209"
 try:
     from .ai_engine import AI_engine as AIEngine
     from .config import AI_CONFIGS, ENGINE_SETTINGS
-    
+
     def get_ai_engine(verbose=True):
         """
         Factory function to get a configured AI Engine v3.0 instance
@@ -62,7 +62,7 @@ try:
             AI_engine: Configured AI Engine instance with all 22 providers
         """
         return AIEngine(verbose=verbose)
-    
+
     def get_available_providers():
         """
         Get list of all configured providers
@@ -71,7 +71,7 @@ try:
             dict: Dictionary of provider configurations
         """
         return AI_CONFIGS
-    
+
     def get_engine_settings():
         """
         Get current engine settings
@@ -80,16 +80,16 @@ try:
             dict: Engine configuration settings
         """
         return ENGINE_SETTINGS
-    
+
     __all__ = [
         'AIEngine',
         'get_ai_engine',
-        'get_available_providers', 
+        'get_available_providers',
         'get_engine_settings',
         'AI_CONFIGS',
         'ENGINE_SETTINGS'
     ]
-    
+
 except ImportError as e:
     print(f"Warning: AI Engine v3.0 components could not be imported: {e}")
     __all__ = []

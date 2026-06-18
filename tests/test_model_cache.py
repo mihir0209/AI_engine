@@ -1,5 +1,4 @@
 """Tests for model_cache.py module"""
-import os
 import json
 import time
 import pytest

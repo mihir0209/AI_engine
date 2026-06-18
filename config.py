@@ -180,6 +180,23 @@ AI_CONFIGS = {
         "format": "openai", "enabled": bool(os.getenv("VERCEL_API_KEY")),
         "rpm_limit": 15, "daily_limit": 150,
         "current_key_index": 0, "consecutive_failures": 0
+    },
+    "freetheai": {
+        "id": 11, "priority": 11,
+        "api_keys": [os.getenv("FREETHEAI_API_KEY")],
+        "endpoint": "https://api.freetheai.xyz/v1/chat/completions",
+        "model_endpoint": "https://api.freetheai.xyz/v1/models",
+        "model_endpoint_auth": True,
+        "model": "mim/mimo-v2.5-pro",
+        "method": "POST", "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3, "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("FREETHEAI_API_KEY")) if True else False,
+        "rpm_limit": 10, "daily_limit": 250,
+        "current_key_index": 0, "consecutive_failures": 0
     }
 }
 

@@ -1,5 +1,4 @@
 """Tests for file upload functionality"""
-import os
 import pytest
 from fastapi.testclient import TestClient
 from io import BytesIO
@@ -45,7 +44,7 @@ def test_upload_with_chat_id(client):
     # Create chat first
     create_resp = client.post("/api/chat/chats", json={"title": "Upload Test"})
     chat_id = create_resp.json()["chat_id"]
-    
+
     content = b"File content for chat"
     response = client.post(
         f"/api/chat/upload?chat_id={chat_id}",
@@ -84,7 +83,7 @@ def test_get_upload_info(client):
         files={"file": ("info_test.txt", BytesIO(content), "text/plain")}
     )
     saved_as = upload_resp.json()["saved_as"]
-    
+
     # Get file info
     response = client.get(f"/api/chat/uploads/{saved_as}")
     assert response.status_code == 200

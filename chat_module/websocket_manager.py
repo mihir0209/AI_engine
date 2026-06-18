@@ -16,10 +16,10 @@ class WebSocketManager:
     async def connect(self, websocket: WebSocket, chat_id: int):
         """Accept WebSocket connection and add to chat room"""
         await websocket.accept()
-        
+
         if chat_id not in self.active_connections:
             self.active_connections[chat_id] = []
-        
+
         self.active_connections[chat_id].append(websocket)
         logger.info(f"WebSocket connected to chat {chat_id}")
 
@@ -52,7 +52,7 @@ class WebSocketManager:
                 except Exception as e:
                     logger.error(f"Error broadcasting to chat {chat_id}: {e}")
                     disconnected.append(connection)
-            
+
             # Remove disconnected connections
             for connection in disconnected:
                 self.disconnect(connection, chat_id)
@@ -73,19 +73,19 @@ class WebSocketManager:
             for connection in connections:
                 try:
                     await connection.send_text(json.dumps({
-                        "type": "chat_deleted", 
-                        "chat_id": chat_id, 
+                        "type": "chat_deleted",
+                        "chat_id": chat_id,
                         "message": "This chat has been automatically deleted"
                     }))
                     # Close the WebSocket connection
                     await connection.close()
                 except Exception as e:
                     logger.error(f"Error notifying chat {chat_id} deletion: {e}")
-            
+
             # Remove all connections for this chat
             del self.active_connections[chat_id]
             logger.info(f"Closed all WebSocket connections for deleted chat {chat_id}")
-        
+
         # Broadcast to all other clients to update their chat lists
         message = json.dumps({
             "type": "chat_deleted",
@@ -103,7 +103,7 @@ class WebSocketManager:
                 except Exception as e:
                     logger.error(f"Error broadcasting to all connections: {e}")
                     disconnected.append((connection, chat_id))
-        
+
         # Remove disconnected connections
         for connection, chat_id in disconnected:
             self.disconnect(connection, chat_id)

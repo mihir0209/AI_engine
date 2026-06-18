@@ -36,7 +36,7 @@ def test_list_workflows(workflow_engine):
     steps = [{"id": "s1", "step_type": "ai_call"}]
     workflow_engine.create_workflow("WF1", "Desc1", steps)
     workflow_engine.create_workflow("WF2", "Desc2", steps)
-    
+
     wfs = workflow_engine.list_workflows()
     assert len(wfs) == 2
 
@@ -53,7 +53,7 @@ def test_execute_simple_workflow(workflow_engine):
 
 def test_execute_conditional_workflow(workflow_engine):
     steps = [
-        {"id": "check", "step_type": "condition", 
+        {"id": "check", "step_type": "condition",
          "config": {"type": "equals", "value": "yes", "compare_to": "yes"},
          "on_true": "success", "on_false": "fail"},
         {"id": "success", "step_type": "output", "next_step": None},

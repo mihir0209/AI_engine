@@ -5,8 +5,7 @@ Provides intelligent caching with semantic similarity
 import json
 import hashlib
 import time
-import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Optional, List
 from pathlib import Path
 import threading
 

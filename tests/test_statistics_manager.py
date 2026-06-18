@@ -1,11 +1,9 @@
 """Tests for statistics_manager.py module"""
 import os
-import json
-import tempfile
 import pytest
 from datetime import datetime
 
-from statistics_manager import StatisticsManager, KeyStatistics, get_stats_manager, save_statistics_now
+from statistics_manager import StatisticsManager, KeyStatistics, get_stats_manager
 
 
 @pytest.fixture

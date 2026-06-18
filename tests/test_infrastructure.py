@@ -52,7 +52,7 @@ def test_circuit_breaker_closes_after_recovery():
 
 
 def test_circuit_breaker_resets_on_success():
-    from infrastructure import CircuitBreaker, CircuitState
+    from infrastructure import CircuitBreaker
     cb = CircuitBreaker("test", failure_threshold=3)
 
     cb.record_failure()

@@ -3,14 +3,13 @@ import json
 import time
 import asyncio
 import aiohttp
-import requests
-from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -202,7 +201,6 @@ async def limit_request_size(request: Request, call_next):
     return await call_next(request)
 
 # Request validation and sanitization
-import re
 
 def sanitize_input(text: str) -> str:
     """Sanitize user input to prevent injection attacks"""
@@ -1530,21 +1528,20 @@ async def get_version():
 async def reload_config():
     """Reload configuration from config.py"""
     try:
-        import importlib
         import sys
         # Force reload config
         if 'config' in sys.modules:
             del sys.modules['config']
         from config import AI_CONFIGS as new_configs, ENGINE_SETTINGS as new_settings
-        
+
         # Update global references
         global AI_CONFIGS, ENGINE_SETTINGS
         AI_CONFIGS = new_configs
         ENGINE_SETTINGS = new_settings
-        
+
         # Reload engine providers
         engine.providers = engine._load_enabled_providers()
-        
+
         return {
             "status": "reloaded",
             "providers": len(AI_CONFIGS),

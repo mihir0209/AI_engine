@@ -1,5 +1,4 @@
 """Tests for error codes and standardized error responses"""
-import pytest
 
 
 # === Error Code Tests ===

@@ -1,8 +1,7 @@
 """Tests for ai_engine.py module"""
 import time
 import pytest
-from unittest.mock import patch, MagicMock
-from dataclasses import asdict
+from unittest.mock import patch
 
 from ai_engine import AI_engine, RequestResult
 
@@ -349,7 +348,7 @@ def test_check_provider_recovery_flagged(engine):
 
 
 def test_check_provider_recovery_recent_failure(engine):
-    from datetime import datetime, timedelta
+    from datetime import datetime
     engine.usage_stats["test"] = {
         "last_failure": datetime.now(),
         "consecutive_failures": 3

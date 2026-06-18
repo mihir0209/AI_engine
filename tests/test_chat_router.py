@@ -1,11 +1,8 @@
 """Tests for chat_module/router.py"""
-import json
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
-from chat_module.router import router, set_global_engine
-from chat_module.db import ChatDB
+from chat_module.router import router
 
 
 @pytest.fixture

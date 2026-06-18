@@ -3,7 +3,7 @@ Advanced chat features module
 Provides conversation summarization, context compression, and topic extraction
 """
 import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List
 from collections import Counter
 from dataclasses import dataclass
 

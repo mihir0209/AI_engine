@@ -1,6 +1,4 @@
 """Tests for config.py module"""
-import os
-import pytest
 
 
 def test_import_config():

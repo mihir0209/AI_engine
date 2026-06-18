@@ -1,9 +1,6 @@
 """Tests for chat_module/db.py"""
 import os
-import json
-import tempfile
 import pytest
-from datetime import datetime
 
 from chat_module.db import ChatDB
 

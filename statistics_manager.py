@@ -61,11 +61,11 @@ class KeyStatistics:
                 data['last_used'] = datetime.fromisoformat(data['last_used'])
             except (ValueError, TypeError):
                 data['last_used'] = None
-        
+
         # Handle backward compatibility for missing successful_response_time field
         if 'successful_response_time' not in data:
             data['successful_response_time'] = 0.0
-            
+
         return cls(**data)
 
 class StatisticsManager:

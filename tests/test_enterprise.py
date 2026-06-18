@@ -2,7 +2,6 @@
 import pytest
 import tempfile
 import shutil
-import os
 
 
 @pytest.fixture

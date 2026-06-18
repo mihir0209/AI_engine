@@ -2,7 +2,7 @@
 Provider capabilities detection and management
 Detects what features each provider supports
 """
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 
@@ -88,42 +88,42 @@ PROVIDER_CAPABILITIES: Dict[str, ProviderCapabilities] = {
 
 class CapabilityManager:
     """Manages provider capabilities"""
-    
+
     def __init__(self):
         self.capabilities: Dict[str, ProviderCapabilities] = dict(PROVIDER_CAPABILITIES)
         self.custom_capabilities: Dict[str, ProviderCapabilities] = {}
-    
+
     def get_capabilities(self, provider: str) -> Optional[ProviderCapabilities]:
         """Get capabilities for a provider"""
         return self.custom_capabilities.get(provider) or self.capabilities.get(provider)
-    
+
     def set_capabilities(self, provider: str, capabilities: ProviderCapabilities):
         """Set custom capabilities for a provider"""
         self.custom_capabilities[provider] = capabilities
-    
+
     def supports_vision(self, provider: str) -> bool:
         """Check if provider supports vision"""
         caps = self.get_capabilities(provider)
         return caps.vision if caps else False
-    
+
     def supports_tool_calling(self, provider: str) -> bool:
         """Check if provider supports tool calling"""
         caps = self.get_capabilities(provider)
         return caps.tool_calling if caps else False
-    
+
     def supports_streaming(self, provider: str) -> bool:
         """Check if provider supports streaming"""
         caps = self.get_capabilities(provider)
         return caps.streaming if caps else False
-    
+
     def get_providers_with_vision(self) -> List[str]:
         """Get all providers that support vision"""
         return [name for name, caps in self.capabilities.items() if caps.vision]
-    
+
     def get_providers_with_tool_calling(self) -> List[str]:
         """Get all providers that support tool calling"""
         return [name for name, caps in self.capabilities.items() if caps.tool_calling]
-    
+
     def get_fastest_providers(self, top_n: int = 3) -> List[str]:
         """Get fastest providers"""
         speed_order = {"fast": 0, "medium": 1, "slow": 2}
@@ -132,7 +132,7 @@ class CapabilityManager:
             key=lambda x: speed_order.get(x[1].speed_tier, 1)
         )
         return [name for name, _ in sorted_providers[:top_n]]
-    
+
     def get_cheapest_providers(self, top_n: int = 3) -> List[str]:
         """Get cheapest providers"""
         cost_order = {"low": 0, "medium": 1, "high": 2}
@@ -141,7 +141,7 @@ class CapabilityManager:
             key=lambda x: cost_order.get(x[1].cost_tier, 1)
         )
         return [name for name, _ in sorted_providers[:top_n]]
-    
+
     def get_provider_for_task(self, task_type: str) -> List[str]:
         """Get best providers for a task type"""
         recommendations = {
@@ -151,7 +151,7 @@ class CapabilityManager:
             "cheap": self.get_cheapest_providers(),
         }
         return recommendations.get(task_type, list(self.capabilities.keys()))
-    
+
     def get_all_capabilities(self) -> Dict[str, Dict]:
         """Get all provider capabilities"""
         return {
@@ -170,7 +170,7 @@ class CapabilityManager:
 
 class ErrorMessageManager:
     """Manages user-friendly error messages"""
-    
+
     ERROR_MESSAGES = {
         "rate_limit": {
             "message": "Rate limit exceeded. Please wait before retrying.",
@@ -243,7 +243,7 @@ class ErrorMessageManager:
             "code": "CIRCUIT_OPEN"
         }
     }
-    
+
     @classmethod
     def get_error(cls, error_type: str, details: str = None) -> Dict:
         """Get formatted error message"""
@@ -252,13 +252,13 @@ class ErrorMessageManager:
             "suggestion": "Please try again or contact support.",
             "code": "UNKNOWN_ERROR"
         })
-        
+
         result = dict(error_info)
         if details:
             result["details"] = details
-        
+
         return result
-    
+
     @classmethod
     def get_all_errors(cls) -> Dict:
         """Get all error messages"""

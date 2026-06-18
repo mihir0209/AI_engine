@@ -4,11 +4,10 @@ Provides tenant isolation, API key scoping, and role-based access control
 """
 import os
 import json
-import hashlib
 import secrets
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 
 

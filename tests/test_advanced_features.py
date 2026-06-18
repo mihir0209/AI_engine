@@ -35,7 +35,7 @@ def test_is_vision_message():
         ]
     }
     assert VisionSupport.is_vision_message(msg) is True
-    
+
     regular_msg = {"role": "user", "content": "Hello"}
     assert VisionSupport.is_vision_message(regular_msg) is False
 
@@ -45,7 +45,7 @@ def test_is_vision_message():
 def test_register_tool():
     from advanced_features import ToolCallingSupport, ToolDefinition
     tc = ToolCallingSupport()
-    
+
     tool = ToolDefinition(
         name="get_weather",
         description="Get weather for a location",
@@ -57,7 +57,7 @@ def test_register_tool():
             "required": ["location"]
         }
     )
-    
+
     tc.register_tool(tool, lambda location: {"temp": 72})
     assert tc.has_tool("get_weather") is True
     assert tc.has_tool("other_tool") is False
@@ -66,10 +66,10 @@ def test_register_tool():
 def test_get_tools_for_request():
     from advanced_features import ToolCallingSupport, ToolDefinition
     tc = ToolCallingSupport()
-    
+
     tool = ToolDefinition("test_tool", "Test", {"type": "object", "properties": {}})
     tc.register_tool(tool)
-    
+
     tools = tc.get_tools_for_request()
     assert len(tools) == 1
     assert tools[0]["type"] == "function"
@@ -79,16 +79,16 @@ def test_get_tools_for_request():
 def test_execute_tool():
     from advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
     tc = ToolCallingSupport()
-    
+
     def weather_handler(location, unit="celsius"):
         return {"location": location, "temp": 25, "unit": unit}
-    
+
     tool = ToolDefinition("get_weather", "Get weather", {
         "type": "object",
         "properties": {"location": {"type": "string"}, "unit": {"type": "string"}}
     })
     tc.register_tool(tool, weather_handler)
-    
+
     result = tc.execute_tool(ToolCall(id="tc_1", name="get_weather", arguments={"location": "NYC"}))
     assert result["location"] == "NYC"
 
@@ -97,7 +97,7 @@ def test_execute_tool_no_handler():
     from advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
     tc = ToolCallingSupport()
     tc.register_tool(ToolDefinition("no_handler", "No handler", {}))
-    
+
     with pytest.raises(ValueError):
         tc.execute_tool(ToolCall(id="tc_1", name="no_handler", arguments={}))
 
@@ -117,7 +117,7 @@ def test_parse_tool_calls():
             }
         }]
     }
-    
+
     tool_calls = ToolCallingSupport.parse_tool_calls(response)
     assert len(tool_calls) == 1
     assert tool_calls[0].name == "get_weather"
@@ -139,7 +139,7 @@ def test_calculate_similarity():
     vec1 = [1.0, 0.0, 0.0]
     vec2 = [1.0, 0.0, 0.0]
     assert EmbeddingSupport.calculate_similarity(vec1, vec2) == 1.0
-    
+
     vec3 = [0.0, 1.0, 0.0]
     assert EmbeddingSupport.calculate_similarity(vec1, vec3) == 0.0
 
@@ -158,7 +158,7 @@ def test_find_most_similar():
         {"id": 2, "embedding": [0.0, 0.0, 1.0], "text": "different"},
         {"id": 3, "embedding": [0.8, 0.2, 0.0], "text": "also similar"}
     ]
-    
+
     results = EmbeddingSupport.find_most_similar(query, embeddings, top_k=2)
     assert len(results) == 2
     assert results[0]["id"] == 1  # Most similar first

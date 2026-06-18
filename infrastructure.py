@@ -4,7 +4,7 @@ Circuit breaker, retry logic, and enhanced health checks
 """
 import time
 import random
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
