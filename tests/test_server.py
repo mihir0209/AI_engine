@@ -264,3 +264,76 @@ def test_provider_health_endpoint(client):
     data = response.json()
     assert "providers" in data
     assert "summary" in data
+
+
+# === New Module Endpoints ===
+
+def test_capabilities_endpoint(client):
+    response = client.get("/api/capabilities")
+    assert response.status_code == 200
+    assert "capabilities" in response.json()
+
+
+def test_vision_providers_endpoint(client):
+    response = client.get("/api/capabilities/vision")
+    assert response.status_code == 200
+    assert "providers" in response.json()
+
+
+def test_tool_calling_providers_endpoint(client):
+    response = client.get("/api/capabilities/tool-calling")
+    assert response.status_code == 200
+    assert "providers" in response.json()
+
+
+def test_fast_providers_endpoint(client):
+    response = client.get("/api/capabilities/fast")
+    assert response.status_code == 200
+    assert "providers" in response.json()
+
+
+def test_cheap_providers_endpoint(client):
+    response = client.get("/api/capabilities/cheap")
+    assert response.status_code == 200
+    assert "providers" in response.json()
+
+
+def test_cache_stats_endpoint(client):
+    response = client.get("/api/cache/stats")
+    assert response.status_code == 200
+    data = response.json()
+    assert "lru_cache" in data
+
+
+def test_cache_clear_endpoint(client):
+    response = client.get("/api/cache/clear")
+    assert response.status_code == 200
+    assert response.json()["status"] == "cleared"
+
+
+def test_metrics_summary_endpoint(client):
+    response = client.get("/api/metrics/summary")
+    assert response.status_code == 200
+    assert "total_requests" in response.json()
+
+
+def test_metrics_endpoints_endpoint(client):
+    response = client.get("/api/metrics/endpoints")
+    assert response.status_code == 200
+
+
+def test_sla_status_endpoint(client):
+    response = client.get("/api/sla/status")
+    assert response.status_code == 200
+
+
+def test_errors_endpoint(client):
+    response = client.get("/api/errors")
+    assert response.status_code == 200
+    assert "errors" in response.json()
+
+
+def test_health_checks_endpoint(client):
+    response = client.get("/api/health/checks")
+    assert response.status_code == 200
+    assert "checks" in response.json()
