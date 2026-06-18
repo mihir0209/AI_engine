@@ -169,14 +169,97 @@ def add_provider():
         print("Cancelled.")
 
 
+def show_status():
+    """Show provider status"""
+    import requests
+    from config import AI_CONFIGS
+    
+    print("\n--- Provider Status ---\n")
+    print(f"{'Name':<15} {'Status':<10} {'Endpoint'}")
+    print("-" * 60)
+    
+    for name, config in AI_CONFIGS.items():
+        endpoint = config.get('endpoint', '')
+        try:
+            resp = requests.get(endpoint.replace('/chat/completions', '/models'), timeout=5)
+            status = "OK" if resp.status_code < 500 else f"ERR {resp.status_code}"
+        except:
+            status = "UNREACHABLE"
+        
+        print(f"{name:<15} {status:<10} {endpoint[:30]}")
+
+
+def test_all_providers():
+    """Test all providers"""
+    import requests
+    from config import AI_CONFIGS
+    
+    print("\n--- Testing All Providers ---\n")
+    
+    passed = 0
+    failed = 0
+    
+    for name, config in AI_CONFIGS.items():
+        endpoint = config.get('endpoint', '')
+        models_endpoint = config.get('model_endpoint')
+        
+        if models_endpoint:
+            try:
+                resp = requests.get(models_endpoint, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = data.get('data', [])
+                    print(f"  {name}: OK ({len(models)} models)")
+                    passed += 1
+                else:
+                    print(f"  {name}: HTTP {resp.status_code}")
+                    failed += 1
+            except Exception as e:
+                print(f"  {name}: ERROR - {str(e)[:30]}")
+                failed += 1
+        else:
+            print(f"  {name}: No models endpoint")
+    
+    print(f"\nResults: {passed} passed, {failed} failed")
+
+
+def show_stats():
+    """Show usage statistics"""
+    import requests
+    
+    print("\n--- Usage Statistics ---\n")
+    
+    try:
+        resp = requests.get("http://localhost:8000/api/statistics", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            summary = data.get('summary', {})
+            print(f"Total Providers: {summary.get('total_providers', 0)}")
+            print(f"Total Requests: {summary.get('total_requests', 0)}")
+            print(f"Success Rate: {summary.get('overall_success_rate', 'N/A')}")
+        else:
+            print("Server not running or statistics unavailable")
+    except:
+        print("Server not running")
+
+
 def main():
     print_header()
     while True:
-        print("\n  1. List providers\n  2. Add provider\n  3. Exit")
+        print("\n  1. List providers")
+        print("  2. Add provider")
+        print("  3. Provider status")
+        print("  4. Test all providers")
+        print("  5. Usage stats")
+        print("  6. Exit")
+        
         choice = input("\nSelect: ").strip()
         if choice == '1': list_providers()
         elif choice == '2': add_provider()
-        elif choice == '3': print("\nGoodbye!"); break
+        elif choice == '3': show_status()
+        elif choice == '4': test_all_providers()
+        elif choice == '5': show_stats()
+        elif choice == '6': print("\nGoodbye!"); break
 
 
 if __name__ == "__main__":
