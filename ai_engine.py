@@ -859,7 +859,23 @@ class AI_engine:
     # =============================================
 
     def normalize_model_name(self, model_name: str) -> str:
-        """Convert model names to comparable format for matching"""
+        """
+        Convert model names to comparable format for matching.
+        
+        Removes provider prefixes, special characters, and normalizes separators.
+        
+        Args:
+            model_name: Raw model name (e.g., 'provider-1/gpt-4', '@cf/meta/llama-3')
+        
+        Returns:
+            Normalized model name (e.g., 'gpt4', 'llama3')
+        
+        Example:
+            >>> engine.normalize_model_name("provider-1/gpt-4")
+            'gpt4'
+            >>> engine.normalize_model_name("@cf/meta/llama-3.1")
+            'llama31'
+        """
         if not model_name:
             return ""
 
@@ -1271,8 +1287,29 @@ class AI_engine:
 
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
-        Main chat completion method with smart provider rotation and autodecide feature
+        Main chat completion method with smart provider rotation and autodecide feature.
+        
         Supports provider-specific routing with format: provider_name/model_name
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            model: Model name (e.g., 'gpt-4', 'claude-3'). If None, uses provider default.
+            autodecide: If True, automatically select best provider for the model
+            **kwargs:
+                preferred_provider: Force specific provider
+                force_provider: If True, only use the specified provider
+                use_cache: If True, check/use response cache (default: True)
+        
+        Returns:
+            RequestResult with success status, content, and metadata
+        
+        Example:
+            >>> engine = AI_engine()
+            >>> result = engine.chat_completion(
+            ...     messages=[{"role": "user", "content": "Hello!"}],
+            ...     model="gpt-4"
+            ... )
+            >>> print(result.content)
         """
         start_time = time.time()  # Track total request time
         preferred_provider = kwargs.get('preferred_provider')
