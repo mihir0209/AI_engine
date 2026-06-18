@@ -233,3 +233,34 @@ def test_models_page(client):
 def test_chat_page(client):
     response = client.get("/chat")
     assert response.status_code == 200
+
+
+# === Streaming Endpoint ===
+
+@patch('server.engine')
+def test_chat_completions_stream(mock_engine, client):
+    from ai_engine import RequestResult
+    mock_result = RequestResult(
+        success=True,
+        content="Hello! This is a streaming test.",
+        provider_used="openai",
+        model_used="gpt-4"
+    )
+    mock_engine.chat_completion.return_value = mock_result
+
+    response = client.post("/v1/chat/completions/stream", json={
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}]
+    })
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+
+
+# === Provider Health Endpoint ===
+
+def test_provider_health_endpoint(client):
+    response = client.get("/api/providers/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert "providers" in data
+    assert "summary" in data
