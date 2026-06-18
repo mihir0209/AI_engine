@@ -10,7 +10,7 @@ load_dotenv()
 class ProviderConfig(BaseModel):
     """Pydantic model for provider configuration validation"""
     model_config = ConfigDict(protected_namespaces=())
-    
+
     id: int
     priority: int = Field(ge=1, le=100)
     api_keys: List[Optional[str]] = []
@@ -66,9 +66,23 @@ def validate_provider_configs(configs: Dict[str, Any]) -> Dict[str, Any]:
         try:
             validated[name] = ProviderConfig(**config).model_dump()
         except Exception as e:
-            print(f"⚠️ Warning: Provider '{name}' config invalid: {e}")
+            print(f"Warning: Provider '{name}' config invalid: {e}")
             validated[name] = config  # Keep original if validation fails
     return validated
+
+
+def validate_engine_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate engine settings"""
+    try:
+        # Only validate known fields
+        known_fields = {k: v for k, v in settings.items() if k in EngineSettings.model_fields}
+        validated = EngineSettings(**known_fields).model_dump()
+        # Merge back extra fields that aren't in the model
+        validated.update({k: v for k, v in settings.items() if k not in validated})
+        return validated
+    except Exception as e:
+        print(f"Warning: ENGINE_SETTINGS validation failed: {e}")
+        return settings
 
 # AI Engine Configuration - All 22 Providers with multiple API keys for rotation
 AI_CONFIGS = {
@@ -750,7 +764,7 @@ def verbose_print(message: str, verbose_override: bool = None):
         is_verbose = verbose_override
     else:
         is_verbose = ENGINE_SETTINGS.get("verbose_mode", False)
-    
+
     if is_verbose:
         try:
             print(message)
@@ -769,11 +783,11 @@ _config_last_modified = 0
 def check_config_reload():
     """Check if config file has been modified and reload if needed"""
     global _config_last_modified, AI_CONFIGS, ENGINE_SETTINGS
-    
+
     try:
         import config as _config_module
         current_modified = os.path.getmtime(_config_module.__file__)
-        
+
         if current_modified > _config_last_modified and _config_last_modified > 0:
             verbose_print("🔄 Config file changed, reloading...")
             # Reload the module
@@ -782,7 +796,7 @@ def check_config_reload():
             AI_CONFIGS = _config_module.AI_CONFIGS
             ENGINE_SETTINGS = _config_module.ENGINE_SETTINGS
             verbose_print("✅ Config reloaded successfully")
-        
+
         _config_last_modified = current_modified
     except Exception as e:
         verbose_print(f"⚠️ Config reload check failed: {e}")
@@ -792,7 +806,7 @@ def get_config_summary() -> Dict[str, Any]:
     """Get summary of current configuration"""
     enabled_count = sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
     total_keys = sum(len([k for k in c.get('api_keys', []) if k]) for c in AI_CONFIGS.values())
-    
+
     return {
         'version': CONFIG_VERSION,
         'total_providers': len(AI_CONFIGS),

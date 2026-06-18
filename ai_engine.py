@@ -86,6 +86,10 @@ class AI_engine:
         self._flagged_keys_lock = threading.Lock()
         self._usage_stats_lock = threading.Lock()
         self._key_rotation_lock = threading.Lock()
+        
+        # Connection pooling - shared session for HTTP requests
+        self._http_session = requests.Session()
+        self._http_session.headers.update({'User-Agent': 'AI-Engine/3.0'})
 
         # Enhanced tracking for intelligent key rotation
         self.key_usage_stats = {}  # Track usage per key
@@ -1962,10 +1966,10 @@ class AI_engine:
         }
 
         try:
-            response = requests.post(
+            response = self._http_session.post(
                 url,
                 json=data,
-                headers={'Content-Type': 'application/json'},
+                headers=headers,
                 timeout=config.get('timeout', 60)
             )
 

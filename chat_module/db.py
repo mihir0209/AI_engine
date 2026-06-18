@@ -281,10 +281,13 @@ class ChatDB:
         for msg in reversed(messages):
             msg_tokens = msg['tokens'] or len(msg['content']) // 4  # Rough estimate
             if total_tokens + msg_tokens <= max_tokens:
-                context_messages.insert(0, msg)
+                context_messages.append(msg)
                 total_tokens += msg_tokens
             else:
                 break
+
+        # Reverse to restore chronological order (O(1) per element)
+        context_messages.reverse()
 
         return context_messages
 
