@@ -1278,6 +1278,24 @@ class AI_engine:
         start_time = time.time()  # Track total request time
         preferred_provider = kwargs.get('preferred_provider')
         force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
+        use_cache = kwargs.get('use_cache', True)  # Option to bypass cache
+        
+        # Check cache first (if enabled)
+        if use_cache and not force_provider:
+            try:
+                from response_cache import response_cache
+                cached = response_cache.get(messages, model or "auto", preferred_provider)
+                if cached:
+                    if self.verbose:
+                        verbose_print("📦 Cache hit - returning cached response", self.verbose)
+                    return RequestResult(
+                        success=True,
+                        content=cached.get("content", ""),
+                        provider_used=cached.get("provider", "cache"),
+                        model_used=cached.get("model", model or "cached")
+                    )
+            except ImportError:
+                pass  # response_cache not available
 
         # Parse provider/model format (e.g., "openai/gpt-4" or "anthropic/claude-3")
         original_model = model
@@ -1446,6 +1464,23 @@ class AI_engine:
 
                     # Handle successful response with advanced tracking
                     self._handle_provider_success(provider_name, response_time)
+
+                    # Cache successful response
+                    if use_cache:
+                        try:
+                            from response_cache import response_cache
+                            response_cache.set(
+                                messages, 
+                                model or "auto",
+                                {
+                                    "content": result.content,
+                                    "provider": provider_name,
+                                    "model": result.model_used
+                                },
+                                provider=preferred_provider
+                            )
+                        except ImportError:
+                            pass
 
                     if self.verbose:
                         verbose_print(f"✅ {provider_name} successful ({response_time:.2f}s, self.verbose)")
