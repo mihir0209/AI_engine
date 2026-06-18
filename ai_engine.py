@@ -1217,7 +1217,7 @@ class AI_engine:
                         # Calculate performance score (success rate 70%, speed 30%)
                         speed_score = max(0, 100 - (avg_response_time * 10))
                         performance_score = -(success_rate * 0.7 + speed_score * 0.3)  # Negative for ascending sort
-                except:
+                except (AttributeError, KeyError, TypeError):
                     pass
 
             # Flagged status penalty
@@ -1915,7 +1915,7 @@ class AI_engine:
                 # Try to parse JSON error response for better error classification
                 try:
                     error_json = response.json()
-                except:
+                except (ValueError, KeyError):
                     error_json = None
 
                 return RequestResult(
@@ -2618,7 +2618,7 @@ def main():
         if engine:
             try:
                 engine.save_statistics_now()
-            except:
+            except Exception:
                 pass
 
     # Register cleanup function
