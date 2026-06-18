@@ -337,3 +337,43 @@ def test_health_checks_endpoint(client):
     response = client.get("/api/health/checks")
     assert response.status_code == 200
     assert "checks" in response.json()
+
+
+# === Workflow Endpoints ===
+
+def test_list_workflows_endpoint(client):
+    response = client.get("/api/workflows")
+    assert response.status_code == 200
+    assert "workflows" in response.json()
+
+
+def test_create_workflow_endpoint(client):
+    response = client.post("/api/workflows", json={
+        "name": "Test Workflow",
+        "description": "Test",
+        "steps": [{"id": "s1", "step_type": "ai_call"}]
+    })
+    assert response.status_code == 200
+    assert "workflow_id" in response.json()
+
+
+def test_execute_workflow_endpoint(client):
+    # Create workflow first
+    create_resp = client.post("/api/workflows", json={
+        "name": "Test WF",
+        "steps": [{"id": "s1", "step_type": "output", "config": {"field": "result"}}]
+    })
+    wf_id = create_resp.json()["workflow_id"]
+    
+    response = client.post(f"/api/workflows/{wf_id}/execute", json={"input": {"data": "test"}})
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+
+# === Version Endpoint ===
+
+def test_version_endpoint(client):
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    assert "current" in response.json()
+    assert "supported" in response.json()

@@ -1459,6 +1459,58 @@ async def run_health_checks():
     """Run all health checks"""
     return health_checker.run_checks()
 
+# === Workflow Endpoints ===
+from workflow_engine import workflow_engine
+
+@app.get("/api/workflows")
+async def list_workflows():
+    """List all workflows"""
+    return {"workflows": workflow_engine.list_workflows()}
+
+@app.post("/api/workflows")
+async def create_workflow(request: Request):
+    """Create a new workflow"""
+    body = await request.json()
+    wf = workflow_engine.create_workflow(
+        name=body.get("name", "Untitled"),
+        description=body.get("description", ""),
+        steps=body.get("steps", [])
+    )
+    return {"workflow_id": wf.id, "name": wf.name}
+
+@app.post("/api/workflows/{workflow_id}/execute")
+async def execute_workflow(workflow_id: str, request: Request):
+    """Execute a workflow"""
+    body = await request.json()
+    exec = workflow_engine.execute_workflow(workflow_id, body.get("input", {}))
+    return {
+        "execution_id": exec.id,
+        "status": exec.status,
+        "output": exec.output_data
+    }
+
+@app.get("/api/workflows/{workflow_id}/executions/{execution_id}")
+async def get_execution(workflow_id: str, execution_id: str):
+    """Get workflow execution status"""
+    exec = workflow_engine.get_execution(execution_id)
+    if not exec:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return {
+        "execution_id": exec.id,
+        "status": exec.status,
+        "output": exec.output_data,
+        "current_step": exec.current_step,
+        "error": exec.error
+    }
+
+# === API Versioning ===
+from api_versioning import get_version_info
+
+@app.get("/api/version")
+async def get_version():
+    """Get API version information"""
+    return get_version_info()
+
 def create_directories():
     """Create necessary directories for templates and static files"""
     os.makedirs("templates", exist_ok=True)
