@@ -186,6 +186,21 @@ templates = Jinja2Templates(directory="templates")
 # Include chat router
 app.include_router(chat_router)
 
+# Request size limiting middleware
+MAX_REQUEST_SIZE = 10 * 1024 * 1024  # 10MB
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    """Limit request body size"""
+    if request.method in ("POST", "PUT", "PATCH"):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Request too large", "max_size_mb": MAX_REQUEST_SIZE // (1024 * 1024)}
+            )
+    return await call_next(request)
+
 # Request validation and sanitization
 import re
 
@@ -1511,6 +1526,33 @@ async def get_version():
     """Get API version information"""
     return get_version_info()
 
+@app.post("/api/config/reload")
+async def reload_config():
+    """Reload configuration from config.py"""
+    try:
+        import importlib
+        import sys
+        # Force reload config
+        if 'config' in sys.modules:
+            del sys.modules['config']
+        from config import AI_CONFIGS as new_configs, ENGINE_SETTINGS as new_settings
+        
+        # Update global references
+        global AI_CONFIGS, ENGINE_SETTINGS
+        AI_CONFIGS = new_configs
+        ENGINE_SETTINGS = new_settings
+        
+        # Reload engine providers
+        engine.providers = engine._load_enabled_providers()
+        
+        return {
+            "status": "reloaded",
+            "providers": len(AI_CONFIGS),
+            "enabled": sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reload config: {str(e)}")
+
 def create_directories():
     """Create necessary directories for templates and static files"""
     os.makedirs("templates", exist_ok=True)
@@ -1540,6 +1582,8 @@ def create_templates():
 def main():
     """Main function to run the server"""
     import logging
+    import signal
+    import sys
 
     # Configure logging
     logging.basicConfig(
@@ -1555,6 +1599,23 @@ def main():
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+
+    # Graceful shutdown handler
+    def shutdown_handler(signum, frame):
+        verbose_print("🛑 Shutting down gracefully...")
+        # Save statistics
+        try:
+            from statistics_manager import save_statistics_now
+            save_statistics_now()
+        except:
+            pass
+        # Stop auto-refresh
+        shared_model_cache.stop_auto_refresh()
+        verbose_print("✅ Cleanup complete")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
 
     print("🚀 Starting AI Engine FastAPI Server...")
     print("📊 Dashboard: http://localhost:8000")
