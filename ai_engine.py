@@ -58,11 +58,32 @@ class RequestResult:
 
 class AI_engine:
     """
-    Clean AI Engine v3.0 with Python-based configuration and smart key rotation
+    AI Engine v3.0 - Multi-provider AI gateway with intelligent routing
+    
+    Features:
+        - Support for 7+ provider formats (OpenAI, Anthropic, Vertex AI, etc.)
+        - Intelligent key rotation with load balancing
+        - Automatic provider failover on errors
+        - Response caching with TTL
+        - Rate limiting per provider
+        - Streaming support
+        - Autodecide: automatic model selection
+    
+    Usage:
+        >>> engine = AI_engine(verbose=True)
+        >>> result = engine.chat_completion(
+        ...     messages=[{"role": "user", "content": "Hello!"}],
+        ...     model="gpt-4"
+        ... )
+        >>> print(result.content)
     """
 
     def __init__(self, verbose: bool = None):
-        """Initialize the AI Engine v3.0 with external configuration and advanced features"""
+        """Initialize the AI Engine v3.0
+        
+        Args:
+            verbose: Enable verbose logging. If None, uses ENGINE_SETTINGS default.
+        """
         # Set verbose mode: instance override > global config > default False
         if verbose is not None:
             self.verbose = verbose
