@@ -51,13 +51,22 @@ class EngineSettings(BaseModel):
 # AI Engine Configuration - Free/Generous Free-Tier Providers Only
 # Last verified: 2026-06-18
 #
-# PROVIDER STRATEGY:
-# 1. Self-hosted g4f server (recommended) - truly free, no limits
-# 2. Providers with generous free tiers (need API key but free quota)
-# 3. Local Ollama for offline use
+# PROVIDER STRATEGY (3 categories):
 #
-# To use g4f: docker run -p 8080:8080 hlohaus789/g4f
-# Then set G4F_ENDPOINT=http://localhost:8080/v1 in .env
+# CATEGORY 1: TRULY FREE (No API Key Required - Self-hosted)
+# - GPT4Free (g4f): docker run -p 8080:8080 hlohaus789/g4f
+# - Ollama: Local inference with open-source models
+#
+# CATEGORY 2: FREE TIER (Need Signup, get free quota)
+# - Groq: 30 RPM, 14,400 RPD free
+# - SambaNova: Generous daily limits free
+# - Together/DeepInfra: $1 credit on signup
+# - OpenRouter: 200 credits + 23 free models
+# - NVIDIA/Cerebras/Gemini/GitHub/Cloudflare: Various free tiers
+#
+# CATEGORY 3: DISCORD-BASED FREE APIs (from zukixa/cool-ai-stuff)
+# - NagaAI, NavyAPI, ElectronHub, ZanityAI, VoidAI, MNN AI
+# - Join Discord → Get free API key → Use free models
 
 AI_CONFIGS = {
     # === SELF-HOSTED GPT4FREE (TRULY FREE - RECOMMENDED) ===
@@ -386,6 +395,109 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("VERCEL_API_KEY")),
         "rpm_limit": 15,
         "daily_limit": 150,
+        "current_key_index": 0,
+        "consecutive_failures": 0
+    },
+
+    # === DISCORD-BASED FREE APIs (from zukixa/cool-ai-stuff) ===
+    # Join Discord → Get free API key → Use free models
+
+    # NagaAI - Free tier available
+    # Discord: https://discord.gg/8ywEPhnJy4
+    "nagaai": {
+        "id": 14,
+        "priority": 14,
+        "api_keys": [os.getenv("NAGAAI_API_KEY")],
+        "endpoint": "https://api.naga.ac/v1/chat/completions",
+        "model_endpoint": "https://api.naga.ac/v1/models",
+        "model_endpoint_auth": True,
+        "model": "claude-3.5-sonnet",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("NAGAAI_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 500,
+        "current_key_index": 0,
+        "consecutive_failures": 0
+    },
+
+    # NavyAPI - Free tier available
+    # Discord: https://discord.gg/ezXZ8wpprc
+    "navyapi": {
+        "id": 15,
+        "priority": 15,
+        "api_keys": [os.getenv("NAVY_API_KEY")],
+        "endpoint": "https://api.navy/v1/chat/completions",
+        "model_endpoint": "https://api.navy/v1/models",
+        "model_endpoint_auth": True,
+        "model": "gpt-4o",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("NAVY_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 500,
+        "current_key_index": 0,
+        "consecutive_failures": 0
+    },
+
+    # ElectronHub - Free tier available
+    # Discord: https://discord.gg/4xg2TM3mNP
+    "electronhub": {
+        "id": 16,
+        "priority": 16,
+        "api_keys": [os.getenv("ELECTRONHUB_API_KEY")],
+        "endpoint": "https://api.electronhub.ai/v1/chat/completions",
+        "model_endpoint": "https://api.electronhub.ai/v1/models",
+        "model_endpoint_auth": True,
+        "model": "gpt-4o",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("ELECTRONHUB_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 500,
+        "current_key_index": 0,
+        "consecutive_failures": 0
+    },
+
+    # MNN AI - Free tier available
+    # Discord: https://discord.gg/xKmsCCzUFW
+    "mnnai": {
+        "id": 17,
+        "priority": 17,
+        "api_keys": [os.getenv("MNN_API_KEY")],
+        "endpoint": "https://api.mnnai.ru/v1/chat/completions",
+        "model_endpoint": "https://api.mnnai.ru/v1/models",
+        "model_endpoint_auth": True,
+        "model": "gpt-4o",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("MNN_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 500,
         "current_key_index": 0,
         "consecutive_failures": 0
     }
