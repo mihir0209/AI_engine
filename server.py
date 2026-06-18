@@ -41,6 +41,12 @@ try:
     from model_cache import shared_model_cache
     # Import chat module
     from chat_module.router import router as chat_router
+    # Import new modules
+    from caching import lru_cache, request_deduplicator
+    from middleware import metrics_collector, RequestTracker
+    from capabilities import capability_manager, error_message_manager
+    from infrastructure import health_checker
+    from logging_sla import sla_monitor
 except ImportError as e:
     print(f"Failed to import AI Engine components: {e}")
     print("Make sure you're running from the AI_engine directory")
@@ -1387,6 +1393,71 @@ async def get_provider_health():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/capabilities")
+async def get_capabilities():
+    """Get provider capabilities (vision, tool calling, etc.)"""
+    return {"capabilities": capability_manager.get_all_capabilities()}
+
+@app.get("/api/capabilities/vision")
+async def get_vision_providers():
+    """Get all providers that support vision"""
+    return {"providers": capability_manager.get_providers_with_vision()}
+
+@app.get("/api/capabilities/tool-calling")
+async def get_tool_calling_providers():
+    """Get all providers that support tool calling"""
+    return {"providers": capability_manager.get_providers_with_tool_calling()}
+
+@app.get("/api/capabilities/fast")
+async def get_fast_providers():
+    """Get fastest providers"""
+    return {"providers": capability_manager.get_fastest_providers()}
+
+@app.get("/api/capabilities/cheap")
+async def get_cheap_providers():
+    """Get cheapest providers"""
+    return {"providers": capability_manager.get_cheapest_providers()}
+
+@app.get("/api/cache/stats")
+async def get_cache_stats():
+    """Get cache statistics"""
+    return {
+        "lru_cache": lru_cache.get_stats(),
+        "deduplicator": request_deduplicator.get_stats()
+    }
+
+@app.get("/api/cache/clear")
+async def clear_cache():
+    """Clear all caches"""
+    lru_cache.clear()
+    return {"status": "cleared"}
+
+@app.get("/api/metrics/summary")
+async def get_metrics_summary():
+    """Get request metrics summary"""
+    return metrics_collector.get_overall_stats()
+
+@app.get("/api/metrics/endpoints")
+async def get_endpoint_metrics():
+    """Get per-endpoint metrics"""
+    endpoints = metrics_collector.get_overall_stats().get("endpoints", [])
+    return {ep: metrics_collector.get_endpoint_stats(ep) for ep in endpoints}
+
+@app.get("/api/sla/status")
+async def get_sla_status():
+    """Get SLA monitoring status"""
+    return sla_monitor.get_status()
+
+@app.get("/api/errors")
+async def get_error_messages():
+    """Get all available error messages"""
+    return {"errors": error_message_manager.get_all_errors()}
+
+@app.get("/api/health/checks")
+async def run_health_checks():
+    """Run all health checks"""
+    return health_checker.run_checks()
 
 def create_directories():
     """Create necessary directories for templates and static files"""
