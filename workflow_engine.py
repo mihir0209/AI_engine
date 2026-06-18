@@ -64,14 +64,14 @@ class WorkflowExecution:
 
 class WorkflowEngine:
     """Executes workflows"""
-    
+
     def __init__(self, data_dir: str = "data/workflows"):
         self.data_dir = data_dir
         os.makedirs(data_dir, exist_ok=True)
         self.workflows: Dict[str, Workflow] = {}
         self.executions: Dict[str, WorkflowExecution] = {}
         self._load_workflows()
-    
+
     def _load_workflows(self):
         """Load workflows from disk"""
         workflows_file = os.path.join(self.data_dir, "workflows.json")
@@ -84,7 +84,7 @@ class WorkflowEngine:
                         for sid, sdata in wdata["steps"].items()
                     }
                     self.workflows[wid] = Workflow(**wdata)
-    
+
     def _save_workflows(self):
         """Save workflows to disk"""
         workflows_file = os.path.join(self.data_dir, "workflows.json")
@@ -113,10 +113,10 @@ class WorkflowEngine:
                 "enabled": workflow.enabled
             }
             data[wid] = wdata
-        
+
         with open(workflows_file, "w") as f:
             json.dump(data, f, indent=2)
-    
+
     def create_workflow(
         self,
         name: str,
@@ -126,7 +126,7 @@ class WorkflowEngine:
     ) -> Workflow:
         """Create a new workflow"""
         workflow_id = f"wf_{uuid.uuid4().hex[:8]}"
-        
+
         workflow_steps = {}
         for step_data in steps:
             step = WorkflowStep(
@@ -140,7 +140,7 @@ class WorkflowEngine:
                 error_handler=step_data.get("error_handler")
             )
             workflow_steps[step.id] = step
-        
+
         workflow = Workflow(
             id=workflow_id,
             name=name,
@@ -148,15 +148,15 @@ class WorkflowEngine:
             steps=workflow_steps,
             start_step=start_step or steps[0]["id"] if steps else None
         )
-        
+
         self.workflows[workflow_id] = workflow
         self._save_workflows()
         return workflow
-    
+
     def get_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Get workflow by ID"""
         return self.workflows.get(workflow_id)
-    
+
     def list_workflows(self) -> List[Dict]:
         """List all workflows"""
         return [
@@ -170,7 +170,7 @@ class WorkflowEngine:
             }
             for w in self.workflows.values()
         ]
-    
+
     def execute_workflow(
         self,
         workflow_id: str,
@@ -180,7 +180,7 @@ class WorkflowEngine:
         workflow = self.workflows.get(workflow_id)
         if not workflow:
             raise ValueError(f"Workflow {workflow_id} not found")
-        
+
         execution = WorkflowExecution(
             id=f"exec_{uuid.uuid4().hex[:8]}",
             workflow_id=workflow_id,
@@ -189,9 +189,9 @@ class WorkflowEngine:
             current_step=workflow.start_step,
             started_at=datetime.now().isoformat()
         )
-        
+
         self.executions[execution.id] = execution
-        
+
         # Execute steps
         try:
             current_step_id = workflow.start_step
@@ -199,30 +199,30 @@ class WorkflowEngine:
                 step = workflow.steps.get(current_step_id)
                 if not step:
                     break
-                
+
                 execution.current_step = current_step_id
-                
+
                 # Execute step
                 result = self._execute_step(step, execution, workflow)
                 execution.step_results[current_step_id] = result
-                
+
                 # Determine next step
                 if step.step_type == StepType.CONDITION:
                     next_step_id = result.get("condition_result", False)
                     current_step_id = step.on_true if next_step_id else step.on_false
                 else:
                     current_step_id = step.next_step
-            
+
             execution.status = "completed"
             execution.completed_at = datetime.now().isoformat()
-        
+
         except Exception as e:
             execution.status = "failed"
             execution.error = str(e)
             execution.completed_at = datetime.now().isoformat()
-        
+
         return execution
-    
+
     def _execute_step(
         self,
         step: WorkflowStep,
@@ -240,7 +240,7 @@ class WorkflowEngine:
             return self._execute_output(step, execution)
         else:
             return {"status": "skipped", "reason": "unsupported_step_type"}
-    
+
     def _execute_ai_call(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:
         """Execute AI call step"""
         # This would integrate with the AI engine
@@ -251,18 +251,18 @@ class WorkflowEngine:
             "prompt": config.get("prompt", ""),
             "response": "AI response placeholder"
         }
-    
+
     def _execute_transform(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:
         """Execute transform step"""
         config = step.config
         transform_type = config.get("type", "extract")
-        
+
         # Get input from previous step
         input_data = execution.input_data
         if execution.step_results:
             last_step = list(execution.step_results.keys())[-1]
             input_data = execution.step_results[last_step]
-        
+
         # Apply transformation
         if transform_type == "extract":
             field = config.get("field", "")
@@ -272,18 +272,18 @@ class WorkflowEngine:
             result = template.format(**input_data)
         else:
             result = input_data
-        
+
         return {"status": "completed", "result": result}
-    
+
     def _execute_condition(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:
         """Execute condition step"""
         config = step.config
         condition_type = config.get("type", "equals")
-        
+
         # Get value to check
         value = config.get("value")
         compare_to = config.get("compare_to")
-        
+
         if condition_type == "equals":
             result = value == compare_to
         elif condition_type == "not_equals":
@@ -294,25 +294,25 @@ class WorkflowEngine:
             result = float(value) > float(compare_to) if value and compare_to else False
         else:
             result = False
-        
+
         return {"status": "completed", "condition_result": result}
-    
+
     def _execute_output(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:
         """Execute output step"""
         config = step.config
-        
+
         # Get input from previous step
         input_data = execution.input_data
         if execution.step_results:
             last_step = list(execution.step_results.keys())[-1]
             input_data = execution.step_results[last_step]
-        
+
         # Set output
         output_field = config.get("field", "output")
         execution.output_data[output_field] = input_data.get("result", input_data)
-        
+
         return {"status": "completed", "output": execution.output_data}
-    
+
     def get_execution(self, execution_id: str) -> Optional[WorkflowExecution]:
         """Get execution by ID"""
         return self.executions.get(execution_id)

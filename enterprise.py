@@ -85,7 +85,7 @@ class User:
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     last_login: Optional[str] = None
     permissions: List[Permission] = field(default_factory=list)
-    
+
     def __post_init__(self):
         # Auto-assign permissions based on role if not provided
         if not self.permissions:
@@ -94,14 +94,14 @@ class User:
 
 class TenantManager:
     """Manages tenants and users"""
-    
+
     def __init__(self, data_dir: str = "data/tenants"):
         self.data_dir = data_dir
         os.makedirs(data_dir, exist_ok=True)
         self.tenants: Dict[str, Tenant] = {}
         self.users: Dict[str, User] = {}
         self._load_data()
-    
+
     def _load_data(self):
         """Load tenant and user data from disk"""
         # Load tenants
@@ -111,7 +111,7 @@ class TenantManager:
                 data = json.load(f)
                 for tid, tdata in data.items():
                     self.tenants[tid] = Tenant(**tdata)
-        
+
         # Load users
         users_file = os.path.join(self.data_dir, "users.json")
         if os.path.exists(users_file):
@@ -121,55 +121,55 @@ class TenantManager:
                     udata["role"] = Role(udata["role"])
                     udata["permissions"] = [Permission(p) for p in udata.get("permissions", [])]
                     self.users[uid] = User(**udata)
-    
+
     def _save_data(self):
         """Save tenant and user data to disk"""
         # Save tenants
         tenants_file = os.path.join(self.data_dir, "tenants.json")
         with open(tenants_file, "w") as f:
             json.dump({tid: t.__dict__ for tid, t in self.tenants.items()}, f, indent=2)
-        
+
         # Save users
         users_file = os.path.join(self.data_dir, "users.json")
         with open(users_file, "w") as f:
-            json.dump({uid: {**u.__dict__, "role": u.role.value, "permissions": [p.value for p in u.permissions]} 
+            json.dump({uid: {**u.__dict__, "role": u.role.value, "permissions": [p.value for p in u.permissions]}
                       for uid, u in self.users.items()}, f, indent=2)
-    
+
     def create_tenant(self, name: str, quotas: Dict = None) -> Tenant:
         """Create a new tenant"""
         tenant_id = f"tenant_{secrets.token_hex(8)}"
         api_key = f"sk_{secrets.token_hex(24)}"
-        
+
         tenant = Tenant(
             id=tenant_id,
             name=name,
             api_key=api_key,
             quotas=quotas or {}
         )
-        
+
         self.tenants[tenant_id] = tenant
         self._save_data()
         return tenant
-    
+
     def get_tenant(self, tenant_id: str) -> Optional[Tenant]:
         """Get tenant by ID"""
         return self.tenants.get(tenant_id)
-    
+
     def get_tenant_by_api_key(self, api_key: str) -> Optional[Tenant]:
         """Get tenant by API key"""
         for tenant in self.tenants.values():
             if tenant.api_key == api_key:
                 return tenant
         return None
-    
+
     def create_user(self, tenant_id: str, username: str, email: str, role: Role) -> Optional[User]:
         """Create a new user in a tenant"""
         if tenant_id not in self.tenants:
             return None
-        
+
         user_id = f"user_{secrets.token_hex(8)}"
         api_key = f"sk_{secrets.token_hex(24)}"
-        
+
         user = User(
             id=user_id,
             tenant_id=tenant_id,
@@ -178,54 +178,54 @@ class TenantManager:
             role=role,
             api_key=api_key
         )
-        
+
         self.users[user_id] = user
         self._save_data()
         return user
-    
+
     def get_user(self, user_id: str) -> Optional[User]:
         """Get user by ID"""
         return self.users.get(user_id)
-    
+
     def get_user_by_api_key(self, api_key: str) -> Optional[User]:
         """Get user by API key"""
         for user in self.users.values():
             if user.api_key == api_key:
                 return user
         return None
-    
+
     def get_tenant_users(self, tenant_id: str) -> List[User]:
         """Get all users for a tenant"""
         return [u for u in self.users.values() if u.tenant_id == tenant_id]
-    
+
     def check_permission(self, api_key: str, permission: Permission) -> bool:
         """Check if an API key has a specific permission"""
         # Check tenant API key
         tenant = self.get_tenant_by_api_key(api_key)
         if tenant:
             return True  # Tenant API keys have all permissions
-        
+
         # Check user API key
         user = self.get_user_by_api_key(api_key)
         if user and user.enabled:
             return permission in user.permissions
-        
+
         return False
-    
+
     def check_quota(self, tenant_id: str, quota_type: str) -> bool:
         """Check if tenant has quota available"""
         tenant = self.get_tenant(tenant_id)
         if not tenant:
             return False
-        
+
         # Reset daily quota if needed
         self._reset_daily_quota_if_needed(tenant)
-        
+
         usage = tenant.usage.get(quota_type, 0)
         limit = tenant.quotas.get(quota_type, float('inf'))
-        
+
         return usage < limit
-    
+
     def increment_usage(self, tenant_id: str, quota_type: str, amount: int = 1):
         """Increment tenant usage"""
         tenant = self.get_tenant(tenant_id)
@@ -234,7 +234,7 @@ class TenantManager:
                 tenant.usage[quota_type] = 0
             tenant.usage[quota_type] += amount
             self._save_data()
-    
+
     def _reset_daily_quota_if_needed(self, tenant: Tenant):
         """Reset daily quotas if a new day has started"""
         last_reset = tenant.usage.get("last_reset")
@@ -245,13 +245,13 @@ class TenantManager:
                 tenant.usage["tokens_used_today"] = 0
                 tenant.usage["last_reset"] = datetime.now().isoformat()
                 self._save_data()
-    
+
     def get_tenant_stats(self, tenant_id: str) -> Dict:
         """Get tenant usage statistics"""
         tenant = self.get_tenant(tenant_id)
         if not tenant:
             return {}
-        
+
         return {
             "tenant_id": tenant_id,
             "name": tenant.name,
@@ -266,12 +266,12 @@ class TenantManager:
 
 class AuditLogger:
     """Audit logging for compliance"""
-    
+
     def __init__(self, log_dir: str = "logs/audit"):
         self.log_dir = log_dir
         os.makedirs(log_dir, exist_ok=True)
-    
-    def log(self, event_type: str, user_id: str, tenant_id: str, 
+
+    def log(self, event_type: str, user_id: str, tenant_id: str,
             details: Dict = None, ip_address: str = None):
         """Log an audit event"""
         event = {
@@ -282,30 +282,30 @@ class AuditLogger:
             "details": details or {},
             "ip_address": ip_address
         }
-        
+
         # Write to daily log file
         date_str = datetime.now().strftime("%Y-%m-%d")
         log_file = os.path.join(self.log_dir, f"audit_{date_str}.jsonl")
-        
+
         with open(log_file, "a") as f:
             f.write(json.dumps(event) + "\n")
-    
+
     def query(self, tenant_id: str = None, user_id: str = None,
-              event_type: str = None, start_date: str = None, 
+              event_type: str = None, start_date: str = None,
               end_date: str = None, limit: int = 100) -> List[Dict]:
         """Query audit logs"""
         events = []
-        
+
         # Read all log files
         for log_file in sorted(os.listdir(self.log_dir), reverse=True):
             if not log_file.endswith(".jsonl"):
                 continue
-            
+
             with open(os.path.join(self.log_dir, log_file), "r") as f:
                 for line in f:
                     try:
                         event = json.loads(line.strip())
-                        
+
                         # Apply filters
                         if tenant_id and event.get("tenant_id") != tenant_id:
                             continue
@@ -317,14 +317,14 @@ class AuditLogger:
                             continue
                         if end_date and event.get("timestamp") > end_date:
                             continue
-                        
+
                         events.append(event)
-                        
+
                         if len(events) >= limit:
                             return events
                     except json.JSONDecodeError:
                         continue
-        
+
         return events
 
 

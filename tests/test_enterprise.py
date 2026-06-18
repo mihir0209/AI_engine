@@ -87,7 +87,7 @@ def test_get_tenant_users(tenant_manager):
     tenant = tenant_manager.create_tenant("Test Tenant")
     tenant_manager.create_user(tenant.id, "user1", "user1@example.com", Role.USER)
     tenant_manager.create_user(tenant.id, "user2", "user2@example.com", Role.VIEWER)
-    
+
     users = tenant_manager.get_tenant_users(tenant.id)
     assert len(users) == 2
 
@@ -98,7 +98,7 @@ def test_admin_has_all_permissions(tenant_manager):
     from enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "admin", "admin@example.com", Role.ADMIN)
-    
+
     for perm in Permission:
         assert tenant_manager.check_permission(user.api_key, perm)
 
@@ -107,7 +107,7 @@ def test_user_limited_permissions(tenant_manager):
     from enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "user", "user@example.com", Role.USER)
-    
+
     assert tenant_manager.check_permission(user.api_key, Permission.READ)
     assert tenant_manager.check_permission(user.api_key, Permission.WRITE)
     assert not tenant_manager.check_permission(user.api_key, Permission.DELETE)
@@ -118,7 +118,7 @@ def test_viewer_read_only(tenant_manager):
     from enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "viewer", "viewer@example.com", Role.VIEWER)
-    
+
     assert tenant_manager.check_permission(user.api_key, Permission.READ)
     assert not tenant_manager.check_permission(user.api_key, Permission.WRITE)
     assert not tenant_manager.check_permission(user.api_key, Permission.DELETE)
@@ -134,7 +134,7 @@ def test_check_quota(tenant_manager):
 def test_increment_usage(tenant_manager):
     tenant = tenant_manager.create_tenant("Test Tenant")
     tenant_manager.increment_usage(tenant.id, "daily_requests", 10)
-    
+
     stats = tenant_manager.get_tenant_stats(tenant.id)
     assert stats["usage"]["daily_requests"] == 10
 
@@ -142,7 +142,7 @@ def test_increment_usage(tenant_manager):
 def test_quota_exceeded(tenant_manager):
     tenant = tenant_manager.create_tenant("Test Tenant", quotas={"daily_requests": 5})
     tenant_manager.increment_usage(tenant.id, "daily_requests", 10)
-    
+
     assert not tenant_manager.check_quota(tenant.id, "daily_requests")
 
 
@@ -150,7 +150,7 @@ def test_quota_exceeded(tenant_manager):
 
 def test_audit_log(audit_logger):
     audit_logger.log("login", "user_123", "tenant_456", {"method": "password"})
-    
+
     events = audit_logger.query(tenant_id="tenant_456")
     assert len(events) == 1
     assert events[0]["event_type"] == "login"
@@ -160,25 +160,25 @@ def test_audit_query_filters(audit_logger):
     audit_logger.log("login", "user_1", "tenant_1")
     audit_logger.log("logout", "user_1", "tenant_1")
     audit_logger.log("login", "user_2", "tenant_2")
-    
+
     # Filter by event type
     events = audit_logger.query(event_type="login")
     assert len(events) == 2
-    
+
     # Filter by tenant
     events = audit_logger.query(tenant_id="tenant_1")
     assert len(events) == 2
-    
+
     # Filter by user
     events = audit_logger.query(user_id="user_2")
     assert len(events) == 1
 
 
 def test_audit_log_details(audit_logger):
-    audit_logger.log("api_call", "user_1", "tenant_1", 
+    audit_logger.log("api_call", "user_1", "tenant_1",
                      details={"endpoint": "/v1/chat", "status": 200},
                      ip_address="192.168.1.1")
-    
+
     events = audit_logger.query()
     assert len(events) == 1
     assert events[0]["details"]["endpoint"] == "/v1/chat"

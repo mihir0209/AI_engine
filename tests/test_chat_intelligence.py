@@ -23,7 +23,7 @@ def test_summarize_conversation(intelligence):
         {"role": "user", "content": "How do I read a file?"},
         {"role": "assistant", "content": "You can use open() function to read files in Python"}
     ]
-    
+
     summary = intelligence.summarize_conversation(messages)
     assert summary.message_count == 4
     assert summary.word_count > 0
@@ -34,7 +34,7 @@ def test_summarize_sentiment_positive(intelligence):
     messages = [
         {"role": "user", "content": "This is great! I love it! Excellent work!"},
     ]
-    
+
     summary = intelligence.summarize_conversation(messages)
     assert summary.sentiment == "positive"
 
@@ -43,7 +43,7 @@ def test_summarize_sentiment_negative(intelligence):
     messages = [
         {"role": "user", "content": "This is terrible! I hate this! Awful experience!"},
     ]
-    
+
     summary = intelligence.summarize_conversation(messages)
     assert summary.sentiment == "negative"
 
@@ -55,7 +55,7 @@ def test_compress_context_no_compression_needed(intelligence):
         {"role": "user", "content": "Short message"},
         {"role": "assistant", "content": "Short reply"}
     ]
-    
+
     result = intelligence.compress_context(messages, max_tokens=4000)
     assert result.compressed_count == 2
     assert result.compression_ratio == 1.0
@@ -69,7 +69,7 @@ def test_compress_context_with_compression(intelligence):
         {"role": "assistant", "content": "y " * 1000},
         {"role": "user", "content": "z " * 1000}
     ]
-    
+
     result = intelligence.compress_context(messages, max_tokens=100)
     assert result.compressed_count < result.original_count
     assert result.compression_ratio < 1.0
@@ -82,7 +82,7 @@ def test_compress_context_preserves_system_message(intelligence):
         {"role": "user", "content": "x " * 500},
         {"role": "assistant", "content": "y " * 500}
     ]
-    
+
     result = intelligence.compress_context(messages, max_tokens=50)
     system_msgs = [m for m in result.messages if m.get("role") == "system"]
     assert len(system_msgs) == 1
