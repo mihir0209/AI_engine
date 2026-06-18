@@ -57,7 +57,9 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 def verify_admin_api_key(api_key: str = Header(None, alias="X-API-Key")) -> bool:
     """Verify admin API key for management endpoints"""
     if not ADMIN_API_KEY:
-        return True  # No key configured, allow all
+        # In development mode (no key set), allow access with warning
+        verbose_print("Warning: ADMIN_API_KEY not set - management endpoints unprotected", True)
+        return True
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required")
     if api_key != ADMIN_API_KEY:
@@ -80,17 +82,17 @@ async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     # Startup
     import threading
-    
+
     def initialize_cache():
         """Initialize cache in background thread - ALWAYS refresh on startup"""
         try:
             verbose_print("🚀 Initializing fresh model cache on server startup...")
             verbose_print("🔄 Skipping old cache - refreshing models from providers...")
-            
+
             # Create new event loop for this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
+
             try:
                 result = loop.run_until_complete(discover_and_cache_models())
                 verbose_print(f"✅ Fresh model cache initialized with {len(result['data'])} models")
@@ -98,10 +100,10 @@ async def lifespan(app: FastAPI):
                 verbose_print(f"❌ Error during cache initialization: {e}")
             finally:
                 loop.close()
-                
+
         except Exception as e:
             verbose_print(f"❌ Critical error in cache initialization: {e}")
-    
+
     def refresh_cache():
         """Refresh cache function for auto-refresh"""
         try:
@@ -114,15 +116,15 @@ async def lifespan(app: FastAPI):
                 loop.close()
         except Exception as e:
             verbose_print(f"❌ Auto-refresh failed: {e}")
-    
+
     # Start fresh cache initialization in background thread
     cache_thread = threading.Thread(target=initialize_cache, daemon=True)
     cache_thread.start()
     verbose_print("🎯 Fresh model cache initialization started in background thread")
-    
+
     # Start auto-refresh background task
     shared_model_cache.start_auto_refresh(refresh_cache)
-    
+
     # Start temporary chat cleanup task
     try:
         from chat_module.router import start_cleanup_task
@@ -130,9 +132,9 @@ async def lifespan(app: FastAPI):
         verbose_print("🧹 Temporary chat cleanup task started")
     except ImportError:
         verbose_print("⚠️ Could not start temporary chat cleanup task")
-    
+
     yield  # Server is running
-    
+
     # Shutdown (cleanup if needed)
     shared_model_cache.stop_auto_refresh()
     verbose_print("🛑 Server shutting down...")
@@ -156,14 +158,17 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware
 # In production, set CORS_ORIGINS environment variable (comma-separated)
-import os
 cors_origins_str = os.getenv("CORS_ORIGINS", "*")
 cors_origins = [origin.strip() for origin in cors_origins_str.split(",")] if cors_origins_str != "*" else ["*"]
+
+# Security: warn if using wildcard CORS with credentials
+if cors_origins_str == "*":
+    verbose_print("Warning: CORS_ORIGINS is set to '*' - restrict in production", True)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_credentials=cors_origins_str != "*",  # Don't allow credentials with wildcard
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -254,25 +259,25 @@ class ModelsResponse(BaseModel):
 # Helper function to format OpenAI-compatible response
 def format_openai_response(result, messages, request, start_time) -> ChatCompletionResponse:
     """Transform AI Engine response to OpenAI-compatible format"""
-    
+
     # Calculate more accurate token counts (rough estimation)
     prompt_text = " ".join([msg.get("content", "") for msg in messages])
     prompt_tokens = max(1, len(prompt_text.split()) + len(prompt_text) // 4)  # Words + rough char count
     completion_tokens = max(1, len(result.content.split()) + len(result.content) // 4)
-    
+
     # Determine finish reason
     finish_reason = "stop"
     if hasattr(request, 'max_tokens') and request.max_tokens and len(result.content.split()) >= request.max_tokens:
         finish_reason = "length"
     elif not result.content.strip():
         finish_reason = "stop"
-    
+
     # Generate unique chat completion ID
     completion_id = f"chatcmpl-{int(start_time * 1000000) % 999999999}"
-    
+
     # Format model as provider_name/model_name
     model_name = f"{result.provider_used}/{result.model_used}" if result.model_used else result.provider_used or "unknown"
-    
+
     return ChatCompletionResponse(
         id=completion_id,
         object="chat.completion",
@@ -322,7 +327,7 @@ async def chat_completions(request: Request, chat_request: ChatCompletionRequest
 
         # Format response to OpenAI standard regardless of provider
         response = format_openai_response(result, messages, chat_request, start_time)
-        
+
         return response
 
     except Exception as e:
@@ -333,11 +338,11 @@ async def chat_completions(request: Request, chat_request: ChatCompletionRequest
 async def chat_completions_stream(request: Request, chat_request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
     """OpenAI-compatible streaming chat completions endpoint with true upstream streaming"""
     from fastapi.responses import StreamingResponse
-    
+
     async def generate_stream():
         messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
         completion_id = f"chatcmpl-{int(time.time() * 1000000) % 999999999}"
-        
+
         # Use true streaming from upstream provider
         def stream_from_engine():
             for chunk in engine.chat_completion_stream(
@@ -346,25 +351,25 @@ async def chat_completions_stream(request: Request, chat_request: ChatCompletion
                 preferred_provider=x_preferred_provider
             ):
                 yield chunk
-        
+
         # Run streaming in thread and yield chunks
         loop = asyncio.get_event_loop()
         stream_iter = stream_from_engine()
-        
+
         try:
             while True:
                 chunk = await loop.run_in_executor(None, lambda: next(stream_iter, None))
                 if chunk is None:
                     break
-                
+
                 if chunk.get('error'):
                     yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
                     break
-                
+
                 if chunk.get('done'):
                     yield "data: [DONE]\n\n"
                     break
-                
+
                 if chunk.get('content'):
                     chunk_data = {
                         "id": completion_id,
@@ -381,38 +386,38 @@ async def chat_completions_stream(request: Request, chat_request: ChatCompletion
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
             yield "data: [DONE]\n\n"
-        
+
         # Save statistics in background
         background_tasks.add_task(save_statistics_async)
-    
+
     return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
 @app.get("/v1/models")
 async def list_models():
     """List all available models across all providers in OpenAI format with caching"""
-    
+
     # Check if we have valid cached models
     if shared_model_cache.is_cache_valid():
         cached_models = shared_model_cache.get_models()
         verbose_print(f"📦 Returning {len(cached_models)} models from cache")
         return {"object": "list", "data": cached_models}
-    
+
     # No valid cache, discover models with threading
     verbose_print("🔍 Cache miss or expired, discovering models...")
     return await discover_and_cache_models()
 async def discover_and_cache_models():
     """Discover models from all providers and cache the results"""
     import concurrent.futures
-    
+
     try:
         all_models = []
         enabled_providers = {name: config for name, config in AI_CONFIGS.items() if config.get('enabled', True)}
-        
+
         if not enabled_providers:
             return {"object": "list", "data": []}
-        
+
         verbose_print(f"🔍 Discovering models from {len(enabled_providers)} providers using threading...")
-        
+
         def discover_provider_models_sync(provider_name):
             """Synchronous wrapper for model discovery"""
             try:
@@ -427,10 +432,10 @@ async def discover_and_cache_models():
             except Exception as e:
                 verbose_print(f"❌ Error discovering models for {provider_name}: {e}")
                 return None
-        
+
         # Use threading for faster model discovery
         max_workers = min(len(enabled_providers), 8)
-        
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all discovery tasks
             future_to_provider = {
@@ -438,23 +443,23 @@ async def discover_and_cache_models():
                 for provider_name, config in enabled_providers.items()
                 if config.get('model_endpoint')  # Only for providers with model discovery
             }
-            
+
             # Add providers without model discovery immediately
             for provider_name, config in enabled_providers.items():
                 if not config.get('model_endpoint'):
                     current_model = config.get('model', 'unknown')
                     all_models.append(f"{provider_name}|{current_model}")
-            
+
             # Collect results with proper timeout handling
             try:
                 for future in concurrent.futures.as_completed(future_to_provider, timeout=30):
                     provider_name, config = future_to_provider[future]
                     try:
                         models_response = future.result(timeout=10)
-                        
+
                         if models_response and 'models' in models_response:
                             provider_models = models_response['models']
-                            
+
                             # Add models to the response - store complete model names as returned by provider
                             for model in provider_models:
                                 # Store the complete model ID as returned by the provider
@@ -465,13 +470,13 @@ async def discover_and_cache_models():
                             current_model = config.get('model', 'unknown')
                             all_models.append(f"{provider_name}|{current_model}")
                             verbose_print(f"⚠️ {provider_name}: fallback to default model")
-                            
+
                     except Exception as e:
                         verbose_print(f"❌ Error processing {provider_name}: {e}")
                         # Fallback to current model
                         current_model = config.get('model', 'unknown')
                         all_models.append(f"{provider_name}|{current_model}")
-                        
+
             except concurrent.futures.TimeoutError:
                 # Handle unfinished futures
                 unfinished_count = 0
@@ -515,10 +520,10 @@ async def discover_and_cache_models():
             if config.get('enabled', True):
                 current_model = config.get('model', 'unknown')
                 basic_models.append(f"{provider_name}|{current_model}")
-        
+
         # Cache the basic models too
         shared_model_cache.save_cache(basic_models)
-        
+
         # Convert to API format for endpoint response
         api_models = []
         for model_id in basic_models:
@@ -529,7 +534,7 @@ async def discover_and_cache_models():
                 "created": int(datetime.now().timestamp()),
                 "owned_by": provider
             })
-        
+
         return {
             "object": "list",
             "data": api_models
@@ -541,7 +546,7 @@ async def get_statistics():
     try:
         # Get statistics from stats manager
         stats_summary = stats_manager.get_stats_summary()
-        
+
         # Load actual key statistics from file
         key_statistics = {}
         try:
@@ -556,7 +561,7 @@ async def get_statistics():
         total_keys = 0
         total_requests = 0
         total_successes = 0
-        
+
         for provider_name, provider_data in key_statistics.items():
             provider_reports[provider_name] = {}
             for key_name, key_stats in provider_data.items():
@@ -566,7 +571,7 @@ async def get_statistics():
                 failures = key_stats.get("failures", 0)
                 total_requests += requests
                 total_successes += successes
-                
+
                 provider_reports[provider_name][key_name] = {
                     "requests": requests,
                     "successes": successes,
@@ -598,7 +603,7 @@ async def get_statistics():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/status") 
+@app.get("/api/status")
 async def get_status():
     """Get comprehensive engine status"""
     try:
@@ -606,25 +611,25 @@ async def get_status():
         total_providers = len(AI_CONFIGS)
         enabled_providers = sum(1 for config in AI_CONFIGS.values() if config.get('enabled', True))
         disabled_providers = total_providers - enabled_providers
-        
+
         # Get available providers (enabled and working)
         available_providers = engine._get_available_providers() if hasattr(engine, '_get_available_providers') else []
         available_count = len(available_providers)
-        
+
         # Get flagged providers (have keys but are failing)
         flagged_providers = getattr(engine, 'flagged_keys', {})
         flagged_count = len(flagged_providers)
-        
+
         # Build provider lists (show all, not limited)
         enabled_provider_list = [name for name, config in AI_CONFIGS.items() if config.get('enabled', True)]
         disabled_provider_list = [name for name, config in AI_CONFIGS.items() if not config.get('enabled', True)]
         available_provider_list = [p[0] for p in available_providers] if available_providers else []
         flagged_provider_list = list(flagged_providers.keys())
-        
+
         status = {
             'total_providers': total_providers,
             'enabled_providers': enabled_providers,
-            'disabled_providers': disabled_providers, 
+            'disabled_providers': disabled_providers,
             'available_providers': available_count,
             'flagged_providers': flagged_count,
             'current_provider': getattr(engine, 'current_provider', None),
@@ -639,7 +644,7 @@ async def get_status():
                 'flagged': 'Enabled providers with API key or rate limit issues'
             }
         }
-        
+
         # Add detailed flagged information
         status['flagged_details'] = []
         for provider_name, reason in flagged_providers.items():
@@ -648,7 +653,7 @@ async def get_status():
                 'reason': reason,
                 'description': 'Provider temporarily disabled due to errors'
             })
-        
+
         return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -679,7 +684,7 @@ async def get_providers():
                 "has_keys": bool(config.get('api_keys') and any(config.get('api_keys')))
                 # Deliberately exclude api_keys and other sensitive data
             }
-        
+
         return providers
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -694,20 +699,20 @@ async def toggle_provider(provider_name: str, request: Request, x_api_key: str =
         enabled = body.get('enabled', True)
         verbose_print(f"📝 Request body: {body}")
         verbose_print(f"✅ Enabled setting: {enabled}")
-        
+
         if provider_name not in AI_CONFIGS:
             verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
             verbose_print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
             raise HTTPException(status_code=404, detail="Provider not found")
-        
+
         # Update the provider's enabled status
         old_status = AI_CONFIGS[provider_name].get('enabled', True)
         AI_CONFIGS[provider_name]['enabled'] = enabled
         verbose_print(f"🔄 Changed {provider_name} enabled status: {old_status} -> {enabled}")
-        
+
         # Save the configuration change to config.py file
         await save_config_to_file(provider_name, 'enabled', enabled)
-        
+
         # If disabling, also remove from engine's active providers
         if not enabled and hasattr(engine, 'providers'):
             verbose_print(f"🔍 Current engine.providers structure: {type(engine.providers)}")
@@ -734,16 +739,16 @@ async def toggle_provider(provider_name: str, request: Request, x_api_key: str =
                 verbose_print(f"🔍 engine.providers is empty")
         elif enabled:
             # If enabling, reinitialize the engine (simplified approach)
-            if hasattr(engine, '_load_providers'):
+            if hasattr(engine, '_load_enabled_providers'):
                 verbose_print(f"🔄 Reloading engine providers for {provider_name}")
-                engine._load_providers()
+                engine._load_enabled_providers()
             else:
-                verbose_print(f"⚠️ Engine does not have _load_providers method")
-        
+                verbose_print(f"⚠️ Engine does not have _load_enabled_providers method")
+
         verbose_print(f"✅ Toggle operation completed for {provider_name}")
-        
+
         return {"message": f"Provider {provider_name} {'enabled' if enabled else 'disabled'} successfully"}
-    
+
     except Exception as e:
         verbose_print(f"❌ Error in toggle_provider: {e}")
         import traceback
@@ -756,19 +761,19 @@ async def roll_provider_key(provider_name: str, x_api_key: str = Header(None, al
     verify_admin_api_key(x_api_key)
     try:
         verbose_print(f"🔑 Roll key request for provider: {provider_name}")
-        
+
         if provider_name not in AI_CONFIGS:
             verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
             verbose_print(f"📋 Available providers: {list(AI_CONFIGS.keys())}")
             raise HTTPException(status_code=404, detail="Provider not found")
-        
+
         # Check if provider has multiple keys
         api_keys = AI_CONFIGS[provider_name].get('api_keys', [])
         verbose_print(f"🔑 Found {len(api_keys)} keys for {provider_name}")
-        
+
         if len(api_keys) <= 1:
             return {"message": f"Provider {provider_name} has only one key, no rolling needed"}
-        
+
         # Use the engine's key rolling functionality if available
         if hasattr(engine, 'roll_api_key'):
             result = engine.roll_api_key(provider_name)
@@ -777,7 +782,7 @@ async def roll_provider_key(provider_name: str, x_api_key: str = Header(None, al
         else:
             verbose_print(f"⚠️ Engine does not have roll_api_key method")
             return {"message": f"Key rolling not supported for {provider_name}"}
-    
+
     except Exception as e:
         print(f"❌ Error in roll_provider_key: {e}")
         import traceback
@@ -789,28 +794,28 @@ async def discover_provider_models_internal(provider_name: str):
     try:
         if provider_name not in AI_CONFIGS:
             return None
-        
+
         provider_config = AI_CONFIGS[provider_name]
-        
+
         if not provider_config.get('enabled', True):
             return None
-        
+
         models_endpoint = provider_config.get('model_endpoint')
         if not models_endpoint:
             return {
                 'models': [provider_config.get('model', 'unknown')],
                 'total_models': 1
             }
-        
+
         api_keys = provider_config.get('api_keys', [])
         model_endpoint_auth = provider_config.get('model_endpoint_auth', True)
-        
+
         if model_endpoint_auth and (not api_keys or not api_keys[0]):
             return None
-        
+
         # Prepare headers
         headers = {'Content-Type': 'application/json'}
-        
+
         if model_endpoint_auth and api_keys and api_keys[0]:
             auth_type = provider_config.get('auth_type', 'bearer')
             if auth_type.lower() == 'bearer':
@@ -819,15 +824,15 @@ async def discover_provider_models_internal(provider_name: str):
                 headers['Authorization'] = f'Bearer {api_key}'
             elif auth_type.lower() == 'api_key':
                 headers['X-API-Key'] = api_keys[0]
-        
+
         # Make the request
         timeout = provider_config.get('timeout', 60)
-        
+
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
             async with session.get(models_endpoint, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    
+
                     # Parse different response formats
                     models = []
                     if 'data' in data and isinstance(data['data'], list):
@@ -842,7 +847,7 @@ async def discover_provider_models_internal(provider_name: str):
                     elif isinstance(data, list):
                         # Direct list
                         models = [str(model) for model in data]
-                    
+
                     return {
                         'models': models,
                         'total_models': len(models)
@@ -856,22 +861,22 @@ async def discover_provider_models_internal(provider_name: str):
 async def discover_provider_models(provider_name: str):
     """Discover available models for a specific provider"""
     import requests  # Import at function level to handle exceptions properly
-    
+
     try:
         verbose_print(f"🔍 Discovering models for provider: {provider_name}")
-        
+
         if provider_name not in AI_CONFIGS:
             verbose_print(f"❌ Provider '{provider_name}' not found in AI_CONFIGS")
             raise HTTPException(status_code=404, detail="Provider not found")
-        
+
         provider_config = AI_CONFIGS[provider_name]
         verbose_print(f"📋 Provider config: enabled={provider_config.get('enabled')}, model_endpoint={provider_config.get('model_endpoint')}")
-        
+
         # Check if provider supports model discovery
         if not provider_config.get('enabled', True):
             verbose_print(f"⚠️ Provider '{provider_name}' is disabled")
             raise HTTPException(status_code=400, detail="Provider is disabled")
-        
+
         # Check if provider has model endpoint configured
         models_endpoint = provider_config.get('model_endpoint')
         if not models_endpoint:
@@ -888,25 +893,25 @@ async def discover_provider_models(provider_name: str):
                 'total_models': 1,
                 'discovery_available': False
             }
-        
+
         api_keys = provider_config.get('api_keys', [])
         model_endpoint_auth = provider_config.get('model_endpoint_auth', True)
-        
+
         verbose_print(f"🔑 API keys available: {len([k for k in api_keys if k])}, Auth required: {model_endpoint_auth}")
-        
+
         # Check if authentication is required but no keys available
         if model_endpoint_auth and (not api_keys or not api_keys[0]):
             verbose_print(f"❌ Provider '{provider_name}' requires auth but no API key configured")
             raise HTTPException(status_code=400, detail="API key required but not configured")
-        
+
         # Prepare headers
         headers = {'Content-Type': 'application/json'}
-        
+
         # Add authentication if required
         if model_endpoint_auth and api_keys and api_keys[0]:
             auth_type = provider_config.get('auth_type', 'bearer')
             verbose_print(f"🔐 Using auth type: {auth_type}")
-            
+
             if auth_type == 'bearer':
                 headers['Authorization'] = f'Bearer {api_keys[0]}'
             elif auth_type == 'bearer_lowercase':
@@ -921,16 +926,16 @@ async def discover_provider_models(provider_name: str):
                 headers['x-api-key'] = api_keys[0]
             else:
                 headers['Authorization'] = f'Bearer {api_keys[0]}'
-        
+
         verbose_print(f"🌐 Making request to: {models_endpoint}")
         verbose_print(f"📤 Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}")
-        
+
         # Make request to discover models
         response = requests.get(models_endpoint, headers=headers, timeout=10)
-        
+
         verbose_print(f"📥 Response status: {response.status_code}")
         verbose_print(f"📥 Response headers: {dict(response.headers)}")
-        
+
         if response.status_code == 200:
             try:
                 models_data = response.json()
@@ -940,9 +945,9 @@ async def discover_provider_models(provider_name: str):
                 verbose_print(f"❌ Failed to parse JSON response: {json_error}")
                 verbose_print(f"📝 Raw response text: {response.text[:500]}")
                 raise HTTPException(status_code=500, detail=f"Invalid JSON response from provider: {str(json_error)}")
-            
+
             models = []
-            
+
             if 'data' in models_data:
                 # OpenAI format
                 verbose_print("✅ Using OpenAI format (data key)")
@@ -987,7 +992,7 @@ async def discover_provider_models(provider_name: str):
                             'name': str(model),
                             'owned_by': provider_name
                         })
-            
+
             verbose_print(f"✅ Successfully discovered {len(models)} models")
             return {
                 'provider': provider_name,
@@ -1001,10 +1006,10 @@ async def discover_provider_models(provider_name: str):
             print(f"❌ Request failed with status {response.status_code}")
             print(f"❌ Error response: {error_text}")
             raise HTTPException(
-                status_code=response.status_code, 
+                status_code=response.status_code,
                 detail=f"Failed to fetch models: {error_text}"
             )
-    
+
     except requests.exceptions.RequestException as e:
         print(f"❌ Network error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Network error: {str(e)}")
@@ -1021,31 +1026,31 @@ async def change_provider_model(provider_name: str, request: Request, x_api_key:
     try:
         body = await request.json()
         new_model = body.get('model')
-        
+
         if not new_model:
             raise HTTPException(status_code=400, detail="Model name required")
-        
+
         if provider_name not in AI_CONFIGS:
             raise HTTPException(status_code=404, detail="Provider not found")
-        
+
         # Update the model in the configuration
         old_model = AI_CONFIGS[provider_name].get('model', 'unknown')
         AI_CONFIGS[provider_name]['model'] = new_model
-        
+
         # Save the configuration back to config.py
         await save_config_to_file(provider_name, 'model', new_model)
-        
+
         # Reload the engine to use the new model
-        if hasattr(engine, '_load_providers'):
-            engine._load_providers()
-        
+        if hasattr(engine, '_load_enabled_providers'):
+            engine._load_enabled_providers()
+
         return {
             'message': f'Model changed for {provider_name} from {old_model} to {new_model}',
             'provider': provider_name,
             'old_model': old_model,
             'new_model': new_model
         }
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1055,43 +1060,43 @@ async def save_config_to_file(provider_name: str, field: str, new_value):
         # Read the current config file
         with open('config.py', 'r', encoding='utf-8') as f:
             config_content = f.read()
-        
+
         # Find the provider section and update the specific field
         import re
-        
+
         # Pattern to find the provider section
         provider_pattern = rf'"{provider_name}":\s*\{{([^}}]*)}}'
-        
+
         # Create field pattern based on value type
         if isinstance(new_value, bool):
             # Boolean field pattern
             field_pattern = rf'"{field}":\s*(True|False)'
             replacement = f'"{field}": {new_value}'
         else:
-            # String field pattern  
+            # String field pattern
             field_pattern = rf'"{field}":\s*"[^"]*"'
             replacement = f'"{field}": "{new_value}"'
-        
+
         # Find the provider section
         provider_match = re.search(provider_pattern, config_content, re.DOTALL)
         if provider_match:
             provider_section = provider_match.group(1)
-            
+
             # Update the field in the provider section
             if re.search(field_pattern, provider_section):
                 updated_section = re.sub(field_pattern, replacement, provider_section)
                 updated_config = config_content.replace(provider_section, updated_section)
-                
+
                 # Write the updated config back to file
                 with open('config.py', 'w', encoding='utf-8') as f:
                     f.write(updated_config)
-                
+
                 verbose_print(f"✅ Config updated: {provider_name}.{field} = {new_value}")
             else:
                 verbose_print(f"⚠️ Field '{field}' not found in provider '{provider_name}'")
         else:
             print(f"⚠️ Provider '{provider_name}' not found in config file")
-            
+
     except Exception as e:
         print(f"❌ Error saving config to file: {e}")
         # Don't raise the error to avoid breaking the API response
@@ -1106,37 +1111,37 @@ async def test_model(request: Request):
         provider_name = body.get('provider')
         model_name = body.get('model')
         test_message = body.get('message', 'Hello! Please respond with a simple test message to confirm you are working correctly.')
-        
+
         if not provider_name or not model_name:
             raise HTTPException(status_code=400, detail="Provider and model names required")
-        
+
         # Test the model using the AI Engine
         start_time = datetime.now()
-        
+
         # Create a simple test message
         messages = [
             {"role": "user", "content": test_message}
         ]
-        
+
         # Make request to AI Engine with specific provider and model
         verbose_print(f"🧪 Starting test for {provider_name} with model {model_name}")
         verbose_print(f"🔍 DEBUG: Requesting provider='{provider_name}', model='{model_name}'")
         test_start_time = time.time()
-        
+
         result = engine.chat_completion(
             messages=messages,
             model=model_name,
             preferred_provider=provider_name
         )
-        
+
         test_end_time = time.time()
         total_test_time = test_end_time - test_start_time
         verbose_print(f"⏱️ Total test time: {total_test_time:.2f}s")
         verbose_print(f"🔍 DEBUG: Result provider_used='{result.provider_used}', model_used='{result.model_used}'")
-        
+
         end_time = datetime.now()
         response_time = (end_time - start_time).total_seconds()
-        
+
         if result.success:
             return {
                 'success': True,
@@ -1155,7 +1160,7 @@ async def test_model(request: Request):
                 'response_time': round(response_time, 2),
                 'timestamp': start_time.isoformat()
             }
-    
+
     except Exception as e:
         return {
             'success': False,
@@ -1178,13 +1183,13 @@ async def discover_model_providers(model: str):
                 'providers': [],
                 'message': 'Autodecide feature is disabled'
             }
-        
+
         # Check cache first
         if model not in engine.autodecide_cache or not engine._is_cache_valid(model):
             providers_with_model = engine._discover_model_providers(model)
         else:
             providers_with_model = engine.autodecide_cache.get(model, [])
-        
+
         # Format response
         provider_list = []
         for provider_name, actual_model in providers_with_model:
@@ -1196,10 +1201,10 @@ async def discover_model_providers(model: str):
                 'enabled': provider_config.get('enabled', False),
                 'flagged': engine._is_key_flagged(provider_name)
             })
-        
+
         # Sort by priority
         provider_list.sort(key=lambda x: x['priority'])
-        
+
         return {
             'model': model,
             'autodecide_enabled': True,
@@ -1208,7 +1213,7 @@ async def discover_model_providers(model: str):
             'cache_valid': engine._is_cache_valid(model),
             'timestamp': datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         print(f"❌ Error in autodecide discovery: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1220,13 +1225,13 @@ async def test_autodecide_model(request: Request):
         body = await request.json()
         model_name = body.get('model')
         test_message = body.get('message', 'Hello! This is a test of the autodecide feature.')
-        
+
         if not model_name:
             raise HTTPException(status_code=400, detail="Model name required")
-        
+
         # Test the model using autodecide
         messages = [{"role": "user", "content": test_message}]
-        
+
         start_time = datetime.now()
         result = engine.chat_completion(
             messages=messages,
@@ -1234,9 +1239,9 @@ async def test_autodecide_model(request: Request):
             autodecide=True  # Enable autodecide
         )
         end_time = datetime.now()
-        
+
         response_time = (end_time - start_time).total_seconds()
-        
+
         if result.success:
             return {
                 'success': True,
@@ -1257,7 +1262,7 @@ async def test_autodecide_model(request: Request):
                 'autodecide_used': True,
                 'timestamp': start_time.isoformat()
             }
-            
+
     except Exception as e:
         return {
             'success': False,
@@ -1299,8 +1304,8 @@ async def save_statistics_async():
     try:
         from statistics_manager import save_statistics_now
         save_statistics_now()
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to save statistics: {e}")
 
 # Health check
 @app.get("/health")
@@ -1320,14 +1325,14 @@ async def track_metrics(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
-    
+
     REQUEST_COUNT.labels(
         endpoint=request.url.path,
         method=request.method,
         status=response.status_code
     ).inc()
     REQUEST_LATENCY.labels(endpoint=request.url.path).observe(duration)
-    
+
     return response
 
 @app.get("/api/providers/health")
@@ -1335,25 +1340,25 @@ async def get_provider_health():
     """Get health status of all providers"""
     try:
         health_status = {}
-        
+
         for provider_name, config in AI_CONFIGS.items():
             if not config.get('enabled', True):
                 health_status[provider_name] = {"status": "disabled", "healthy": None}
                 continue
-            
+
             # Check if provider has API keys
             api_keys = config.get('api_keys', [])
             valid_keys = [k for k in api_keys if k]
-            
+
             if not valid_keys and config.get('auth_type'):
                 health_status[provider_name] = {"status": "no_keys", "healthy": False}
                 continue
-            
+
             # Check if provider is flagged
             if hasattr(engine, '_is_key_flagged') and engine._is_key_flagged(provider_name):
                 health_status[provider_name] = {"status": "flagged", "healthy": False}
                 continue
-            
+
             # Check usage stats
             if provider_name in engine.usage_stats:
                 stats = engine.usage_stats[provider_name]
@@ -1368,10 +1373,10 @@ async def get_provider_health():
                     health_status[provider_name] = {"status": "healthy", "healthy": True}
             else:
                 health_status[provider_name] = {"status": "unknown", "healthy": None}
-        
+
         healthy_count = sum(1 for h in health_status.values() if h.get('healthy') is True)
         total_enabled = sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
-        
+
         return {
             "providers": health_status,
             "summary": {
@@ -1393,26 +1398,26 @@ def create_directories():
 def create_templates():
     """Create HTML templates for the dashboard (only if they don't exist)"""
     import os
-    
+
     # Check if templates already exist
     template_files = [
         "templates/dashboard.html",
-        "templates/providers.html", 
+        "templates/providers.html",
         "templates/statistics.html",
         "templates/models.html"
     ]
-    
+
     # If any template files exist, skip template creation to preserve manual edits
     if any(os.path.exists(file) for file in template_files):
         verbose_print("📄 Templates already exist - preserving manual edits")
         return
-    
+
     verbose_print("📄 Creating default templates...")
 
 def main():
     """Main function to run the server"""
     import logging
-    
+
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
@@ -1422,12 +1427,12 @@ def main():
             logging.FileHandler('ai_engine_server.log')
         ]
     )
-    
+
     # Set uvicorn logging level
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
-    
+
     print("🚀 Starting AI Engine FastAPI Server...")
     print("📊 Dashboard: http://localhost:8000")
     print("📚 API Docs: http://localhost:8000/docs")

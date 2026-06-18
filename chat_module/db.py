@@ -19,7 +19,7 @@ class ChatDB:
         """Initialize database with required tables"""
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
-            
+
             # Create chats table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS chats (
@@ -37,21 +37,21 @@ class ChatDB:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
+
             # Add force_provider column if it doesn't exist (migration)
             try:
                 conn.execute("SELECT force_provider FROM chats LIMIT 1")
             except sqlite3.OperationalError:
                 conn.execute("ALTER TABLE chats ADD COLUMN force_provider BOOLEAN DEFAULT 0")
                 logger.info("Added force_provider column to existing chats table")
-            
+
             # Add temporary_timer_minutes column if it doesn't exist (migration)
             try:
                 conn.execute("SELECT temporary_timer_minutes FROM chats LIMIT 1")
             except sqlite3.OperationalError:
                 conn.execute("ALTER TABLE chats ADD COLUMN temporary_timer_minutes INTEGER DEFAULT 5")
                 logger.info("Added temporary_timer_minutes column to existing chats table")
-            
+
             # Create messages table with branching support
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
@@ -70,7 +70,7 @@ class ChatDB:
                     FOREIGN KEY (response_to) REFERENCES messages(id)
                 )
             """)
-            
+
             # Add branch columns if they don't exist (migration)
             try:
                 conn.execute("SELECT branch_id FROM messages LIMIT 1")
@@ -79,12 +79,12 @@ class ChatDB:
                 conn.execute("ALTER TABLE messages ADD COLUMN parent_message_id INTEGER")
                 conn.execute("ALTER TABLE messages ADD COLUMN is_active BOOLEAN DEFAULT 1")
                 logger.info("Added branching columns to messages table")
-            
+
             # Create indexes for performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_chat_created ON messages(chat_id, created_at)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_branch ON messages(chat_id, branch_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_chats_updated ON chats(updated_at DESC)")
-            
+
             conn.commit()
             logger.info("Chat database initialized")
 
@@ -95,8 +95,8 @@ class ChatDB:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    def create_chat(self, title: str, model: str = None, provider: str = None, 
-                   system_prompt: str = None, is_temporary: bool = False, force_provider: bool = False, 
+    def create_chat(self, title: str, model: str = None, provider: str = None,
+                   system_prompt: str = None, is_temporary: bool = False, force_provider: bool = False,
                    temporary_timer_minutes: int = 5) -> int:
         """Create a new chat and return chat ID"""
         with self.get_connection() as conn:
@@ -143,30 +143,30 @@ class ChatDB:
             rows = conn.execute(query).fetchall()
             return [dict(row) for row in rows]
 
-    def add_message(self, chat_id: int, role: str, content: str, 
+    def add_message(self, chat_id: int, role: str, content: str,
                    metadata: Dict = None, tokens: int = 0, response_to: int = None) -> int:
         """Add message to chat"""
         if metadata is None:
             metadata = {}
-        
+
         with self.get_connection() as conn:
             # First check if the chat exists
             chat_check = conn.execute("SELECT id FROM chats WHERE id = ?", (chat_id,)).fetchone()
             if not chat_check:
                 raise ValueError(f"Chat {chat_id} does not exist")
-            
+
             try:
                 cursor = conn.execute("""
                     INSERT INTO messages (chat_id, role, content, metadata, tokens, response_to)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (chat_id, role, content, json.dumps(metadata), tokens, response_to))
-                
+
                 message_id = cursor.lastrowid
-                
+
                 # Update chat timestamp
                 conn.execute("UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", (chat_id,))
                 conn.commit()
-                
+
                 logger.debug(f"Added message {message_id} to chat {chat_id}: {role}")
                 return message_id
             except sqlite3.IntegrityError as e:
@@ -191,7 +191,7 @@ class ChatDB:
                     ORDER BY created_at ASC 
                     LIMIT ?"""
                 rows = conn.execute(query, (chat_id, limit)).fetchall()
-            
+
             messages = []
             for row in rows:
                 msg = dict(row)
@@ -200,7 +200,7 @@ class ChatDB:
                 except json.JSONDecodeError:
                     msg['metadata'] = {}
                 messages.append(msg)
-            
+
             return messages
 
     def edit_message(self, message_id: int, content: str) -> bool:
@@ -238,24 +238,27 @@ class ChatDB:
 
     def search_messages(self, query: str, chat_id: int = None, limit: int = 50) -> List[Dict]:
         """Search messages by content"""
+        # Security: escape LIKE special characters
+        safe_query = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        
         with self.get_connection() as conn:
             if chat_id:
                 sql = """
                     SELECT m.*, c.title as chat_title FROM messages m
                     JOIN chats c ON m.chat_id = c.id
-                    WHERE m.chat_id = ? AND m.content LIKE ?
+                    WHERE m.chat_id = ? AND m.content LIKE ? ESCAPE '\\'
                     ORDER BY m.created_at DESC LIMIT ?
                 """
-                rows = conn.execute(sql, (chat_id, f"%{query}%", limit)).fetchall()
+                rows = conn.execute(sql, (chat_id, f"%{safe_query}%", limit)).fetchall()
             else:
                 sql = """
                     SELECT m.*, c.title as chat_title FROM messages m
                     JOIN chats c ON m.chat_id = c.id
-                    WHERE m.content LIKE ?
+                    WHERE m.content LIKE ? ESCAPE '\\'
                     ORDER BY m.created_at DESC LIMIT ?
                 """
-                rows = conn.execute(sql, (f"%{query}%", limit)).fetchall()
-            
+                rows = conn.execute(sql, (f"%{safe_query}%", limit)).fetchall()
+
             messages = []
             for row in rows:
                 msg = dict(row)
@@ -269,11 +272,11 @@ class ChatDB:
     def get_context_messages(self, chat_id: int, max_tokens: int = 4000) -> List[Dict]:
         """Get messages for context with token budgeting"""
         messages = self.get_messages(chat_id)
-        
+
         # Simple token budgeting - include newest messages that fit
         context_messages = []
         total_tokens = 0
-        
+
         # Add messages in reverse order (newest first) until token limit
         for msg in reversed(messages):
             msg_tokens = msg['tokens'] or len(msg['content']) // 4  # Rough estimate
@@ -282,14 +285,14 @@ class ChatDB:
                 total_tokens += msg_tokens
             else:
                 break
-                
+
         return context_messages
 
     def update_chat(self, chat_id: int, **kwargs) -> bool:
         """Update chat properties"""
         if not kwargs:
             return False
-            
+
         # Build dynamic update query
         fields = []
         values = []
@@ -297,13 +300,13 @@ class ChatDB:
             if key in ['title', 'model', 'provider', 'system_prompt', 'context_mode', 'summary', 'force_provider']:
                 fields.append(f"{key} = ?")
                 values.append(value)
-        
+
         if not fields:
             return False
-            
+
         fields.append("updated_at = CURRENT_TIMESTAMP")
         values.append(chat_id)
-        
+
         with self.get_connection() as conn:
             query = f"UPDATE chats SET {', '.join(fields)} WHERE id = ?"
             conn.execute(query, values)
@@ -317,11 +320,11 @@ class ChatDB:
             result = conn.execute("SELECT is_temporary, title FROM chats WHERE id = ?", (chat_id,)).fetchone()
             if not result:
                 return False
-            
+
             is_temporary, current_title = result
             if not is_temporary:
                 return False  # Already permanent
-                
+
             # Update the chat to be permanent
             title_to_use = new_title if new_title else current_title
             conn.execute("""
@@ -361,17 +364,17 @@ class ChatDB:
         """Get database statistics"""
         with self.get_connection() as conn:
             stats = {}
-            
+
             # Chat counts
             stats['total_chats'] = conn.execute("SELECT COUNT(*) FROM chats").fetchone()[0]
             stats['permanent_chats'] = conn.execute("SELECT COUNT(*) FROM chats WHERE is_temporary = 0").fetchone()[0]
             stats['temporary_chats'] = conn.execute("SELECT COUNT(*) FROM chats WHERE is_temporary = 1").fetchone()[0]
-            
+
             # Message counts
             stats['total_messages'] = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
             stats['user_messages'] = conn.execute("SELECT COUNT(*) FROM messages WHERE role = 'user'").fetchone()[0]
             stats['assistant_messages'] = conn.execute("SELECT COUNT(*) FROM messages WHERE role = 'assistant'").fetchone()[0]
-            
+
             return stats
 
     def get_max_branch_id(self, chat_id: int) -> int:
@@ -389,13 +392,13 @@ class ChatDB:
             # Get current max branch_id
             max_branch = self.get_max_branch_id(chat_id)
             new_branch_id = max_branch + 1
-            
+
             # Get the message to branch from
-            message = conn.execute("SELECT * FROM messages WHERE id = ? AND chat_id = ?", 
+            message = conn.execute("SELECT * FROM messages WHERE id = ? AND chat_id = ?",
                                   (from_message_id, chat_id)).fetchone()
             if not message:
                 raise ValueError(f"Message {from_message_id} not found in chat {chat_id}")
-            
+
             # Copy messages from main branch up to and including the branch point
             # These become the new branch's history
             conn.execute("""
@@ -404,7 +407,7 @@ class ChatDB:
                 FROM messages 
                 WHERE chat_id = ? AND branch_id = 0 AND id <= ? AND is_active = 1
             """, (new_branch_id, chat_id, from_message_id))
-            
+
             conn.commit()
             logger.info(f"Created branch {new_branch_id} from message {from_message_id} in chat {chat_id}")
             return new_branch_id
@@ -434,13 +437,13 @@ class ChatDB:
         with self.get_connection() as conn:
             # Deactivate all messages in this chat
             conn.execute("UPDATE messages SET is_active = 0 WHERE chat_id = ?", (chat_id,))
-            
+
             # Activate messages for the target branch
             conn.execute(
                 "UPDATE messages SET is_active = 1 WHERE chat_id = ? AND branch_id = ?",
                 (chat_id, branch_id)
             )
-            
+
             conn.commit()
             return True
 
@@ -455,5 +458,5 @@ class ChatDB:
                 GROUP BY branch_id
                 ORDER BY branch_id
             """, (chat_id,)).fetchall()
-            
+
             return [{"branch_id": r[0], "message_count": r[1], "created_at": r[2]} for r in rows]

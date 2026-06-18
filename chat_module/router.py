@@ -41,7 +41,7 @@ def get_global_engine():
     global _global_engine
     if _global_engine is not None:
         return _global_engine
-    
+
     # Fallback: create new instance (for backward compatibility)
     # Import here to avoid circular imports and reduce import-time side effects
     import sys
@@ -62,7 +62,7 @@ class CreateChatRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     role: str = Field(..., pattern="^(user|system)$")
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=100000)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class EditMessageRequest(BaseModel):
@@ -117,25 +117,25 @@ async def cleanup_expired_temporary_chats():
         try:
             # Get all temporary chats that have exceeded their timer
             expired_chats = chat_db.get_expired_temporary_chats()
-            
+
             for chat in expired_chats:
                 chat_id = chat['id']
                 timer_minutes = chat.get('temporary_timer_minutes', 5)
                 verbose_print(f"Auto-deleting expired temporary chat {chat_id} (timer: {timer_minutes} minutes)")
-                
+
                 # Delete the chat from database
                 success = chat_db.delete_chat(chat_id)
-                
+
                 if success:
                     # Notify all connected clients via WebSocket
                     await websocket_manager.notify_chat_deleted(chat_id)
                     verbose_print(f"Successfully auto-deleted temporary chat {chat_id}")
                 else:
                     verbose_print(f"Failed to auto-delete temporary chat {chat_id}")
-                    
+
         except Exception as e:
             logger.error(f"Error in cleanup_expired_temporary_chats: {e}")
-        
+
         # Sleep for 30 seconds before next check
         await asyncio.sleep(30)
 
@@ -174,7 +174,7 @@ async def create_chat(request: CreateChatRequest):
             force_provider=request.force_provider,
             temporary_timer_minutes=request.temporary_timer_minutes
         )
-        
+
         chat = chat_db.get_chat(chat_id)
         return {
             "success": True,
@@ -192,9 +192,9 @@ async def get_chat(chat_id: int, limit: int = 100):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         messages = chat_db.get_messages(chat_id, limit=limit)
-        
+
         return {
             "chat": ChatResponse(**chat),
             "messages": [MessageResponse(**msg) for msg in messages]
@@ -213,7 +213,7 @@ async def send_message(chat_id: int, request: SendMessageRequest, background_tas
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         # Add user message immediately
         message_id = chat_db.add_message(
             chat_id=chat_id,
@@ -221,7 +221,7 @@ async def send_message(chat_id: int, request: SendMessageRequest, background_tas
             content=request.content,
             metadata=request.metadata
         )
-        
+
         # If it's a user message, trigger AI response
         if request.role == "user":
             background_tasks.add_task(
@@ -231,13 +231,13 @@ async def send_message(chat_id: int, request: SendMessageRequest, background_tas
                 model=chat.get('model'),
                 provider=chat.get('provider')
             )
-        
+
         return {
             "success": True,
             "message_id": message_id,
             "status": "queued" if request.role == "user" else "saved"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -252,21 +252,21 @@ async def update_chat(chat_id: int, request: UpdateChatRequest):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         # Update with non-None values
         update_data = {k: v for k, v in request.model_dump().items() if v is not None}
-        
+
         if update_data:
             success = chat_db.update_chat(chat_id, **update_data)
             if not success:
                 raise HTTPException(status_code=400, detail="No valid fields to update")
-        
+
         updated_chat = chat_db.get_chat(chat_id)
         return {
             "success": True,
             "chat": ChatResponse(**updated_chat)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -281,15 +281,15 @@ async def convert_chat_to_permanent(chat_id: int, new_title: Optional[str] = Non
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         if not chat['is_temporary']:
             raise HTTPException(status_code=400, detail="Chat is already permanent")
-        
+
         # Convert to permanent
         success = chat_db.convert_chat_to_permanent(chat_id, new_title)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to convert chat")
-        
+
         # Get updated chat
         updated_chat = chat_db.get_chat(chat_id)
         return {
@@ -297,7 +297,7 @@ async def convert_chat_to_permanent(chat_id: int, new_title: Optional[str] = Non
             "message": "Chat converted to permanent",
             "chat": ChatResponse(**updated_chat)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -311,9 +311,9 @@ async def delete_chat(chat_id: int):
         success = chat_db.delete_chat(chat_id)
         if not success:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         return {"success": True, "message": "Chat deleted"}
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -328,10 +328,10 @@ async def get_messages(chat_id: int, limit: int = 100, after_id: Optional[int] =
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         messages = chat_db.get_messages(chat_id, limit=limit, after_id=after_id)
         return [MessageResponse(**msg) for msg in messages]
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -355,14 +355,14 @@ async def edit_message(message_id: int, request: EditMessageRequest):
         message = chat_db.get_message(message_id)
         if not message:
             raise HTTPException(status_code=404, detail="Message not found")
-        
+
         success = chat_db.edit_message(message_id, request.content)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to edit message")
-        
+
         updated_message = chat_db.get_message(message_id)
         return {"success": True, "message": MessageResponse(**updated_message)}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -376,17 +376,17 @@ async def regenerate_response(chat_id: int, message_id: int, background_tasks: B
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         message = chat_db.get_message(message_id)
         if not message:
             raise HTTPException(status_code=404, detail="Message not found")
-        
+
         if message['role'] != 'user':
             raise HTTPException(status_code=400, detail="Can only regenerate from user messages")
-        
+
         # Delete messages after this one
         deleted_count = chat_db.delete_messages_after(chat_id, message_id)
-        
+
         # Trigger new AI response
         background_tasks.add_task(
             process_ai_response,
@@ -395,13 +395,13 @@ async def regenerate_response(chat_id: int, message_id: int, background_tasks: B
             model=chat.get('model'),
             provider=chat.get('provider')
         )
-        
+
         return {
             "success": True,
             "message": f"Regenerating response (deleted {deleted_count} messages)",
             "deleted_count": deleted_count
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -435,31 +435,31 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
         content = await file.read()
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(status_code=413, detail=f"File too large. Max size: {MAX_FILE_SIZE // (1024*1024)}MB")
-        
+
         # Get file extension
         file_ext = Path(file.filename).suffix.lower() if file.filename else ""
-        
+
         # Validate file type
         all_allowed = ALLOWED_EXTENSIONS | ALLOWED_IMAGE_EXTENSIONS
         if file_ext not in all_allowed:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"File type '{file_ext}' not allowed. Allowed: {', '.join(sorted(all_allowed))}"
             )
-        
+
         # Generate unique filename
         file_hash = hashlib.md5(content).hexdigest()[:8]
         safe_filename = f"{file_hash}_{int(time.time())}{file_ext}"
         file_path = UPLOAD_DIR / safe_filename
-        
+
         # Save file
         with open(file_path, "wb") as f:
             f.write(content)
-        
+
         # Determine file type
         is_image = file_ext in ALLOWED_IMAGE_EXTENSIONS
         file_type = "image" if is_image else "document"
-        
+
         # Read content for text files
         file_content = None
         if not is_image and file_ext in ALLOWED_EXTENSIONS:
@@ -467,7 +467,7 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
                 file_content = content.decode('utf-8')
             except UnicodeDecodeError:
                 file_content = None
-        
+
         result = {
             "success": True,
             "filename": file.filename,
@@ -477,7 +477,7 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
             "type": file_type,
             "extension": file_ext
         }
-        
+
         # If chat_id provided, add file reference as message
         if chat_id:
             chat = chat_db.get_chat(chat_id)
@@ -485,7 +485,7 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
                 file_ref = f"[File: {file.filename}]({file_path})"
                 if is_image:
                     file_ref = f"![{file.filename}]({file_path})"
-                
+
                 metadata = {
                     "file_upload": True,
                     "filename": file.filename,
@@ -493,7 +493,7 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
                     "file_type": file_type,
                     "file_size": len(content)
                 }
-                
+
                 msg_id = chat_db.add_message(
                     chat_id=chat_id,
                     role="user",
@@ -501,9 +501,9 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
                     metadata=metadata
                 )
                 result["message_id"] = msg_id
-        
+
         return result
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -513,13 +513,20 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
 @router.get("/uploads/{filename}")
 async def get_upload(filename: str):
     """Get uploaded file info"""
+    # Security: prevent path traversal
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
     file_path = UPLOAD_DIR / filename
+    if not file_path.resolve().is_relative_to(UPLOAD_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     stat = file_path.stat()
     file_ext = file_path.suffix.lower()
-    
+
     return {
         "filename": filename,
         "path": str(file_path),
@@ -536,15 +543,15 @@ async def create_branch(chat_id: int, message_id: int):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         new_branch_id = chat_db.create_branch(chat_id, message_id)
-        
+
         return {
             "success": True,
             "branch_id": new_branch_id,
             "message": f"Created branch {new_branch_id} from message {message_id}"
         }
-    
+
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -558,10 +565,10 @@ async def get_branches(chat_id: int):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         branches = chat_db.get_branches(chat_id)
         return {"success": True, "branches": branches}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -575,10 +582,10 @@ async def get_branch_messages(chat_id: int, branch_id: int):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         messages = chat_db.get_branch_messages(chat_id, branch_id)
         return {"success": True, "branch_id": branch_id, "messages": [MessageResponse(**msg) for msg in messages]}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -592,10 +599,10 @@ async def switch_branch(chat_id: int, branch_id: int):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         success = chat_db.switch_branch(chat_id, branch_id)
         return {"success": success, "message": f"Switched to branch {branch_id}"}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -609,9 +616,9 @@ async def export_chat(chat_id: int, format: str = "markdown"):
         chat = chat_db.get_chat(chat_id)
         if not chat:
             raise HTTPException(status_code=404, detail="Chat not found")
-        
+
         messages = chat_db.get_messages(chat_id, limit=1000)
-        
+
         if format == "json":
             return {
                 "chat": {
@@ -636,14 +643,14 @@ async def export_chat(chat_id: int, format: str = "markdown"):
             lines = [f"# {chat['title']}\n"]
             lines.append(f"*Model: {chat.get('model', 'auto')} | Provider: {chat.get('provider', 'auto')}*\n")
             lines.append("---\n")
-            
+
             for msg in messages:
                 role = msg["role"].capitalize()
                 content = msg["content"]
                 lines.append(f"**{role}:**\n{content}\n")
-            
+
             return {"export": "\n".join(lines), "format": "markdown"}
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -654,18 +661,18 @@ async def export_chat(chat_id: int, format: str = "markdown"):
 async def websocket_endpoint(websocket: WebSocket, chat_id: int):
     """WebSocket endpoint for real-time chat streaming"""
     await websocket_manager.connect(websocket, chat_id)
-    
+
     try:
         while True:
             # Receive message from client
             data = await websocket.receive_text()
             message_data = json.loads(data)
-            
+
             if message_data.get("type") == "user_message":
                 await handle_websocket_message(websocket, chat_id, message_data)
             elif message_data.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
-                
+
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket, chat_id)
     except Exception as e:
@@ -688,7 +695,7 @@ async def handle_websocket_message(websocket: WebSocket, chat_id: int, message_d
             }))
             await websocket.close()
             return
-        
+
         # Add user message
         try:
             user_message_id = chat_db.add_message(
@@ -706,13 +713,13 @@ async def handle_websocket_message(websocket: WebSocket, chat_id: int, message_d
                 await websocket.close()
                 return
             raise
-        
+
         # Send confirmation
         await websocket.send_text(json.dumps({
             "type": "message_saved",
             "message_id": user_message_id
         }))
-        
+
         # Process AI response with streaming
         await process_ai_response_stream(
             websocket=websocket,
@@ -721,7 +728,7 @@ async def handle_websocket_message(websocket: WebSocket, chat_id: int, message_d
             model=message_data.get('model') or chat.get('model'),
             provider=message_data.get('provider') or chat.get('provider')
         )
-        
+
     except Exception as e:
         logger.error(f"Error handling WebSocket message: {e}")
         await websocket.send_text(json.dumps({
@@ -736,10 +743,10 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-        
+
         # Get context messages
         context_messages = chat_db.get_context_messages(chat_id)
-        
+
         # Format messages for AI Engine
         formatted_messages = []
         for msg in context_messages:
@@ -747,18 +754,18 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
                 "role": msg["role"],
                 "content": msg["content"]
             })
-        
+
         # Use global AI Engine instance
         ai = get_global_engine()
-        
+
         # Get response with correct parameter names and forced provider usage
         start_time = time.time()
-        
+
         # Determine autodecide behavior and force provider based on chat settings
         chat = chat_db.get_chat(chat_id)
         force_provider_setting = chat.get('force_provider', False) if chat else False
         use_autodecide = provider is None and not force_provider_setting
-        
+
         result = await asyncio.to_thread(ai.chat_completion,
             messages=formatted_messages,
             model=model,
@@ -767,7 +774,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
             force_provider=force_provider_setting and provider is not None
         )
         response_time = time.time() - start_time
-        
+
         if result.success:
             # Save assistant message
             chat_db.add_message(
@@ -787,7 +794,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
             # Save error message
             chat_db.add_message(
                 chat_id=chat_id,
-                role="assistant", 
+                role="assistant",
                 content=f"Error: {result.error_message or 'Unknown error occurred'}",
                 metadata={
                     "error": True,
@@ -797,7 +804,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
                 },
                 response_to=user_message_id
             )
-            
+
     except Exception as e:
         logger.error(f"Error processing AI response for chat {chat_id}: {e}")
         # Save error message
@@ -843,9 +850,9 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         use_autodecide = provider is None and not force_provider_setting
 
         # Start AI call in thread with correct parameter names
-        ai_task = asyncio.create_task(asyncio.to_thread(ai.chat_completion, 
-            messages=formatted_messages, 
-            model=model, 
+        ai_task = asyncio.create_task(asyncio.to_thread(ai.chat_completion,
+            messages=formatted_messages,
+            model=model,
             autodecide=use_autodecide,
             preferred_provider=provider,
             force_provider=force_provider_setting and provider is not None
@@ -946,7 +953,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                     tokens=(len(response_content) // 4) if response_content else 0,
                     response_to=user_message_id
                 )
-                
+
                 # Notify client of completion
                 await websocket.send_text(json.dumps({"type": "ai_complete", "message_id": assistant_message_id, "provider": provider_used, "model": model_used, "response_time": response_time}))
             except ValueError as e:
@@ -964,7 +971,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                 await websocket.send_text(json.dumps({"type": "ai_error", "content": f"Error: {error_msg}"}))
             except Exception:
                 pass
-            
+
             # Try to save error message, but handle chat deletion gracefully
             try:
                 chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {error_msg}", metadata={"error": True}, response_to=user_message_id)
