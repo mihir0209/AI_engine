@@ -4,10 +4,53 @@
 
 AI Engine v3.0 is an enterprise-grade Python system for managing multiple AI providers with automatic failover, intelligent API key rotation, real-time error detection, and smart model-to-provider matching through the **autodecide** feature.
 
+## Quick Start
+
+### Option 1: GPT4Free (Recommended - Truly Free)
+```bash
+# Start g4f server
+docker run -p 8080:8080 hlohaus789/g4f
+
+# Start AI Engine
+python server.py
+```
+
+### Option 2: Free Tier APIs
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Get free API keys from providers (see guide below)
+# Edit .env with your keys
+
+# Start server
+python server.py
+```
+
+## How to Get Free API Keys
+
+**[See Complete Guide: collect_api.md](collect_api.md)**
+
+### Quick Summary:
+
+| Provider | Free Tier | How to Get |
+|----------|-----------|------------|
+| **GPT4Free** | Unlimited (self-hosted) | `docker run -p 8080:8080 hlohaus789/g4f` |
+| **Groq** | 30 RPM, 14,400 RPD | [console.groq.com](https://console.groq.com) |
+| **OpenRouter** | 23 free models | [openrouter.ai](https://openrouter.ai) |
+| **Gemini** | 15 RPM, 1M tokens/day | [aistudio.google.com](https://aistudio.google.com) |
+| **SambaNova** | Generous daily limits | [cloud.sambanova.ai](https://cloud.sambanova.ai) |
+| **NVIDIA** | 1000 credits/month | [build.nvidia.com](https://build.nvidia.com) |
+| **Cerebras** | 30 RPM | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
+| **GitHub** | 15 RPM | [github.com/marketplace](https://github.com/marketplace/models) |
+| **Cloudflare** | 10K neurons/day | [dash.cloudflare.com](https://dash.cloudflare.com) |
+
+---
+
 ## Key Features
 
 ### Multi-Provider Support
-- **23 AI Providers**: Comprehensive ecosystem including OpenAI, Google Gemini, Anthropic Claude, Meta Llama, and more
+- **17+ AI Providers**: Verified working providers with free tiers
 - **Universal Compatibility**: Support for OpenAI-compatible APIs, native formats, and specialized providers
 - **No-Auth Options**: Providers that don't require API keys for testing and development
 
