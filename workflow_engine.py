@@ -98,7 +98,7 @@ class WorkflowEngine:
                     sid: {
                         "id": step.id,
                         "name": step.name,
-                        "step_type": step.step_type.value,
+                        "step_type": step.step_type.value if hasattr(step.step_type, 'value') else step.step_type,
                         "config": step.config,
                         "next_step": step.next_step,
                         "on_true": step.on_true,
