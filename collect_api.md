@@ -29,7 +29,43 @@ ollama pull llama3.1
 
 ---
 
-## Category 2: Free Tier APIs
+## Category 2: Free Tier APIs (No API Key Required)
+
+### UncloseAI Hermes (FREE - No Key Needed)
+
+- API: `https://hermes.ai.unturf.com/v1`
+- Model: `WeiboAI/VibeThinker-3B`
+- Auth: Any string works as API key
+- Cost: FREE
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="https://hermes.ai.unturf.com/v1", api_key="any")
+response = client.chat.completions.create(
+    model="WeiboAI/VibeThinker-3B",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+### Pollinations AI (FREE - No Key Needed)
+
+- API: `https://text.pollinations.ai/openai`
+- Model: `openai`
+- Auth: Not required
+- Cost: FREE
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="https://text.pollinations.ai/openai", api_key="any")
+response = client.chat.completions.create(
+    model="openai",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+---
+
+## Category 3: Free Tier APIs (Need Signup)
 
 ### Groq (30 RPM, 14,400 RPD)
 
