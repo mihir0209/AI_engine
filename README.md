@@ -27,6 +27,68 @@ cp .env.example .env
 python server.py
 ```
 
+## For Developers - Use with OpenAI SDK
+
+This API is **fully compatible** with the standard OpenAI Python SDK:
+
+```python
+from openai import OpenAI
+
+# Point to your local AI Engine
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="dummy"  # Not needed for free providers
+)
+
+# Chat completion
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+
+# Streaming
+stream = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
+)
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### JavaScript/TypeScript
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+    baseURL: 'http://localhost:8000/v1',
+    apiKey: 'dummy'
+});
+
+const response = await client.chat.completions.create({
+    model: 'gpt-4',
+    messages: [{ role: 'user', content: 'Hello!' }]
+});
+console.log(response.choices[0].message.content);
+```
+
+### cURL
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### List Available Models
+```bash
+curl http://localhost:8000/v1/models
+```
+
 ## How to Get Free API Keys
 
 **[See Complete Guide: collect_api.md](collect_api.md)**
