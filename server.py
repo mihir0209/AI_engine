@@ -320,81 +320,114 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
     )
 
 # API Routes
-@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@app.post("/v1/chat/completions")
 @limiter.limit("10/minute")
-async def chat_completions(request: Request, chat_request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
-    """OpenAI-compatible chat completions endpoint with standardized response format"""
+async def chat_completions(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
+    """OpenAI-compatible chat completions endpoint - handles both streaming and non-streaming"""
+    from fastapi.responses import StreamingResponse
+    
     try:
-        # Convert ChatMessage objects to dict format for AI Engine
-        messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
-
-        # Make request to AI Engine with preferred provider (non-blocking)
+        body = await request.json()
+        messages = body.get("messages", [])
+        model = body.get("model", "auto")
+        stream = body.get("stream", False)
+        tools = body.get("tools")
+        tool_choice = body.get("tool_choice")
+        response_format = body.get("response_format")
+        temperature = body.get("temperature")
+        max_tokens = body.get("max_tokens")
+        
+        # Validate messages
+        if not messages:
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"message": "messages is required", "type": "invalid_request_error", "code": "missing_messages"}}
+            )
+        
+        # Handle streaming
+        if stream:
+            return await handle_streaming_response(messages, model, x_preferred_provider, background_tasks)
+        
+        # Non-streaming request
         start_time = asyncio.get_event_loop().time()
         result = await asyncio.to_thread(
             engine.chat_completion,
             messages=messages,
-            model=chat_request.model if chat_request.model != "auto" else None,
+            model=model if model != "auto" else None,
             preferred_provider=x_preferred_provider
         )
         end_time = asyncio.get_event_loop().time()
-
-        # Save statistics in background
+        
         background_tasks.add_task(save_statistics_async)
-
+        
         if not result.success:
-            raise HTTPException(status_code=500, detail=result.error_message)
-
-        # Format response to OpenAI standard regardless of provider
-        response = format_openai_response(result, messages, chat_request, start_time)
-
+            # Return OpenAI-compatible error format
+            error_code = "server_error"
+            status_code = 500
+            if "rate_limit" in (result.error_type or "").lower():
+                error_code = "rate_limit_error"
+                status_code = 429
+            elif "auth" in (result.error_type or "").lower():
+                error_code = "authentication_error"
+                status_code = 401
+            elif "not_found" in (result.error_type or "").lower():
+                error_code = "model_not_found"
+                status_code = 404
+            
+            return JSONResponse(
+                status_code=status_code,
+                content={"error": {"message": result.error_message, "type": error_code, "code": error_code}}
+            )
+        
+        response = format_openai_response(result, messages, body, start_time)
         return response
-
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"message": str(e), "type": "server_error", "code": "internal_error"}}
+        )
 
-@app.post("/v1/chat/completions/stream")
-@limiter.limit("10/minute")
-async def chat_completions_stream(request: Request, chat_request: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
-    """OpenAI-compatible streaming chat completions endpoint with true upstream streaming"""
+
+async def handle_streaming_response(messages, model, preferred_provider, background_tasks):
+    """Handle streaming chat completion"""
     from fastapi.responses import StreamingResponse
-
+    
     async def generate_stream():
-        messages = [{"role": msg.role, "content": msg.content} for msg in chat_request.messages]
         completion_id = f"chatcmpl-{int(time.time() * 1000000) % 999999999}"
-
-        # Use true streaming from upstream provider
+        
         def stream_from_engine():
             for chunk in engine.chat_completion_stream(
                 messages=messages,
-                model=chat_request.model if chat_request.model != "auto" else None,
-                preferred_provider=x_preferred_provider
+                model=model if model != "auto" else None,
+                preferred_provider=preferred_provider
             ):
                 yield chunk
-
-        # Run streaming in thread and yield chunks
+        
         loop = asyncio.get_event_loop()
         stream_iter = stream_from_engine()
-
+        
         try:
             while True:
                 chunk = await loop.run_in_executor(None, lambda: next(stream_iter, None))
                 if chunk is None:
                     break
-
+                
                 if chunk.get('error'):
-                    yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
+                    error_data = {"error": {"message": chunk['error'], "type": "server_error"}}
+                    yield f"data: {json.dumps(error_data)}\n\n"
                     break
-
+                
                 if chunk.get('done'):
                     yield "data: [DONE]\n\n"
                     break
-
+                
                 if chunk.get('content'):
                     chunk_data = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
-                        "model": chat_request.model or "auto",
+                        "model": model or "auto",
                         "choices": [{
                             "index": 0,
                             "delta": {"content": chunk['content']},
@@ -403,13 +436,35 @@ async def chat_completions_stream(request: Request, chat_request: ChatCompletion
                     }
                     yield f"data: {json.dumps(chunk_data)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            error_data = {"error": {"message": str(e), "type": "server_error"}}
+            yield f"data: {json.dumps(error_data)}\n\n"
             yield "data: [DONE]\n\n"
-
-        # Save statistics in background
+        
         background_tasks.add_task(save_statistics_async)
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
-    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
+@app.post("/v1/chat/completions/stream")
+@limiter.limit("10/minute")
+async def chat_completions_stream_legacy(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
+    """Legacy streaming endpoint - redirects to main endpoint with stream=true"""
+    body = await request.json()
+    body["stream"] = True
+    return await handle_streaming_response(
+        body.get("messages", []),
+        body.get("model", "auto"),
+        x_preferred_provider,
+        background_tasks
+    )
 
 @app.get("/v1/models")
 async def list_models():
@@ -467,7 +522,7 @@ async def discover_and_cache_models():
             for provider_name, config in enabled_providers.items():
                 if not config.get('model_endpoint'):
                     current_model = config.get('model', 'unknown')
-                    all_models.append(f"{provider_name}|{current_model}")
+                    all_models.append(f"{provider_name}/{current_model}")
 
             # Collect results with proper timeout handling
             try:
@@ -482,19 +537,19 @@ async def discover_and_cache_models():
                             # Add models to the response - store complete model names as returned by provider
                             for model in provider_models:
                                 # Store the complete model ID as returned by the provider
-                                all_models.append(f"{provider_name}|{model}")  # Use | separator to distinguish provider from model ID
+                                all_models.append(f"{provider_name}/{model}")  # Use | separator to distinguish provider from model ID
                             verbose_print(f"✅ {provider_name}: discovered {len(provider_models)} models")
                         else:
                             # Fallback to current configured model if discovery fails
                             current_model = config.get('model', 'unknown')
-                            all_models.append(f"{provider_name}|{current_model}")
+                            all_models.append(f"{provider_name}/{current_model}")
                             verbose_print(f"⚠️ {provider_name}: fallback to default model")
 
                     except Exception as e:
                         verbose_print(f"❌ Error processing {provider_name}: {e}")
                         # Fallback to current model
                         current_model = config.get('model', 'unknown')
-                        all_models.append(f"{provider_name}|{current_model}")
+                        all_models.append(f"{provider_name}/{current_model}")
 
             except concurrent.futures.TimeoutError:
                 # Handle unfinished futures
@@ -506,7 +561,7 @@ async def discover_and_cache_models():
                         # Cancel and add fallback
                         future.cancel()
                         current_model = config.get('model', 'unknown')
-                        all_models.append(f"{provider_name}|{current_model}")
+                        all_models.append(f"{provider_name}/{current_model}")
                         unfinished_count += 1
                 verbose_print(f"⚠️ {unfinished_count} providers timed out, used fallbacks")
 
@@ -538,7 +593,7 @@ async def discover_and_cache_models():
         for provider_name, config in AI_CONFIGS.items():
             if config.get('enabled', True):
                 current_model = config.get('model', 'unknown')
-                basic_models.append(f"{provider_name}|{current_model}")
+                basic_models.append(f"{provider_name}/{current_model}")
 
         # Cache the basic models too
         shared_model_cache.save_cache(basic_models)
