@@ -386,10 +386,125 @@ AI_CONFIGS = {
 
     # === VERIFIED FREE PROVIDERS (No API Key Required) ===
 
+    # g4f.space Groq - Free, no auth
+    "g4f_groq": {
+        "id": 15, "priority": 2,
+        "api_keys": ["free"],
+        "endpoint": "https://g4f.space/api/groq/chat/completions",
+        "model_endpoint": "https://g4f.space/api/groq/models",
+        "model_endpoint_auth": False,
+        "model": "llama-3.3-70b-versatile",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # g4f.space Gemini - Free, no auth
+    "g4f_gemini": {
+        "id": 16, "priority": 3,
+        "api_keys": ["free"],
+        "endpoint": "https://g4f.space/api/gemini/chat/completions",
+        "model_endpoint": "https://g4f.space/api/gemini/models",
+        "model_endpoint_auth": False,
+        "model": "models/gemini-2.5-flash",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # g4f.space Ollama - Free, no auth
+    "g4f_ollama": {
+        "id": 17, "priority": 4,
+        "api_keys": ["free"],
+        "endpoint": "https://g4f.space/api/ollama/chat/completions",
+        "model_endpoint": "https://g4f.space/api/ollama/models",
+        "model_endpoint_auth": False,
+        "model": "gpt-oss:20b",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # g4f.space Pollinations - Free, no auth
+    "g4f_pollinations": {
+        "id": 18, "priority": 5,
+        "api_keys": ["free"],
+        "endpoint": "https://g4f.space/api/pollinations/chat/completions",
+        "model_endpoint": "https://g4f.space/api/pollinations/models",
+        "model_endpoint_auth": False,
+        "model": "openai",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # g4f.space Nvidia - Free, no auth
+    "g4f_nvidia": {
+        "id": 19, "priority": 6,
+        "api_keys": ["free"],
+        "endpoint": "https://g4f.space/api/nvidia/chat/completions",
+        "model_endpoint": "https://g4f.space/api/nvidia/models",
+        "model_endpoint_auth": False,
+        "model": "nvidia/nemotron-3-nano-30b-a3b",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
     # UncloseAI Hermes - Free, no auth required
     "hermes": {
-        "id": 15, "priority": 2,
-        "api_keys": ["free"],  # Any key works
+        "id": 20, "priority": 7,
+        "api_keys": ["free"],
         "endpoint": "https://hermes.ai.unturf.com/v1/chat/completions",
         "model_endpoint": "https://hermes.ai.unturf.com/v1/models",
         "model_endpoint_auth": True,
@@ -411,8 +526,8 @@ AI_CONFIGS = {
 
     # Pollinations AI - Free, no auth required
     "pollinations": {
-        "id": 16, "priority": 3,
-        "api_keys": ["free"],  # Any key works
+        "id": 21, "priority": 8,
+        "api_keys": ["free"],
         "endpoint": "https://text.pollinations.ai/openai",
         "model_endpoint": None,
         "model_endpoint_auth": False,
