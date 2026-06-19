@@ -383,12 +383,11 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # === VERIFIED FREE PROVIDERS (No API Key Required) ===
-
     # g4f.space Groq - Free, no auth
     "g4f_groq": {
-        "id": 15, "priority": 2,
+        "id": 15,
+        "priority": 2,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/groq/chat/completions",
         "model_endpoint": "https://g4f.space/api/groq/models",
@@ -408,10 +407,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # g4f.space Gemini - Free, no auth
     "g4f_gemini": {
-        "id": 16, "priority": 3,
+        "id": 16,
+        "priority": 3,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/gemini/chat/completions",
         "model_endpoint": "https://g4f.space/api/gemini/models",
@@ -431,10 +430,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # g4f.space Ollama - Free, no auth
     "g4f_ollama": {
-        "id": 17, "priority": 4,
+        "id": 17,
+        "priority": 4,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/ollama/chat/completions",
         "model_endpoint": "https://g4f.space/api/ollama/models",
@@ -454,10 +453,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # g4f.space Pollinations - Free, no auth
     "g4f_pollinations": {
-        "id": 18, "priority": 5,
+        "id": 18,
+        "priority": 5,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/pollinations/chat/completions",
         "model_endpoint": "https://g4f.space/api/pollinations/models",
@@ -477,10 +476,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # g4f.space Nvidia - Free, no auth
     "g4f_nvidia": {
-        "id": 19, "priority": 6,
+        "id": 19,
+        "priority": 6,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/nvidia/chat/completions",
         "model_endpoint": "https://g4f.space/api/nvidia/models",
@@ -500,10 +499,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # UncloseAI Hermes - Free, no auth required
     "hermes": {
-        "id": 20, "priority": 7,
+        "id": 20,
+        "priority": 7,
         "api_keys": ["free"],
         "endpoint": "https://hermes.ai.unturf.com/v1/chat/completions",
         "model_endpoint": "https://hermes.ai.unturf.com/v1/models",
@@ -523,10 +522,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # Pollinations AI - Free, no auth required
     "pollinations": {
-        "id": 21, "priority": 8,
+        "id": 21,
+        "priority": 8,
         "api_keys": ["free"],
         "endpoint": "https://text.pollinations.ai/openai",
         "model_endpoint": None,
@@ -540,6 +539,100 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+    "paxsenix": {
+        "id": 22,
+        "priority": 2,
+        "api_keys": [os.getenv("PAXSENIX_API_KEY")],
+        "endpoint": "https://api.paxsenix.org/v1/chat/completions",
+        "model_endpoint": "https://api.paxsenix.org/v1/models",
+        "model_endpoint_auth": True,
+        "model": "default",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("PAXSENIX_API_KEY")) if True else False,
+        "rpm_limit": 25,
+        "daily_limit": 1000,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # === OllamaFreeAPI Servers (Ollama format, free) ===
+    # From github.com/mfoud444/ollamafreeapi
+    
+    # OllamaFreeAPI - Amsterdam server
+    "ollamafreeapi_ams": {
+        "id": 25, "priority": 9,
+        "api_keys": ["free"],
+        "endpoint": "http://5.149.249.212:11434/api/generate",
+        "model_endpoint": "http://5.149.249.212:11434/api/tags",
+        "model_endpoint_auth": False,
+        "model": "llama3.2:3b",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "ollama",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # OllamaFreeAPI - US server
+    "ollamafreeapi_us": {
+        "id": 23, "priority": 10,
+        "api_keys": ["free"],
+        "endpoint": "http://108.181.196.208:11434/api/generate",
+        "model_endpoint": "http://108.181.196.208:11434/api/tags",
+        "model_endpoint_auth": False,
+        "model": "llama3:latest",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "ollama",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    # OllamaFreeAPI - EU server
+    "ollamafreeapi_eu": {
+        "id": 24, "priority": 11,
+        "api_keys": ["free"],
+        "endpoint": "http://172.236.213.60:11434/api/generate",
+        "model_endpoint": "http://172.236.213.60:11434/api/tags",
+        "model_endpoint_auth": False,
+        "model": "mistral:latest",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "ollama",
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
