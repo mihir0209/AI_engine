@@ -68,30 +68,16 @@ class EngineSettings(BaseModel):
 AI_CONFIGS = {
     # === SELF-HOSTED (TRULY FREE) ===
     "g4f": {
-        "id": 1,
-        "priority": 1,
+        "id": 1, "priority": 1,
         "api_keys": [None],
-        "endpoint": os.getenv(
-            "G4F_ENDPOINT", "http://localhost:8080/v1/chat/completions"
-        ),
-        "model_endpoint": os.getenv(
-            "G4F_MODELS_ENDPOINT", "http://localhost:8080/v1/models"
-        ),
-        "model_endpoint_auth": False,
-        "model": "gpt-4o",
-        "method": "POST",
-        "auth_type": None,
-        "max_tokens": 4096,
-        "temperature": 0.7,
-        "timeout": 120,
-        "retries": 3,
-        "backoff": 5,
-        "format": "openai",
-        "enabled": True,
+        "endpoint": os.getenv("G4F_ENDPOINT", "http://localhost:8080/v1/chat/completions"),
+        "model_endpoint": os.getenv("G4F_MODELS_ENDPOINT", "http://localhost:8080/v1/models"),
+        "model_endpoint_auth": False, "model": "gpt-4o",
+        "method": "POST", "auth_type": None, "max_tokens": 4096,
+        "temperature": 0.7, "timeout": 120, "retries": 3, "backoff": 5,
+        "format": "openai", "enabled": False,  # Disabled - enable when g4f is running
         "rpm_limit": None,
-        "daily_limit": None,
-        "current_key_index": 0,
-        "consecutive_failures": 0,
+        "daily_limit": None, "current_key_index": 0, "consecutive_failures": 0
     },
     "ollama": {
         "id": 2,
