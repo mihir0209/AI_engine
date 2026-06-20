@@ -19,6 +19,7 @@ try:
     from model_cache import shared_model_cache
     from health_monitor import health_monitor
     from latency_tracker import latency_tracker
+    from rate_limit_manager import rate_limit_manager
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
@@ -583,6 +584,9 @@ class AI_engine:
 
         # Handle different error types with specific actions
         if error_type in ["rate_limit", "auth_error", "quota_exceeded"]:
+            # Mark as rate limited for automatic recovery
+            rate_limit_manager.mark_rate_limited(provider_name, retry_after=60)
+            
             # These errors suggest key-level issues - try rotating API key immediately
             if self.engine_settings.get('key_rotation_enabled', True):
                 rotated_key = self._rotate_api_key(provider_name)
@@ -844,12 +848,20 @@ class AI_engine:
                 config = self.providers[provider_name]
                 if config.get('enabled', True):
                     # Check health monitor status
-                    if health_monitor.is_provider_healthy(provider_name):
-                        available.append((provider_name, config))
-                    elif self.verbose:
-                        verbose_print(f"⚠️ Skipping {provider_name} - unhealthy", self.verbose)
+                    if not health_monitor.is_provider_healthy(provider_name):
+                        if self.verbose:
+                            verbose_print(f"⚠️ Skipping {provider_name} - unhealthy", self.verbose)
+                        continue
+                    
+                    # Check rate limit status
+                    if not rate_limit_manager.is_available(provider_name):
+                        if self.verbose:
+                            verbose_print(f"⚠️ Skipping {provider_name} - rate limited", self.verbose)
+                        continue
+                    
+                    available.append((provider_name, config))
 
-        # If all providers are unhealthy, try anyway (last resort)
+        # If all providers are unavailable, try anyway (last resort)
         if not available:
             for provider_name in provider_order:
                 if provider_name in self.providers:
@@ -857,7 +869,7 @@ class AI_engine:
                     if config.get('enabled', True):
                         available.append((provider_name, config))
                         if self.verbose:
-                            verbose_print(f"⚠️ All providers unhealthy, trying {provider_name}", self.verbose)
+                            verbose_print(f"⚠️ All providers unavailable, trying {provider_name}", self.verbose)
                         break
 
         return available

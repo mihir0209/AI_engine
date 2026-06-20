@@ -1606,6 +1606,33 @@ async def get_provider_latency(provider_name: str):
     from latency_tracker import latency_tracker
     return latency_tracker.get_stats(provider_name)
 
+@app.get("/api/rate-limits")
+async def get_rate_limits():
+    """Get rate limit status for all providers"""
+    from rate_limit_manager import rate_limit_manager
+    return rate_limit_manager.get_stats()
+
+@app.get("/api/rate-limits/{provider_name}")
+async def get_provider_rate_limit(provider_name: str):
+    """Get rate limit status for a specific provider"""
+    from rate_limit_manager import rate_limit_manager
+    provider = rate_limit_manager.get_provider(provider_name)
+    return {
+        "provider": provider_name,
+        "is_rate_limited": provider.is_rate_limited,
+        "requests_made": provider.requests_made,
+        "requests_limit": provider.requests_limit,
+        "retry_after": provider.retry_after if provider.is_rate_limited else 0,
+        "available": provider.is_available()
+    }
+
+@app.post("/api/rate-limits/{provider_name}/reset")
+async def reset_rate_limit(provider_name: str):
+    """Reset rate limit for a provider"""
+    from rate_limit_manager import rate_limit_manager
+    rate_limit_manager.reset_provider(provider_name)
+    return {"status": "reset", "provider": provider_name}
+
 # === Batch Processing ===
 from batch import get_batch_processor
 
