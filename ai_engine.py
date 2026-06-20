@@ -1589,8 +1589,11 @@ class AI_engine:
 
     def chat_completion_stream(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs):
         """
-        Streaming chat completion method - yields chunks as they arrive
-        Supports provider-specific routing with format: provider_name/model_name
+        Streaming chat completion method - yields chunks as they arrive.
+        Supports provider-specific routing with format: provider_name/model_name.
+        
+        Yields:
+            dict: {'content': str, 'done': bool} or {'error': str, 'done': True}
         """
         preferred_provider = kwargs.get('preferred_provider')
 
@@ -1610,15 +1613,26 @@ class AI_engine:
 
         # Try providers until one streams successfully
         for provider_name, provider_config in available_providers:
-            if provider_config.get('format') not in ('openai',):
-                continue  # Only OpenAI format supports streaming
+            format_type = provider_config.get('format', 'openai')
+            
+            # Skip providers that don't support streaming well
+            if format_type not in ('openai', 'ollama'):
+                continue
 
             try:
                 if self.verbose:
-                    verbose_print(f"🔄 Streaming from {provider_name}...", self.verbose)
+                    verbose_print(f"🔄 Streaming from {provider_name} ({format_type})...", self.verbose)
 
-                for chunk in self._make_streaming_request(provider_name, provider_config, messages, model):
+                # Use appropriate streaming method based on format
+                if format_type == 'ollama':
+                    stream_gen = self._make_ollama_streaming_request(provider_name, provider_config, messages, model)
+                else:
+                    stream_gen = self._make_streaming_request(provider_name, provider_config, messages, model)
+                
+                for chunk in stream_gen:
                     if chunk.get('error'):
+                        if self.verbose:
+                            verbose_print(f"❌ Streaming error from {provider_name}: {chunk['error']}", self.verbose)
                         yield chunk
                         break
                     if chunk.get('done'):
@@ -1628,9 +1642,9 @@ class AI_engine:
                 return
             except Exception as e:
                 if self.verbose:
-                    verbose_print(f"❌ {provider_name} streaming failed: {e}", self.verbose)
+                    verbose_print(f"❌ {provider_name} streaming exception: {e}", self.verbose)
                 continue
-
+        
         yield {'error': 'All providers failed for streaming', 'done': True}
 
     def _make_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs) -> RequestResult:
@@ -1842,6 +1856,54 @@ class AI_engine:
                                     yield {'content': content, 'done': False}
                             except json.JSONDecodeError:
                                 continue
+            else:
+                yield {'error': f"HTTP {response.status_code}: {response.text[:200]}", 'done': True}
+        except Exception as e:
+            yield {'error': str(e), 'done': True}
+        finally:
+            if response:
+                response.close()
+
+    def _make_ollama_streaming_request(self, provider_name: str, config: Dict, messages: List[Dict], model: str = None, **kwargs):
+        """Make a streaming request to Ollama API (yields chunks)"""
+        url = config['endpoint']
+        headers = {'Content-Type': 'application/json'}
+
+        # Prepare data for Ollama API
+        used_model = model or config['model']
+        data = {
+            'model': used_model,
+            'prompt': messages[-1].get('content', '') if messages else '',
+            'stream': True
+        }
+
+        import requests as req
+        response = None
+        try:
+            response = req.post(
+                url,
+                json=data,
+                headers=headers,
+                timeout=config.get('timeout', 120),
+                stream=True
+            )
+
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        try:
+                            chunk_data = json.loads(line_str)
+                            content = chunk_data.get('response', '')
+                            done = chunk_data.get('done', False)
+                            
+                            if done:
+                                yield {'done': True}
+                                break
+                            if content:
+                                yield {'content': content, 'done': False}
+                        except json.JSONDecodeError:
+                            continue
             else:
                 yield {'error': f"HTTP {response.status_code}: {response.text[:200]}", 'done': True}
         except Exception as e:
