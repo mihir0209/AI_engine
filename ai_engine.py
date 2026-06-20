@@ -826,7 +826,7 @@ class AI_engine:
         return "unknown"
 
     def _get_available_providers(self, preferred_provider: str = None) -> List[Tuple[str, Dict]]:
-        """Get list of available providers sorted by priority and recovery status"""
+        """Get list of available providers sorted by priority, health, and recovery status"""
         # Use the new provider ordering that considers recovery
         provider_order = self._get_preferred_provider_order(preferred_provider)
 
@@ -835,7 +835,22 @@ class AI_engine:
             if provider_name in self.providers:
                 config = self.providers[provider_name]
                 if config.get('enabled', True):
-                    available.append((provider_name, config))
+                    # Check health monitor status
+                    if health_monitor.is_provider_healthy(provider_name):
+                        available.append((provider_name, config))
+                    elif self.verbose:
+                        verbose_print(f"⚠️ Skipping {provider_name} - unhealthy", self.verbose)
+
+        # If all providers are unhealthy, try anyway (last resort)
+        if not available:
+            for provider_name in provider_order:
+                if provider_name in self.providers:
+                    config = self.providers[provider_name]
+                    if config.get('enabled', True):
+                        available.append((provider_name, config))
+                        if self.verbose:
+                            verbose_print(f"⚠️ All providers unhealthy, trying {provider_name}", self.verbose)
+                        break
 
         return available
 
