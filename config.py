@@ -68,16 +68,30 @@ class EngineSettings(BaseModel):
 AI_CONFIGS = {
     # === SELF-HOSTED (TRULY FREE) ===
     "g4f": {
-        "id": 1, "priority": 1,
+        "id": 1,
+        "priority": 3,
         "api_keys": [None],
-        "endpoint": os.getenv("G4F_ENDPOINT", "http://localhost:8080/v1/chat/completions"),
-        "model_endpoint": os.getenv("G4F_MODELS_ENDPOINT", "http://localhost:8080/v1/models"),
-        "model_endpoint_auth": False, "model": "gpt-4o",
-        "method": "POST", "auth_type": None, "max_tokens": 4096,
-        "temperature": 0.7, "timeout": 120, "retries": 3, "backoff": 5,
-        "format": "openai", "enabled": False,  # Disabled - enable when g4f is running
+        "endpoint": os.getenv(
+            "G4F_ENDPOINT", "http://localhost:8080/v1/chat/completions"
+        ),
+        "model_endpoint": os.getenv(
+            "G4F_MODELS_ENDPOINT", "http://localhost:8080/v1/models"
+        ),
+        "model_endpoint_auth": False,
+        "model": "gpt-4o",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 120,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": False,  # Disabled - enable when g4f is running
         "rpm_limit": None,
-        "daily_limit": None, "current_key_index": 0, "consecutive_failures": 0
+        "daily_limit": None,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
     },
     "ollama": {
         "id": 2,
@@ -104,7 +118,7 @@ AI_CONFIGS = {
     # === FREE TIER APIs (generous limits) ===
     "groq": {
         "id": 3,
-        "priority": 4,
+        "priority": 2,
         "api_keys": [os.getenv("GROQ_API_KEY")],
         "endpoint": "https://api.groq.com/openai/v1/chat/completions",
         "model_endpoint": "https://api.groq.com/openai/v1/models",
@@ -131,7 +145,7 @@ AI_CONFIGS = {
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "model_endpoint": "https://openrouter.ai/api/v1/models",
         "model_endpoint_auth": True,
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "model": "google/gemma-4-26b-a4b-it:free",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 4096,
@@ -144,11 +158,11 @@ AI_CONFIGS = {
         "rpm_limit": 20,
         "daily_limit": 200,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "gemini": {
         "id": 5,
-        "priority": 3,
+        "priority": 4,
         "api_keys": [os.getenv("GEMINI_API_KEY")],
         "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
         "model_endpoint": None,
@@ -175,7 +189,7 @@ AI_CONFIGS = {
         "endpoint": "https://integrate.api.nvidia.com/v1/chat/completions",
         "model_endpoint": "https://integrate.api.nvidia.com/v1/models",
         "model_endpoint_auth": True,
-        "model": "deepseek-ai/deepseek-r1",
+        "model": "meta/llama-3.1-8b-instruct",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 512,
@@ -188,11 +202,11 @@ AI_CONFIGS = {
         "rpm_limit": 30,
         "daily_limit": 500,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "cerebras": {
         "id": 7,
-        "priority": 4,
+        "priority": 2,
         "api_keys": [os.getenv("CEREBRAS_API_KEY")],
         "endpoint": "https://api.cerebras.ai/v1/chat/completions",
         "model_endpoint": "https://api.cerebras.ai/v1/models",
@@ -214,7 +228,7 @@ AI_CONFIGS = {
     },
     "cloudflare": {
         "id": 8,
-        "priority": 5,
+        "priority": 3,
         "api_keys": [os.getenv("CLOUDFLARE_API_KEY")],
         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
         "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
@@ -261,7 +275,7 @@ AI_CONFIGS = {
     },
     "vercel": {
         "id": 10,
-        "priority": 10,
+        "priority": 7,
         "api_keys": [os.getenv("VERCEL_API_KEY")],
         "endpoint": "https://ai-gateway.vercel.sh/v1/chat/completions",
         "model_endpoint": "https://ai-gateway.vercel.sh/v1/models",
@@ -373,7 +387,7 @@ AI_CONFIGS = {
     # g4f.space Groq - Free, no auth
     "g4f_groq": {
         "id": 15,
-        "priority": 2,
+        "priority": 3,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/groq/chat/completions",
         "model_endpoint": "https://g4f.space/api/groq/models",
@@ -465,7 +479,7 @@ AI_CONFIGS = {
     # g4f.space Nvidia - Free, no auth
     "g4f_nvidia": {
         "id": 19,
-        "priority": 6,
+        "priority": 9,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/nvidia/chat/completions",
         "model_endpoint": "https://g4f.space/api/nvidia/models",
@@ -488,7 +502,7 @@ AI_CONFIGS = {
     # UncloseAI Hermes - Free, no auth required
     "hermes": {
         "id": 20,
-        "priority": 7,
+        "priority": 3,
         "api_keys": ["free"],
         "endpoint": "https://hermes.ai.unturf.com/v1/chat/completions",
         "model_endpoint": "https://hermes.ai.unturf.com/v1/models",
@@ -511,7 +525,7 @@ AI_CONFIGS = {
     # Pollinations AI - Free, no auth required
     "pollinations": {
         "id": 21,
-        "priority": 8,
+        "priority": 2,
         "api_keys": ["free"],
         "endpoint": "https://text.pollinations.ai/openai",
         "model_endpoint": None,
@@ -533,7 +547,7 @@ AI_CONFIGS = {
     },
     "paxsenix": {
         "id": 22,
-        "priority": 2,
+        "priority": 3,
         "api_keys": [os.getenv("PAXSENIX_API_KEY")],
         "endpoint": "https://api.paxsenix.org/v1/chat/completions",
         "model_endpoint": "https://api.paxsenix.org/v1/models",
@@ -553,13 +567,12 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # === OllamaFreeAPI Servers (Ollama format, free) ===
     # From github.com/mfoud444/ollamafreeapi
-    
     # OllamaFreeAPI - Amsterdam server
     "ollamafreeapi_ams": {
-        "id": 25, "priority": 9,
+        "id": 25,
+        "priority": 4,
         "api_keys": ["free"],
         "endpoint": "http://5.149.249.212:11434/api/generate",
         "model_endpoint": "http://5.149.249.212:11434/api/tags",
@@ -579,10 +592,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # OllamaFreeAPI - US server
     "ollamafreeapi_us": {
-        "id": 23, "priority": 10,
+        "id": 23,
+        "priority": 4,
         "api_keys": ["free"],
         "endpoint": "http://108.181.196.208:11434/api/generate",
         "model_endpoint": "http://108.181.196.208:11434/api/tags",
@@ -602,10 +615,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # OllamaFreeAPI - EU server
     "ollamafreeapi_eu": {
-        "id": 24, "priority": 11,
+        "id": 24,
+        "priority": 4,
         "api_keys": ["free"],
         "endpoint": "http://172.236.213.60:11434/api/generate",
         "model_endpoint": "http://172.236.213.60:11434/api/tags",

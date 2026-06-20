@@ -711,8 +711,8 @@ class AI_engine:
             if self._check_provider_recovery(provider_name):
                 available_providers.append(provider_name)
 
-        # Sort by priority (assuming higher priority number = higher priority)
-        available_providers.sort(key=lambda p: self.providers[p].get('priority', 0), reverse=True)
+        # Sort by priority (lower number = higher priority, used first)
+        available_providers.sort(key=lambda p: self.providers[p].get('priority', 999))
 
         return available_providers
 
