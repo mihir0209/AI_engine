@@ -467,18 +467,48 @@ async def chat_completions_stream_legacy(request: Request, background_tasks: Bac
     )
 
 @app.get("/v1/models")
-async def list_models():
-    """List all available models across all providers in OpenAI format with caching"""
+async def list_models(provider: str = None, search: str = None):
+    """List all available models across all providers in OpenAI format with caching
+    
+    Query Parameters:
+        provider: Filter by provider name (e.g., ?provider=groq)
+        search: Search models by name (e.g., ?search=llama)
+    """
 
     # Check if we have valid cached models
     if shared_model_cache.is_cache_valid():
         cached_models = shared_model_cache.get_models()
         verbose_print(f"📦 Returning {len(cached_models)} models from cache")
-        return {"object": "list", "data": cached_models}
-
-    # No valid cache, discover models with threading
-    verbose_print("🔍 Cache miss or expired, discovering models...")
-    return await discover_and_cache_models()
+    else:
+        # No valid cache, discover models with threading
+        verbose_print("🔍 Cache miss or expired, discovering models...")
+        result = await discover_and_cache_models()
+        cached_models = result.get("data", [])
+    
+    # Apply filters
+    filtered_models = []
+    for model_id in cached_models:
+        # Filter by provider
+        if provider and not model_id.startswith(provider + "/"):
+            continue
+        
+        # Filter by search term
+        if search and search.lower() not in model_id.lower():
+            continue
+        
+        # Format model entry
+        model_parts = model_id.split("/", 1)
+        provider_name = model_parts[0] if len(model_parts) > 1 else "unknown"
+        model_name = model_parts[1] if len(model_parts) > 1 else model_id
+        
+        filtered_models.append({
+            "id": model_id,
+            "object": "model",
+            "created": int(datetime.now().timestamp()),
+            "owned_by": provider_name
+        })
+    
+    return {"object": "list", "data": filtered_models}
 async def discover_and_cache_models():
     """Discover models from all providers and cache the results"""
     import concurrent.futures
