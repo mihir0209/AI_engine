@@ -1575,6 +1575,44 @@ async def run_health_checks():
     """Run all health checks"""
     return health_checker.run_checks()
 
+# === Batch Processing ===
+from batch import get_batch_processor
+
+@app.post("/v1/batch")
+@limiter.limit("5/minute")
+async def batch_completions(request: Request, background_tasks: BackgroundTasks):
+    """Process multiple chat completions in parallel"""
+    try:
+        body = await request.json()
+        requests_list = body.get("requests", [])
+        model = body.get("model")
+        provider = body.get("provider")
+        
+        if not requests_list:
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"message": "requests array is required", "type": "invalid_request_error"}}
+            )
+        
+        if len(requests_list) > 100:
+            return JSONResponse(
+                status_code=400,
+                content={"error": {"message": "Maximum 100 requests per batch", "type": "invalid_request_error"}}
+            )
+        
+        processor = get_batch_processor(engine)
+        results = await processor.process_batch(requests_list, model=model, provider=provider)
+        
+        background_tasks.add_task(save_statistics_async)
+        
+        return {"results": results, "total": len(results)}
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": {"message": str(e), "type": "server_error"}}
+        )
+
 # === Workflow Endpoints ===
 from workflow_engine import workflow_engine
 
