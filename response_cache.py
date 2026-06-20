@@ -156,35 +156,45 @@ class ResponseCache:
             "disk_entries": len(list(self.cache_dir.glob("*.json")))
         }
 
-    def find_similar(self, messages: List[Dict], threshold: float = 0.8) -> Optional[Dict]:
-        """Find similar cached responses using simple string similarity"""
-        # Simple implementation - could be enhanced with embeddings
+    def find_similar(self, messages: List[Dict], threshold: float = 0.7) -> Optional[Dict]:
+        """Find similar cached responses using word overlap similarity"""
         query_content = " ".join(m.get("content", "") for m in messages).lower()
-
+        
+        # Preprocess: remove common words and normalize
+        stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+                      'should', 'may', 'might', 'shall', 'can', 'i', 'you', 'he', 'she',
+                      'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your',
+                      'his', 'its', 'our', 'their', 'this', 'that', 'these', 'those'}
+        
+        query_words = set(query_content.split()) - stop_words
+        
+        if not query_words:
+            return None
+        
+        best_match = None
+        best_score = 0.0
+        
         with self._lock:
             for entry in self.memory_cache.values():
                 if time.time() >= entry["expires_at"]:
                     continue
-
-                cached_messages = entry["response"].get("messages", [])
-                cached_content = " ".join(m.get("content", "") for m in cached_messages).lower()
-
-                # Simple similarity check
-                if query_content and cached_content:
-                    # Check if one contains the other or they share significant words
-                    query_words = set(query_content.split())
-                    cached_words = set(cached_content.split())
-
-                    if query_words and cached_words:
-                        intersection = query_words & cached_words
-                        union = query_words | cached_words
-                        similarity = len(intersection) / len(union) if union else 0
-
-                        if similarity >= threshold:
-                            return entry["response"]
-
-        return None
-
-
-# Global cache instance
-response_cache = ResponseCache()
+                
+                cached_content = entry["response"].get("content", "").lower()
+                cached_words = set(cached_content.split()) - stop_words
+                
+                if not cached_words:
+                    continue
+                
+                # Calculate Jaccard similarity
+                intersection = query_words & cached_words
+                union = query_words | cached_words
+                
+                if union:
+                    similarity = len(intersection) / len(union)
+                    
+                    if similarity > best_score and similarity >= threshold:
+                        best_score = similarity
+                        best_match = entry["response"]
+        
+        return best_match
