@@ -200,6 +200,25 @@ async def limit_request_size(request: Request, call_next):
             )
     return await call_next(request)
 
+# Request/response logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all API requests with timing"""
+    import uuid
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+    
+    # Log request
+    verbose_print(f"📥 [{request_id}] {request.method} {request.url.path}")
+    
+    response = await call_next(request)
+    
+    # Log response
+    duration = time.time() - start_time
+    verbose_print(f"📤 [{request_id}] {response.status_code} ({duration:.3f}s)")
+    
+    return response
+
 # Request validation and sanitization
 
 def sanitize_input(text: str) -> str:

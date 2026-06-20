@@ -1241,7 +1241,7 @@ class AI_engine:
             return None
 
     def _select_best_provider(self, available_providers: List[Tuple[str, str]]) -> Tuple[str, str]:
-        """Select best provider from available options based on priority and performance"""
+        """Select best provider from available options based on priority, performance, and health"""
         if not available_providers:
             return None, None
 
@@ -1257,54 +1257,62 @@ class AI_engine:
             working_providers = available_providers
 
         # Sort by multiple criteria:
-        # 1. Priority (lower number = higher priority)
-        # 2. Performance score from statistics (if available)
-        # 3. Provider name (for consistency)
+        # 1. Health status (healthy > degraded > unknown)
+        # 2. Priority (lower number = higher priority)
+        # 3. Response time (faster = better)
+        # 4. Uptime (higher = better)
 
         def get_provider_score(provider_tuple):
             provider_name, model_name = provider_tuple
             config = self.providers.get(provider_name, {})
-
-            # Priority (lower = better, so we use it directly for sorting)
+            
+            # Base priority (lower = better)
             priority = config.get('priority', 999)
-
-            # Performance score from statistics (higher = better, so we negate for sorting)
-            performance_score = 0
-            if hasattr(self, 'statistics_manager') and self.statistics_manager:
-                try:
-                    stats = self.statistics_manager.get_provider_stats(provider_name)
-                    if stats:
-                        success_rate = stats.get('success_rate', 0)
-                        avg_response_time = stats.get('average_response_time', 5.0)
-                        # Calculate performance score (success rate 70%, speed 30%)
-                        speed_score = max(0, 100 - (avg_response_time * 10))
-                        performance_score = -(success_rate * 0.7 + speed_score * 0.3)  # Negative for ascending sort
-                except (AttributeError, KeyError, TypeError):
-                    pass
-
-            # Flagged status penalty
-            flagged_penalty = 1000 if self._is_key_flagged(provider_name) else 0
-
-            return (priority, performance_score, flagged_penalty, provider_name)
+            
+            # Health score from health monitor
+            health_score = 0
+            health_data = health_monitor.get_provider_health(provider_name)
+            if health_data.get('status') == 'healthy':
+                health_score = 100
+            elif health_data.get('status') == 'degraded':
+                health_score = 50
+            else:
+                health_score = 0
+            
+            # Response time score (faster = better, max 100)
+            avg_response_time = health_data.get('avg_response_time', 5.0)
+            speed_score = max(0, 100 - (avg_response_time * 20))
+            
+            # Uptime score (higher = better)
+            uptime_score = health_data.get('uptime_percent', 50)
+            
+            # Weighted score (lower is better for sorting)
+            # Health 40%, Speed 30%, Uptime 20%, Priority 10%
+            weighted_score = (
+                (100 - health_score) * 0.4 +
+                (100 - speed_score) * 0.3 +
+                (100 - uptime_score) * 0.2 +
+                priority * 0.1
+            )
+            
+            return weighted_score
 
         # Sort providers by score
         sorted_providers = sorted(working_providers, key=get_provider_score)
-
+        
         # Return the best provider
         best_provider_name, best_model_name = sorted_providers[0]
-
+        
         if self.verbose:
-            config = self.providers.get(best_provider_name, {})
-            priority = config.get('priority', 999)
-            verbose_print(f"🎯 Selected {best_provider_name} with model '{best_model_name}' (priority: {priority})", self.verbose)
-
+            health_data = health_monitor.get_provider_health(best_provider_name)
+            verbose_print(f"🎯 Selected {best_provider_name} (health: {health_data.get('status', 'unknown')}, uptime: {health_data.get('uptime_percent', 0):.1f}%)", self.verbose)
+            
             # Show alternatives if there are any
             if len(sorted_providers) > 1:
-                alternatives = sorted_providers[1:4]  # Show up to 3 alternatives
-                alt_info = ", ".join([f"{p}(pri:{self.providers.get(p, {}).get('priority', '?')})"
-                                    for p, m in alternatives])
-                verbose_print(f"🔄 Alternatives available: {alt_info}", self.verbose)
-
+                alternatives = sorted_providers[1:4]
+                alt_info = ", ".join([f"{p}" for p, m in alternatives])
+                verbose_print(f"🔄 Alternatives: {alt_info}", self.verbose)
+        
         return best_provider_name, best_model_name
 
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
