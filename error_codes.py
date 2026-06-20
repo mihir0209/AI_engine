@@ -115,7 +115,31 @@ class ErrorFactory:
             error="Provider Error",
             code=ErrorCode.PROVIDER_ERROR,
             message=f"Provider '{provider}' failed: {reason}",
-            details={"provider": provider, "reason": reason}
+            details={"provider": provider, "reason": reason},
+            suggestion="Try a different provider or check provider status"
+        )
+
+    @staticmethod
+    def provider_unhealthy(provider: str, uptime: float) -> ErrorResponse:
+        return ErrorResponse(
+            error="Provider Unhealthy",
+            code=ErrorCode.PROVIDER_FLAGGED,
+            message=f"Provider '{provider}' is unhealthy (uptime: {uptime:.1f}%)",
+            details={"provider": provider, "uptime_percent": uptime},
+            suggestion="Try a different provider or wait for recovery"
+        )
+
+    @staticmethod
+    def rate_limited(provider: str = None, retry_after: int = 60) -> ErrorResponse:
+        msg = f"Rate limited"
+        if provider:
+            msg += f" by provider '{provider}'"
+        return ErrorResponse(
+            error="Rate Limited",
+            code=ErrorCode.RATE_LIMITED,
+            message=msg,
+            details={"retry_after": retry_after, "provider": provider},
+            suggestion=f"Wait {retry_after} seconds or try a different provider"
         )
 
     @staticmethod
@@ -124,16 +148,6 @@ class ErrorFactory:
             error="Chat Not Found",
             code=ErrorCode.CHAT_NOT_FOUND,
             message=f"Chat with ID {chat_id} not found"
-        )
-
-    @staticmethod
-    def rate_limited(retry_after: int = 60) -> ErrorResponse:
-        return ErrorResponse(
-            error="Rate Limited",
-            code=ErrorCode.RATE_LIMITED,
-            message="Too many requests",
-            details={"retry_after": retry_after},
-            suggestion=f"Wait {retry_after} seconds before retrying"
         )
 
     @staticmethod
@@ -168,6 +182,24 @@ class ErrorFactory:
             code=ErrorCode.CIRCUIT_BREAKER_OPEN,
             message=f"Circuit breaker is open for provider '{provider}'",
             suggestion="Wait for the circuit to recover or try another provider"
+        )
+
+    @staticmethod
+    def streaming_error(detail: str = None) -> ErrorResponse:
+        return ErrorResponse(
+            error="Streaming Error",
+            code=ErrorCode.INTERNAL_ERROR,
+            message=detail or "Error during streaming response",
+            suggestion="Try non-streaming mode or a different provider"
+        )
+
+    @staticmethod
+    def cache_error(detail: str = None) -> ErrorResponse:
+        return ErrorResponse(
+            error="Cache Error",
+            code=ErrorCode.CACHE_ERROR,
+            message=detail or "Error accessing cache",
+            suggestion="Try again or disable caching with use_cache=False"
         )
 
 

@@ -76,7 +76,7 @@ def test_factory_chat_not_found():
 
 def test_factory_rate_limited():
     from error_codes import ErrorFactory
-    error = ErrorFactory.rate_limited(30)
+    error = ErrorFactory.rate_limited(retry_after=30)
     assert error.code.value == "RATE_LIMITED"
     assert error.details["retry_after"] == 30
 
