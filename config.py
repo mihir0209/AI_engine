@@ -206,12 +206,12 @@ AI_CONFIGS = {
     },
     "cerebras": {
         "id": 7,
-        "priority": 2,
+        "priority": 5,
         "api_keys": [os.getenv("CEREBRAS_API_KEY")],
         "endpoint": "https://api.cerebras.ai/v1/chat/completions",
         "model_endpoint": "https://api.cerebras.ai/v1/models",
         "model_endpoint_auth": True,
-        "model": "llama-3.3-70b",
+        "model": "zai-glm-4.7",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 4096,
@@ -224,7 +224,7 @@ AI_CONFIGS = {
         "rpm_limit": 30,
         "daily_limit": 1000,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "cloudflare": {
         "id": 8,
@@ -501,13 +501,12 @@ AI_CONFIGS = {
     },
     # UncloseAI Hermes - Free, no auth required
     "hermes": {
-        "id": 20,
-        "priority": 3,
+        "id": 20, "priority": 7,
         "api_keys": ["free"],
         "endpoint": "https://hermes.ai.unturf.com/v1/chat/completions",
         "model_endpoint": "https://hermes.ai.unturf.com/v1/models",
         "model_endpoint_auth": True,
-        "model": "WeiboAI/VibeThinker-3B",
+        "model": "adamo1139/Hermes-3-Llama-3.1-8B-FP8-Dynamic",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 2048,
