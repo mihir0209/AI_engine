@@ -17,6 +17,7 @@ from dataclasses import dataclass
 try:
     from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
     from model_cache import shared_model_cache
+    from health_monitor import health_monitor
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
@@ -557,6 +558,9 @@ class AI_engine:
         """
         # Classify the error to determine appropriate response
         error_type = self._classify_error(error_message, status_code, response_json)
+        
+        # Record health check
+        health_monitor.record_check(provider_name, success=False, error=error_message, status_code=status_code)
 
         # Increment consecutive failures (thread-safe)
         with self._key_rotation_lock:
@@ -607,6 +611,9 @@ class AI_engine:
 
     def _handle_provider_success(self, provider_name: str, response_time: float):
         """Handle successful provider response"""
+        # Record health check
+        health_monitor.record_check(provider_name, success=True, response_time=response_time)
+        
         # Reset consecutive failures (thread-safe)
         with self._key_rotation_lock:
             self.consecutive_failures[provider_name] = 0

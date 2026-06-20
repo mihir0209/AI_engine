@@ -1517,6 +1517,24 @@ async def get_sla_status():
     """Get SLA monitoring status"""
     return sla_monitor.get_status()
 
+@app.get("/api/health/providers")
+async def get_provider_health_status():
+    """Get provider health monitoring status"""
+    from health_monitor import health_monitor
+    return health_monitor.get_all_health()
+
+@app.get("/api/health/summary")
+async def get_health_summary():
+    """Get overall health summary"""
+    from health_monitor import health_monitor
+    return health_monitor.get_summary()
+
+@app.get("/api/health/{provider_name}")
+async def get_provider_health_detail(provider_name: str):
+    """Get detailed health for a specific provider"""
+    from health_monitor import health_monitor
+    return health_monitor.get_provider_health(provider_name)
+
 @app.get("/api/errors")
 async def get_error_messages():
     """Get all available error messages"""
