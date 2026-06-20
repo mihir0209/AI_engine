@@ -158,7 +158,7 @@ AI_CONFIGS = {
         "rpm_limit": 20,
         "daily_limit": 200,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
     "gemini": {
         "id": 5,
@@ -202,7 +202,7 @@ AI_CONFIGS = {
         "rpm_limit": 30,
         "daily_limit": 500,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
     "cerebras": {
         "id": 7,
@@ -224,14 +224,14 @@ AI_CONFIGS = {
         "rpm_limit": 30,
         "daily_limit": 1000,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
     "cloudflare": {
         "id": 8,
-        "priority": 3,
+        "priority": 6,
         "api_keys": [os.getenv("CLOUDFLARE_API_KEY")],
         "account_id": os.getenv("CLOUDFLARE_ACCOUNT_ID"),
-        "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions",
+        "endpoint": "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}",
         "model_endpoint": None,
         "model_endpoint_auth": False,
         "model": "@cf/meta/llama-3.1-8b-instruct",
@@ -243,13 +243,11 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "cloudflare",
-        "enabled": bool(
-            os.getenv("CLOUDFLARE_API_KEY") and os.getenv("CLOUDFLARE_ACCOUNT_ID")
-        ),
+        "enabled": bool(os.getenv("CLOUDFLARE_API_KEY") and os.getenv("CLOUDFLARE_ACCOUNT_ID")),
         "rpm_limit": 100,
         "daily_limit": 10000,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "github": {
         "id": 9,
@@ -280,7 +278,7 @@ AI_CONFIGS = {
         "endpoint": "https://ai-gateway.vercel.sh/v1/chat/completions",
         "model_endpoint": "https://ai-gateway.vercel.sh/v1/models",
         "model_endpoint_auth": True,
-        "model": "anthropic/claude-sonnet-4",
+        "model": "moonshotai/kimi-k2.5",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 4000,
@@ -302,7 +300,7 @@ AI_CONFIGS = {
         "endpoint": "https://api.freetheai.xyz/v1/chat/completions",
         "model_endpoint": "https://api.freetheai.xyz/v1/models",
         "model_endpoint_auth": True,
-        "model": "mim/mimo-v2.5-pro",
+        "model": "glm/glm-5.2",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 2048,
@@ -501,7 +499,8 @@ AI_CONFIGS = {
     },
     # UncloseAI Hermes - Free, no auth required
     "hermes": {
-        "id": 20, "priority": 7,
+        "id": 20,
+        "priority": 7,
         "api_keys": ["free"],
         "endpoint": "https://hermes.ai.unturf.com/v1/chat/completions",
         "model_endpoint": "https://hermes.ai.unturf.com/v1/models",
@@ -551,7 +550,7 @@ AI_CONFIGS = {
         "endpoint": "https://api.paxsenix.org/v1/chat/completions",
         "model_endpoint": "https://api.paxsenix.org/v1/models",
         "model_endpoint_auth": True,
-        "model": "default",
+        "model": "kimi-k2.6",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 2048,

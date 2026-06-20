@@ -1462,21 +1462,11 @@ class AI_engine:
                     model = actual_model  # Use the exact model name from the provider
                     verbose_print(f"🤖 Autodecide selected {best_provider} with model '{actual_model}'", self.verbose)
                 else:
-                    # All providers are flagged/unavailable
-                    return RequestResult(
-                        success=False,
-                        error_message=f"Model '{model}' is available but all providers are currently unavailable or flagged",
-                        error_type="providers_unavailable",
-                        response_time=time.time() - start_time
-                    )
+                    # All providers are flagged/unavailable - continue to fallback
+                    verbose_print(f"⚠️ All providers for '{model}' are flagged, falling back to any provider", self.verbose)
             else:
-                # No providers found for the requested model - strict matching failed
-                return RequestResult(
-                    success=False,
-                    error_message=f"Model '{model}' is not available in any of the configured providers. Please check the model name or try a different model.",
-                    error_type="model_not_found",
-                    response_time=time.time() - start_time
-                )
+                # No providers found for the requested model - continue to fallback
+                verbose_print(f"⚠️ Model '{model}' not in cache, trying any available provider", self.verbose)
 
         # If a preferred provider is specified, try it first
         if preferred_provider:
@@ -2323,7 +2313,8 @@ class AI_engine:
             )
 
         # Cloudflare Workers AI - model is in URL path
-        url = config['endpoint'].format(account_id=config['account_id'])
+        used_model = model or config['model']
+        url = config['endpoint'].format(account_id=config['account_id'], model=used_model)
         headers = {'Content-Type': 'application/json'}
 
         api_key = self._get_current_api_key(provider_name)
@@ -2346,8 +2337,9 @@ class AI_engine:
 
             if response.status_code == 200:
                 response_data = response.json()
-                # Cloudflare chat completions response format (standard OpenAI-compatible)
-                content = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                # Cloudflare response is wrapped in 'result'
+                result_data = response_data.get('result', response_data)
+                content = result_data.get('choices', [{}])[0].get('message', {}).get('content', '')
 
                 # Validate that we actually got content
                 if not content or content.strip() == '':
@@ -2363,12 +2355,13 @@ class AI_engine:
                     success=True,
                     content=content,
                     status_code=response.status_code,
+                    model_used=used_model,
                     raw_response=response_data
                 )
             else:
                 return RequestResult(
                     success=False,
-                    error_message=response.text,
+                    error_message=response.text[:500],
                     status_code=response.status_code,
                     error_type="http_error"
                 )
