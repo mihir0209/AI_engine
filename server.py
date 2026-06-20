@@ -1594,6 +1594,18 @@ async def run_health_checks():
     """Run all health checks"""
     return health_checker.run_checks()
 
+@app.get("/api/latency")
+async def get_latency_stats():
+    """Get latency statistics for all providers"""
+    from latency_tracker import latency_tracker
+    return latency_tracker.get_stats()
+
+@app.get("/api/latency/{provider_name}")
+async def get_provider_latency(provider_name: str):
+    """Get latency statistics for a specific provider"""
+    from latency_tracker import latency_tracker
+    return latency_tracker.get_stats(provider_name)
+
 # === Batch Processing ===
 from batch import get_batch_processor
 

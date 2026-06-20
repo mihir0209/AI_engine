@@ -18,6 +18,7 @@ try:
     from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
     from model_cache import shared_model_cache
     from health_monitor import health_monitor
+    from latency_tracker import latency_tracker
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
@@ -561,6 +562,9 @@ class AI_engine:
         
         # Record health check
         health_monitor.record_check(provider_name, success=False, error=error_message, status_code=status_code)
+        
+        # Record latency (with high value to penalize slow providers)
+        latency_tracker.record(provider_name, 10000, success=False)
 
         # Increment consecutive failures (thread-safe)
         with self._key_rotation_lock:
@@ -613,6 +617,10 @@ class AI_engine:
         """Handle successful provider response"""
         # Record health check
         health_monitor.record_check(provider_name, success=True, response_time=response_time)
+        
+        # Record latency
+        latency_ms = response_time * 1000
+        latency_tracker.record(provider_name, latency_ms, success=True)
         
         # Reset consecutive failures (thread-safe)
         with self._key_rotation_lock:
@@ -1279,18 +1287,18 @@ class AI_engine:
             else:
                 health_score = 0
             
-            # Response time score (faster = better, max 100)
-            avg_response_time = health_data.get('avg_response_time', 5.0)
-            speed_score = max(0, 100 - (avg_response_time * 20))
+            # Latency score from latency tracker (faster = better, max 100)
+            avg_latency_ms = latency_tracker.get_avg_latency(provider_name)
+            speed_score = max(0, 100 - (avg_latency_ms / 50))  # 50ms = 1 point
             
             # Uptime score (higher = better)
             uptime_score = health_data.get('uptime_percent', 50)
             
             # Weighted score (lower is better for sorting)
-            # Health 40%, Speed 30%, Uptime 20%, Priority 10%
+            # Health 35%, Speed 35%, Uptime 20%, Priority 10%
             weighted_score = (
-                (100 - health_score) * 0.4 +
-                (100 - speed_score) * 0.3 +
+                (100 - health_score) * 0.35 +
+                (100 - speed_score) * 0.35 +
                 (100 - uptime_score) * 0.2 +
                 priority * 0.1
             )
