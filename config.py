@@ -363,6 +363,30 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
+
+    # === OpenCode Zen (Free models available) ===
+    "opencode_zen": {
+        "id": 31, "priority": 14,
+        "api_keys": [None],
+        "endpoint": "https://opencode.ai/zen/v1/chat/completions",
+        "model_endpoint": "https://opencode.ai/zen/v1/models",
+        "model_endpoint_auth": False,
+        "model": "north-mini-code-free",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
     # === USER CUSTOM PROVIDERS ===
     "hcnsec": {
         "id": 26,
