@@ -1633,6 +1633,18 @@ async def reset_rate_limit(provider_name: str):
     rate_limit_manager.reset_provider(provider_name)
     return {"status": "reset", "provider": provider_name}
 
+@app.get("/api/usage")
+async def get_usage_stats():
+    """Get usage statistics"""
+    from usage_tracker import usage_tracker
+    return usage_tracker.get_stats(hours=24)
+
+@app.get("/api/usage/{provider_name}")
+async def get_provider_usage(provider_name: str):
+    """Get usage statistics for a specific provider"""
+    from usage_tracker import usage_tracker
+    return usage_tracker.get_provider_stats(provider_name, hours=24)
+
 # === Batch Processing ===
 from batch import get_batch_processor
 

@@ -20,6 +20,7 @@ try:
     from health_monitor import health_monitor
     from latency_tracker import latency_tracker
     from rate_limit_manager import rate_limit_manager
+    from usage_tracker import usage_tracker
 except ImportError as e:
     print(f"Failed to import from config: {e}")
     print("Falling back to inline configuration...")
@@ -625,6 +626,9 @@ class AI_engine:
         # Record latency
         latency_ms = response_time * 1000
         latency_tracker.record(provider_name, latency_ms, success=True)
+        
+        # Record usage
+        usage_tracker.record(provider_name, "unknown", True, response_time)
         
         # Reset consecutive failures (thread-safe)
         with self._key_rotation_lock:

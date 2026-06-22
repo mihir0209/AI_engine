@@ -162,25 +162,25 @@ AI_CONFIGS = {
     },
     "gemini": {
         "id": 5,
-        "priority": 4,
+        "priority": 5,
         "api_keys": [os.getenv("GEMINI_API_KEY")],
-        "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-        "model_endpoint": None,
-        "model_endpoint_auth": False,
-        "model": "gemini-2.0-flash",
+        "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "model_endpoint": "https://generativelanguage.googleapis.com/v1beta/models",
+        "model_endpoint_auth": True,
+        "model": "gemini-2.5-flash",
         "method": "POST",
-        "auth_type": "query_param",
+        "auth_type": "bearer",
         "max_tokens": 4096,
         "temperature": 0.7,
         "timeout": 60,
         "retries": 4,
         "backoff": 5,
-        "format": "gemini",
+        "format": "openai",
         "enabled": bool(os.getenv("GEMINI_API_KEY")),
         "rpm_limit": 15,
         "daily_limit": 1500,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "nvidia": {
         "id": 6,
@@ -546,9 +546,13 @@ AI_CONFIGS = {
         "consecutive_failures": 0,
     },
     "paxsenix": {
-        "id": 3,
+        "id": 22,
         "priority": 3,
-        "api_keys": [os.getenv("PAXSENIX_API_KEY"), os.getenv("PAXSENIX_API_KEY_2"), os.getenv("PAXSENIX_API_KEY_3")],
+        "api_keys": [
+            os.getenv("PAXSENIX_API_KEY"),
+            os.getenv("PAXSENIX_API_KEY_2"),
+            os.getenv("PAXSENIX_API_KEY_3"),
+        ],
         "endpoint": "https://api.paxsenix.org/v1/chat/completions",
         "model_endpoint": "https://api.paxsenix.org/v1/models",
         "model_endpoint_auth": True,
@@ -565,7 +569,7 @@ AI_CONFIGS = {
         "rpm_limit": 25,
         "daily_limit": 1000,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
 }
 
