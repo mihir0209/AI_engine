@@ -409,13 +409,12 @@ AI_CONFIGS = {
     },
     # g4f.space Gemini - Free, no auth
     "g4f_gemini": {
-        "id": 16,
-        "priority": 3,
+        "id": 16, "priority": 4,
         "api_keys": ["free"],
         "endpoint": "https://g4f.space/api/gemini/chat/completions",
         "model_endpoint": "https://g4f.space/api/gemini/models",
         "model_endpoint_auth": False,
-        "model": "models/gemini-2.5-flash",
+        "model": "models/gemini-2.5-flash-lite",
         "method": "POST",
         "auth_type": None,
         "max_tokens": 4096,
