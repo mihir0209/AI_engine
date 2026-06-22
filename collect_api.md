@@ -29,43 +29,7 @@ ollama pull llama3.1
 
 ---
 
-## Category 2: Free Tier APIs (No API Key Required)
-
-### UncloseAI Hermes (FREE - No Key Needed)
-
-- API: `https://hermes.ai.unturf.com/v1`
-- Model: `WeiboAI/VibeThinker-3B`
-- Auth: Any string works as API key
-- Cost: FREE
-
-```python
-from openai import OpenAI
-client = OpenAI(base_url="https://hermes.ai.unturf.com/v1", api_key="any")
-response = client.chat.completions.create(
-    model="WeiboAI/VibeThinker-3B",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-```
-
-### Pollinations AI (FREE - No Key Needed)
-
-- API: `https://text.pollinations.ai/openai`
-- Model: `openai`
-- Auth: Not required
-- Cost: FREE
-
-```python
-from openai import OpenAI
-client = OpenAI(base_url="https://text.pollinations.ai/openai", api_key="any")
-response = client.chat.completions.create(
-    model="openai",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-```
-
----
-
-## Category 3: Free Tier APIs (Need Signup)
+## Category 2: Free Tier APIs
 
 ### Groq (30 RPM, 14,400 RPD)
 
@@ -84,14 +48,14 @@ response = client.chat.completions.create(
 
 **Important:** Use `:free` suffix for free models!
 
-### Google Gemini (15 RPM, 1M tokens/day)
+### Google Gemini (5-30 RPM)
 
 1. Go to https://aistudio.google.com
 2. Sign in with Google
 3. Click "Get API Key"
 4. Create key → Add to `.env`: `GEMINI_API_KEY=AIza...`
 
-### NVIDIA NIM (1000 credits/month)
+### NVIDIA NIM (40 RPM)
 
 1. Go to https://build.nvidia.com
 2. Sign up with email/NVIDIA
@@ -117,19 +81,41 @@ response = client.chat.completions.create(
    CLOUDFLARE_ACCOUNT_ID=your_id
    ```
 
-### GitHub Models (15 RPM)
+### GitHub Models (Free tier varies)
 
 1. Go to https://github.com/settings/tokens
 2. Generate Personal Access Token
 3. Select "GitHub Models" permission
 4. Add to `.env`: `GITHUB_API_KEY=ghp_...`
 
-### Vercel AI Gateway
+### Vercel AI Gateway (Free: $5/month)
 
 1. Go to https://vercel.com
 2. Sign up with GitHub/Google
 3. Go to "Settings" → "Tokens"
 4. Create token → Add to `.env`: `VERCEL_API_KEY=...`
+
+### Cohere (Free: 20 RPM, 1000 requests/month)
+
+1. Go to https://cohere.com
+2. Sign up with email
+3. Go to "API Keys" in dashboard
+4. Create key → Add to `.env`: `COHERE_API_KEY=...`
+
+### Mistral (Free: 1 RPS, 500K tokens/min)
+
+1. Go to https://console.mistral.ai
+2. Sign up with email
+3. Verify phone number
+4. Go to "API Keys"
+5. Create key → Add to `.env`: `MISTRAL_API_KEY=...`
+
+### HuggingFace (Free: $0.10/month credits)
+
+1. Go to https://huggingface.co
+2. Sign up with email/GitHub
+3. Go to "Settings" → "Access Tokens"
+4. Create token → Add to `.env`: `HUGGINGFACE_API_KEY=hf_...`
 
 ---
 
@@ -154,3 +140,21 @@ cp .env.example .env
 # Edit .env with your keys
 python server.py
 ```
+
+---
+
+## Provider Limits Summary
+
+| Provider | Free Tier | Rate Limit |
+|----------|-----------|------------|
+| Groq | 14,400 RPD | 30 RPM |
+| OpenRouter | 23 free models | 20 RPM |
+| Gemini | Varies by model | 5-30 RPM |
+| NVIDIA | 40 RPM | 40 RPM |
+| Cerebras | 14,400 RPD | 30 RPM |
+| Cloudflare | 10K neurons/day | - |
+| GitHub | Varies | - |
+| Vercel | $5/month | - |
+| Cohere | 1000/month | 20 RPM |
+| Mistral | 500K tokens/min | 60 RPM |
+| HuggingFace | $0.10/month | 30 RPM |
