@@ -371,7 +371,7 @@ AI_CONFIGS = {
         "endpoint": "https://opencode.ai/zen/v1/chat/completions",
         "model_endpoint": "https://opencode.ai/zen/v1/models",
         "model_endpoint_auth": False,
-        "model": "north-mini-code-free",
+        "model": "minimax-m3-free",
         "method": "POST",
         "auth_type": None,
         "max_tokens": 4096,
@@ -410,7 +410,7 @@ AI_CONFIGS = {
         "consecutive_failures": 0,
     },
 
-    # Z AI - Free models: glm-4.7-flash, glm-4.5-flash, glm-4.6v-flash
+    # Z AI - Free models: glm-4.7-flash, glm-4.5-flash, glm-4.6v-flash (vision)
     "zai": {
         "id": 33, "priority": 16,
         "api_keys": [os.getenv("ZAI_API_KEY")],
@@ -426,7 +426,7 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "openai",
-        "enabled": bool(os.getenv("ZAI_API_KEY")),
+        "enabled": False,  # Disabled until API key verified
         "rpm_limit": 30,
         "daily_limit": 1000,
         "current_key_index": 0,
