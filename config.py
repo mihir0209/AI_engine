@@ -334,11 +334,11 @@ AI_CONFIGS = {
         "consecutive_failures": 0
     },
 
-    # HuggingFace - Free tier: $0.10/month
+    # HuggingFace - Free: $0.10/month credits
     "huggingface": {
         "id": 25, "priority": 13,
         "api_keys": [os.getenv("HUGGINGFACE_API_KEY")],
-        "endpoint": "https://api-inference.huggingface.co/models",
+        "endpoint": "https://router.huggingface.co/v1/chat/completions",
         "model_endpoint": "https://huggingface.co/api/models",
         "model_endpoint_auth": True,
         "model": "meta-llama/Llama-3.1-8B-Instruct",
