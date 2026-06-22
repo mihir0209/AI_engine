@@ -158,7 +158,7 @@ AI_CONFIGS = {
         "rpm_limit": 20,
         "daily_limit": 200,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
     "gemini": {
         "id": 5,
@@ -180,7 +180,7 @@ AI_CONFIGS = {
         "rpm_limit": 15,
         "daily_limit": 1500,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
     "nvidia": {
         "id": 6,
@@ -274,23 +274,31 @@ AI_CONFIGS = {
         "consecutive_failures": 0,
     },
     "vercel": {
-        "id": 10, "priority": 10,
+        "id": 10,
+        "priority": 10,
         "api_keys": [os.getenv("VERCEL_API_KEY")],
         "endpoint": "https://ai-gateway.vercel.sh/v1/chat/completions",
         "model_endpoint": "https://ai-gateway.vercel.sh/v1/models",
-        "model_endpoint_auth": True, "model": "anthropic/claude-sonnet-4",
-        "method": "POST", "auth_type": "bearer", "max_tokens": 4000,
-        "temperature": 0.7, "timeout": 60, "retries": 3, "backoff": 5,
-        "format": "openai", "enabled": bool(os.getenv("VERCEL_API_KEY")),
-        "rpm_limit": 15, "daily_limit": 150,
-        "current_key_index": 0, "consecutive_failures": 0
+        "model_endpoint_auth": True,
+        "model": "anthropic/claude-sonnet-4",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4000,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("VERCEL_API_KEY")),
+        "rpm_limit": 15,
+        "daily_limit": 150,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
     },
-
-    # === NEW PROVIDERS (from free-llm-api-resources) ===
-
     # Cohere - Free tier: 20 RPM, 1000 requests/month
     "cohere": {
-        "id": 23, "priority": 11,
+        "id": 23,
+        "priority": 11,
         "api_keys": [os.getenv("COHERE_API_KEY")],
         "endpoint": "https://api.cohere.com/v2/chat",
         "model_endpoint": "https://api.cohere.com/v2/models",
@@ -308,12 +316,12 @@ AI_CONFIGS = {
         "rpm_limit": 20,
         "daily_limit": 1000,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
-
     # Mistral - Free tier: 1 RPS, 500K tokens/min
     "mistral": {
-        "id": 24, "priority": 12,
+        "id": 24,
+        "priority": 12,
         "api_keys": [os.getenv("MISTRAL_API_KEY")],
         "endpoint": "https://api.mistral.ai/v1/chat/completions",
         "model_endpoint": "https://api.mistral.ai/v1/models",
@@ -331,12 +339,12 @@ AI_CONFIGS = {
         "rpm_limit": 60,
         "daily_limit": 50000,
         "current_key_index": 0,
-        "consecutive_failures": 0
+        "consecutive_failures": 0,
     },
-
     # HuggingFace - Free: $0.10/month credits
     "huggingface": {
-        "id": 25, "priority": 13,
+        "id": 25,
+        "priority": 13,
         "api_keys": [os.getenv("HUGGINGFACE_API_KEY")],
         "endpoint": "https://router.huggingface.co/v1/chat/completions",
         "model_endpoint": "https://huggingface.co/api/models",
@@ -354,8 +362,120 @@ AI_CONFIGS = {
         "rpm_limit": 30,
         "daily_limit": 1000,
         "current_key_index": 0,
-        "consecutive_failures": 0
-    }
+        "consecutive_failures": 0,
+    },
+
+    # === USER CUSTOM PROVIDERS ===
+
+    "hcnsec": {
+        "id": 26, "priority": 2,
+        "api_keys": [os.getenv("HCNSEC_API_KEY")],
+        "endpoint": "https://api.iamhc.cn/v1/chat/completions",
+        "model_endpoint": "https://api.iamhc.cn/v1/models",
+        "model_endpoint_auth": True,
+        "model": "Kimi-K2.6",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("HCNSEC_API_KEY")),
+        "rpm_limit": None,
+        "daily_limit": None,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    "mimo": {
+        "id": 27, "priority": 1,
+        "api_keys": [os.getenv("MIMO_API_KEY")],
+        "endpoint": "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+        "model_endpoint": "https://token-plan-cn.xiaomimimo.com/v1/models",
+        "model_endpoint_auth": True,
+        "model": "mimo-v2.5",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("MIMO_API_KEY")),
+        "rpm_limit": None,
+        "daily_limit": None,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    "paxsenix": {
+        "id": 28, "priority": 3,
+        "api_keys": [os.getenv("PAXSENIX_API_KEY"), os.getenv("PAXSENIX_API_KEY_2"), os.getenv("PAXSENIX_API_KEY_3")],
+        "endpoint": "https://api.paxsenix.org/v1/chat/completions",
+        "model_endpoint": "https://api.paxsenix.org/v1/models",
+        "model_endpoint_auth": True,
+        "model": "deepseek-r1",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 5,
+        "backoff": 25,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 25,
+        "daily_limit": 1000,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    "freetheai": {
+        "id": 29, "priority": 2,
+        "api_keys": [os.getenv("FREETHEAI_API_KEY")],
+        "endpoint": "https://api.freetheai.xyz/v1/chat/completions",
+        "model_endpoint": "https://api.freetheai.xyz/v1/models",
+        "model_endpoint_auth": True,
+        "model": "glm/glm-4.7",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": False,  # Requires daily Discord check-in
+        "rpm_limit": 10,
+        "daily_limit": 250,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
+    "llm7": {
+        "id": 30, "priority": 2,
+        "api_keys": [os.getenv("LLM7_API_KEY")],
+        "endpoint": "https://api.llm7.io/v1/chat/completions",
+        "model_endpoint": "https://api.llm7.io/v1/models",
+        "model_endpoint_auth": True,
+        "model": "default",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "timeout": 20,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("LLM7_API_KEY")),
+        "rpm_limit": 40,
+        "daily_limit": 2400,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
 }
 
 ENGINE_SETTINGS = {
