@@ -387,6 +387,29 @@ AI_CONFIGS = {
         "consecutive_failures": 0,
     },
 
+    # Kilo AI - Free tier: auto-routes to free models
+    "kilo": {
+        "id": 32, "priority": 15,
+        "api_keys": [os.getenv("KILO_API_KEY")],
+        "endpoint": "https://api.kilo.ai/api/gateway/v1/chat/completions",
+        "model_endpoint": "https://api.kilo.ai/api/gateway/v1/models",
+        "model_endpoint_auth": True,
+        "model": "kilo-auto/free",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("KILO_API_KEY")),
+        "rpm_limit": 200,
+        "daily_limit": 1000,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
     # === USER CUSTOM PROVIDERS ===
     "hcnsec": {
         "id": 26,
