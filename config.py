@@ -145,7 +145,7 @@ AI_CONFIGS = {
         "endpoint": "https://openrouter.ai/api/v1/chat/completions",
         "model_endpoint": "https://openrouter.ai/api/v1/models",
         "model_endpoint_auth": True,
-        "model": "google/gemma-4-26b-a4b-it:free",
+        "model": "nvidia/nemotron-3-nano-30b-a3b:free",
         "method": "POST",
         "auth_type": "bearer",
         "max_tokens": 4096,
@@ -158,7 +158,7 @@ AI_CONFIGS = {
         "rpm_limit": 20,
         "daily_limit": 200,
         "current_key_index": 0,
-        "consecutive_failures": 0,
+        "consecutive_failures": 0
     },
     "gemini": {
         "id": 5,
