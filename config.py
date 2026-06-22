@@ -410,6 +410,29 @@ AI_CONFIGS = {
         "consecutive_failures": 0,
     },
 
+    # Z AI - Free models: glm-4.7-flash, glm-4.5-flash, glm-4.6v-flash
+    "zai": {
+        "id": 33, "priority": 16,
+        "api_keys": [os.getenv("ZAI_API_KEY")],
+        "endpoint": "https://z.ai/api/v1/chat/completions",
+        "model_endpoint": "https://z.ai/api/v1/models",
+        "model_endpoint_auth": True,
+        "model": "glm-4.7-flash",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("ZAI_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 1000,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+
     # === USER CUSTOM PROVIDERS ===
     "hcnsec": {
         "id": 26,
