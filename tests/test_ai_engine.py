@@ -3,7 +3,7 @@ import time
 import pytest
 from unittest.mock import patch
 
-from ai_engine import AI_engine, RequestResult
+from core.ai_engine import AI_engine, RequestResult
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@ import pytest
 
 @pytest.fixture
 def intelligence():
-    from chat_intelligence import ChatIntelligence
+    from core.chat_intelligence import ChatIntelligence
     return ChatIntelligence()
 
 

@@ -6,7 +6,7 @@ import shutil
 
 @pytest.fixture
 def workflow_engine():
-    from workflow_engine import WorkflowEngine
+    from core.workflow_engine import WorkflowEngine
     temp_dir = tempfile.mkdtemp()
     engine = WorkflowEngine(data_dir=temp_dir)
     yield engine

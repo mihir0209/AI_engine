@@ -5,7 +5,7 @@ import time
 # === Health Check Registry Tests ===
 
 def test_register_check():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("test", lambda: True)
@@ -13,7 +13,7 @@ def test_register_check():
 
 
 def test_run_check_healthy():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("healthy_check", lambda: True)
@@ -22,7 +22,7 @@ def test_run_check_healthy():
 
 
 def test_run_check_unhealthy():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("unhealthy_check", lambda: False)
@@ -31,7 +31,7 @@ def test_run_check_unhealthy():
 
 
 def test_run_check_error():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     def error_check():
@@ -43,7 +43,7 @@ def test_run_check_error():
 
 
 def test_run_check_not_found():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     result = hr.run_check("nonexistent")
@@ -51,7 +51,7 @@ def test_run_check_not_found():
 
 
 def test_run_all_checks():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("check1", lambda: True)
@@ -63,7 +63,7 @@ def test_run_all_checks():
 
 
 def test_run_all_checks_degraded():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("good", lambda: True)
@@ -74,7 +74,7 @@ def test_run_all_checks_degraded():
 
 
 def test_get_last_results():
-    from enhanced_health import HealthCheckRegistry
+    from core.enhanced_health import HealthCheckRegistry
     hr = HealthCheckRegistry()
 
     hr.register("test", lambda: True)
@@ -88,7 +88,7 @@ def test_get_last_results():
 # === Per-User Rate Limiter Tests ===
 
 def test_rate_limiter_allows_request():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=10, default_burst=10)
 
     allowed, info = rl.allow_request("user_1")
@@ -97,7 +97,7 @@ def test_rate_limiter_allows_request():
 
 
 def test_rate_limiter_blocks_request():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=1, default_burst=2)
 
     rl.allow_request("user_1")
@@ -108,7 +108,7 @@ def test_rate_limiter_blocks_request():
 
 
 def test_rate_limiter_refill():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=60, default_burst=2)  # 1 token per second
 
     # Use up all tokens
@@ -124,7 +124,7 @@ def test_rate_limiter_refill():
 
 
 def test_rate_limiter_configure_user():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=10, default_burst=5)
 
     rl.configure_user("vip_user", rate=100, burst=50)
@@ -136,7 +136,7 @@ def test_rate_limiter_configure_user():
 
 
 def test_rate_limiter_get_usage():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=10, default_burst=10)
 
     rl.allow_request("user_1")
@@ -148,7 +148,7 @@ def test_rate_limiter_get_usage():
 
 
 def test_rate_limiter_reset():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=1, default_burst=1)
 
     rl.allow_request("user_1")
@@ -161,7 +161,7 @@ def test_rate_limiter_reset():
 
 
 def test_rate_limiter_separate_users():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=10, default_burst=2)
 
     rl.allow_request("user_1")

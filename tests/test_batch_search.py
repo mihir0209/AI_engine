@@ -5,14 +5,14 @@ import pytest
 # === Model Cache Tests ===
 
 def test_model_cache_init():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     assert cache.is_cache_valid() is False
     assert len(cache.get_models()) == 0
 
 
 def test_model_cache_save_and_load(tmp_path):
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache_file = str(tmp_path / "test_cache.json")
     cache = ModelCache()
     cache.cache_file = cache_file
@@ -25,7 +25,7 @@ def test_model_cache_save_and_load(tmp_path):
 
 
 def test_model_cache_find_providers():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     cache.save_cache(["groq/llama-3.3-70b", "openai/gpt-4", "groq/mistral"])
     
@@ -35,7 +35,7 @@ def test_model_cache_find_providers():
 
 
 def test_model_cache_expiration(tmp_path):
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     import time
     cache_file = str(tmp_path / "test_cache.json")
     cache = ModelCache()
@@ -52,7 +52,7 @@ def test_model_cache_expiration(tmp_path):
 # === Batch Processor Tests ===
 
 def test_batch_processor_init():
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -62,7 +62,7 @@ def test_batch_processor_init():
 
 def test_batch_processor_empty():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -74,7 +74,7 @@ def test_batch_processor_empty():
 
 def test_batch_processor_single():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -94,7 +94,7 @@ def test_batch_processor_single():
 
 def test_batch_processor_multiple():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -115,7 +115,7 @@ def test_batch_processor_multiple():
 
 def test_batch_processor_with_model():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -134,7 +134,7 @@ def test_batch_processor_with_model():
 
 def test_batch_processor_error_handling():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -151,7 +151,7 @@ def test_batch_processor_error_handling():
 
 def test_batch_processor_max_requests():
     import asyncio
-    from batch import BatchProcessor
+    from core.batch import BatchProcessor
     from unittest.mock import MagicMock
     
     engine = MagicMock()
@@ -172,7 +172,7 @@ def test_batch_processor_max_requests():
 # === Model Search Tests ===
 
 def test_model_search_filter_provider():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     cache.save_cache([
         "groq/llama-3.3-70b",
@@ -187,7 +187,7 @@ def test_model_search_filter_provider():
 
 
 def test_model_search_filter_name():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     cache.save_cache([
         "groq/llama-3.3-70b",
@@ -202,7 +202,7 @@ def test_model_search_filter_name():
 
 
 def test_model_search_combined():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     cache.save_cache([
         "groq/llama-3.3-70b",
@@ -219,7 +219,7 @@ def test_model_search_combined():
 
 
 def test_model_search_no_match():
-    from model_cache import ModelCache
+    from core.model_cache import ModelCache
     cache = ModelCache()
     cache.save_cache(["groq/llama-3.3-70b", "openai/gpt-4"])
     

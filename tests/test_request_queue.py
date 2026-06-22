@@ -6,7 +6,7 @@ import threading
 
 @pytest.fixture
 def queue():
-    from request_queue import RequestQueue
+    from core.request_queue import RequestQueue
     return RequestQueue(max_queue_size=10, max_wait_time=1)
 
 

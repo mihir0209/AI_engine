@@ -6,7 +6,7 @@ import threading
 
 @pytest.fixture
 def monitor():
-    from health_monitor import HealthMonitor
+    from core.health_monitor import HealthMonitor
     return HealthMonitor(failure_threshold=3, recovery_time=0.1)
 
 

@@ -2,37 +2,37 @@
 
 
 def test_format_api_key_env_var():
-    from cli import format_api_key
+    from scripts.cli import format_api_key
     result = format_api_key("MY_API_KEY")
     assert result == 'os.getenv("MY_API_KEY")'
 
 
 def test_format_api_key_literal():
-    from cli import format_api_key
+    from scripts.cli import format_api_key
     result = format_api_key("sk-12345")
     assert result == '"sk-12345"'
 
 
 def test_format_api_key_already_formatted():
-    from cli import format_api_key
+    from scripts.cli import format_api_key
     result = format_api_key('os.getenv("KEY")')
     assert result == 'os.getenv("KEY")'
 
 
 def test_format_api_key_empty():
-    from cli import format_api_key
+    from scripts.cli import format_api_key
     result = format_api_key("")
     assert result == "None"
 
 
 def test_format_api_key_none():
-    from cli import format_api_key
+    from scripts.cli import format_api_key
     result = format_api_key(None)
     assert result == "None"
 
 
 def test_format_provider():
-    from cli import format_provider
+    from scripts.cli import format_provider
     config = {
         "id": 1, "priority": 1,
         "api_keys": ['os.getenv("TEST_KEY")'],
@@ -55,7 +55,7 @@ def test_format_provider():
 
 
 def test_format_provider_minimal():
-    from cli import format_provider
+    from scripts.cli import format_provider
     config = {
         "id": 1, "priority": 1,
         "api_keys": ["None"],

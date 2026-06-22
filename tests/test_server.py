@@ -93,7 +93,7 @@ def test_get_statistics(client):
 
 @patch('server.engine')
 def test_chat_completions_success(mock_engine, client):
-    from ai_engine import RequestResult
+    from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
         content="Hello! How can I help?",
@@ -115,7 +115,7 @@ def test_chat_completions_success(mock_engine, client):
 
 @patch('server.engine')
 def test_chat_completions_failure(mock_engine, client):
-    from ai_engine import RequestResult
+    from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=False,
         error_message="Provider failed"
@@ -131,7 +131,7 @@ def test_chat_completions_failure(mock_engine, client):
 
 @patch('server.engine')
 def test_chat_completions_with_preferred_provider(mock_engine, client):
-    from ai_engine import RequestResult
+    from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
         content="Response",
@@ -151,7 +151,7 @@ def test_chat_completions_with_preferred_provider(mock_engine, client):
 
 @patch('server.engine')
 def test_test_model_success(mock_engine, client):
-    from ai_engine import RequestResult
+    from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
         content="Test response",
@@ -238,7 +238,7 @@ def test_chat_page(client):
 
 @patch('server.engine')
 def test_chat_completions_stream(mock_engine, client):
-    from ai_engine import RequestResult
+    from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
         content="Hello! This is a streaming test.",

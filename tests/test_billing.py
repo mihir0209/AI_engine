@@ -6,7 +6,7 @@ import shutil
 
 @pytest.fixture
 def billing_manager():
-    from billing import BillingManager
+    from core.billing import BillingManager
     temp_dir = tempfile.mkdtemp()
     manager = BillingManager(data_dir=temp_dir)
     yield manager

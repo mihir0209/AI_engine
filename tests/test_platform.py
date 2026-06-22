@@ -8,7 +8,7 @@ import shutil
 
 @pytest.fixture
 def plugin_manager():
-    from plugin_system import PluginManager
+    from core.plugin_system import PluginManager
     temp_dir = tempfile.mkdtemp()
     manager = PluginManager(plugins_dir=temp_dir)
     yield manager
@@ -57,7 +57,7 @@ def test_list_plugins_empty(plugin_manager):
 
 @pytest.fixture
 def workflow_engine():
-    from workflow_engine import WorkflowEngine
+    from core.workflow_engine import WorkflowEngine
     temp_dir = tempfile.mkdtemp()
     engine = WorkflowEngine(data_dir=temp_dir)
     yield engine

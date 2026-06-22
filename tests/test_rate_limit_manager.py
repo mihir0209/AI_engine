@@ -4,7 +4,7 @@ import time
 
 
 def test_rate_limit_basic():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager(default_limit=10)
     
     # Initially available
@@ -12,7 +12,7 @@ def test_rate_limit_basic():
 
 
 def test_rate_limit_record():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager(default_limit=10)
     
     for _ in range(5):
@@ -23,7 +23,7 @@ def test_rate_limit_record():
 
 
 def test_rate_limit_mark_limited():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     manager.mark_rate_limited("provider1", retry_after=1)
@@ -31,7 +31,7 @@ def test_rate_limit_mark_limited():
 
 
 def test_rate_limit_recovery():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     manager.mark_rate_limited("provider1", retry_after=0.1)
@@ -42,7 +42,7 @@ def test_rate_limit_recovery():
 
 
 def test_rate_limit_get_available():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     manager.mark_rate_limited("provider1", retry_after=60)
@@ -53,7 +53,7 @@ def test_rate_limit_get_available():
 
 
 def test_rate_limit_stats():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     manager.record_request("provider1")
@@ -65,7 +65,7 @@ def test_rate_limit_stats():
 
 
 def test_rate_limit_reset():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     manager.mark_rate_limited("provider1", retry_after=60)
@@ -75,7 +75,7 @@ def test_rate_limit_reset():
 
 
 def test_rate_limit_window_reset():
-    from rate_limit_manager import RateLimitManager
+    from core.rate_limit_manager import RateLimitManager
     manager = RateLimitManager()
     
     provider = manager.get_provider("provider1")

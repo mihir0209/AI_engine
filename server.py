@@ -34,18 +34,22 @@ ACTIVE_PROVIDERS = Gauge('ai_engine_active_providers', 'Number of active provide
 
 # Import AI Engine components
 try:
-    from ai_engine import AI_engine
-    from statistics_manager import get_stats_manager
+    from core.ai_engine import AI_engine
+    from core.statistics_manager import get_stats_manager
     from config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
-    from model_cache import shared_model_cache
+    from core.model_cache import shared_model_cache
     # Import chat module
     from chat_module.router import router as chat_router
     # Import new modules
-    from caching import lru_cache, request_deduplicator
-    from middleware import metrics_collector, RequestTracker
-    from capabilities import capability_manager, error_message_manager
-    from infrastructure import health_checker
-    from logging_sla import sla_monitor
+    from core.caching import lru_cache, request_deduplicator
+    from core.middleware import metrics_collector, RequestTracker
+    from core.capabilities import capability_manager, error_message_manager
+    from core.infrastructure import health_checker
+    from core.logging_sla import sla_monitor
+    from core.health_monitor import health_monitor
+    from core.latency_tracker import latency_tracker
+    from core.rate_limit_manager import rate_limit_manager
+    from core.usage_tracker import usage_tracker
 except ImportError as e:
     print(f"Failed to import AI Engine components: {e}")
     print("Make sure you're running from the AI_engine directory")
@@ -1569,53 +1573,53 @@ async def get_sla_status():
 @app.get("/api/health/providers")
 async def get_provider_health_status():
     """Get provider health monitoring status"""
-    from health_monitor import health_monitor
+    from core.health_monitor import health_monitor
     return health_monitor.get_all_health()
 
 @app.get("/api/health/summary")
 async def get_health_summary():
     """Get overall health summary"""
-    from health_monitor import health_monitor
+    from core.health_monitor import health_monitor
     return health_monitor.get_summary()
-
-@app.get("/api/health/{provider_name}")
-async def get_provider_health_detail(provider_name: str):
-    """Get detailed health for a specific provider"""
-    from health_monitor import health_monitor
-    return health_monitor.get_provider_health(provider_name)
-
-@app.get("/api/errors")
-async def get_error_messages():
-    """Get all available error messages"""
-    return {"errors": error_message_manager.get_all_errors()}
 
 @app.get("/api/health/checks")
 async def run_health_checks():
     """Run all health checks"""
     return health_checker.run_checks()
 
+@app.get("/api/errors")
+async def get_error_messages():
+    """Get all available error messages"""
+    return {"errors": error_message_manager.get_all_errors()}
+
+@app.get("/api/health/{provider_name}")
+async def get_provider_health_detail(provider_name: str):
+    """Get detailed health for a specific provider"""
+    from core.health_monitor import health_monitor
+    return health_monitor.get_provider_health(provider_name)
+
 @app.get("/api/latency")
 async def get_latency_stats():
     """Get latency statistics for all providers"""
-    from latency_tracker import latency_tracker
+    from core.latency_tracker import latency_tracker
     return latency_tracker.get_stats()
 
 @app.get("/api/latency/{provider_name}")
 async def get_provider_latency(provider_name: str):
     """Get latency statistics for a specific provider"""
-    from latency_tracker import latency_tracker
+    from core.latency_tracker import latency_tracker
     return latency_tracker.get_stats(provider_name)
 
 @app.get("/api/rate-limits")
 async def get_rate_limits():
     """Get rate limit status for all providers"""
-    from rate_limit_manager import rate_limit_manager
+    from core.rate_limit_manager import rate_limit_manager
     return rate_limit_manager.get_stats()
 
 @app.get("/api/rate-limits/{provider_name}")
 async def get_provider_rate_limit(provider_name: str):
     """Get rate limit status for a specific provider"""
-    from rate_limit_manager import rate_limit_manager
+    from core.rate_limit_manager import rate_limit_manager
     provider = rate_limit_manager.get_provider(provider_name)
     return {
         "provider": provider_name,
@@ -1629,24 +1633,24 @@ async def get_provider_rate_limit(provider_name: str):
 @app.post("/api/rate-limits/{provider_name}/reset")
 async def reset_rate_limit(provider_name: str):
     """Reset rate limit for a provider"""
-    from rate_limit_manager import rate_limit_manager
+    from core.rate_limit_manager import rate_limit_manager
     rate_limit_manager.reset_provider(provider_name)
     return {"status": "reset", "provider": provider_name}
 
 @app.get("/api/usage")
 async def get_usage_stats():
     """Get usage statistics"""
-    from usage_tracker import usage_tracker
+    from core.usage_tracker import usage_tracker
     return usage_tracker.get_stats(hours=24)
 
 @app.get("/api/usage/{provider_name}")
 async def get_provider_usage(provider_name: str):
     """Get usage statistics for a specific provider"""
-    from usage_tracker import usage_tracker
+    from core.usage_tracker import usage_tracker
     return usage_tracker.get_provider_stats(provider_name, hours=24)
 
 # === Batch Processing ===
-from batch import get_batch_processor
+from core.batch import get_batch_processor
 
 @app.post("/v1/batch")
 @limiter.limit("5/minute")
@@ -1684,7 +1688,7 @@ async def batch_completions(request: Request, background_tasks: BackgroundTasks)
         )
 
 # === Workflow Endpoints ===
-from workflow_engine import workflow_engine
+from core.workflow_engine import workflow_engine
 
 @app.get("/api/workflows")
 async def list_workflows():
@@ -1728,7 +1732,7 @@ async def get_execution(workflow_id: str, execution_id: str):
     }
 
 # === API Versioning ===
-from api_versioning import get_version_info
+from core.api_versioning import get_version_info
 
 @app.get("/api/version")
 async def get_version():

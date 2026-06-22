@@ -40,19 +40,19 @@ class TestAIEngineIntegration:
     """Integration tests for AI Engine"""
 
     def test_engine_initialization(self):
-        from ai_engine import AI_engine
+        from core.ai_engine import AI_engine
         engine = AI_engine(verbose=False)
         assert len(engine.providers) > 0
 
     def test_provider_selection(self):
-        from ai_engine import AI_engine
+        from core.ai_engine import AI_engine
         engine = AI_engine(verbose=False)
 
         providers = engine._get_available_providers()
         assert len(providers) > 0
 
     def test_error_classification(self):
-        from ai_engine import AI_engine
+        from core.ai_engine import AI_engine
         engine = AI_engine(verbose=False)
 
         assert engine._classify_error("rate limit", 429) == "rate_limit"
@@ -60,7 +60,7 @@ class TestAIEngineIntegration:
         assert engine._classify_error("internal error", 500) == "server_error"
 
     def test_chat_completion_no_providers(self):
-        from ai_engine import AI_engine
+        from core.ai_engine import AI_engine
         engine = AI_engine(verbose=False)
         engine.providers = {}
 
@@ -68,7 +68,7 @@ class TestAIEngineIntegration:
         assert result.success is False
 
     def test_model_matching(self):
-        from ai_engine import AI_engine
+        from core.ai_engine import AI_engine
         engine = AI_engine(verbose=False)
 
         assert engine.model_matches("gpt-4", "gpt-4") is True

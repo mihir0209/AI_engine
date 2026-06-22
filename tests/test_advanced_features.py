@@ -6,7 +6,7 @@ import json
 # === Vision Tests ===
 
 def test_create_image_message_url():
-    from advanced_features import VisionSupport
+    from core.advanced_features import VisionSupport
     msg = VisionSupport.create_image_message(
         "What's in this image?",
         ["https://example.com/image.jpg"]
@@ -17,7 +17,7 @@ def test_create_image_message_url():
 
 
 def test_create_image_message_base64():
-    from advanced_features import VisionSupport, ImageContent
+    from core.advanced_features import VisionSupport, ImageContent
     # Test with explicit ImageContent object
     img = ImageContent(base64_data="abc123", media_type="image/png")
     msg = VisionSupport.create_image_message("Describe this", [img])
@@ -26,7 +26,7 @@ def test_create_image_message_base64():
 
 
 def test_is_vision_message():
-    from advanced_features import VisionSupport
+    from core.advanced_features import VisionSupport
     msg = {
         "role": "user",
         "content": [
@@ -43,7 +43,7 @@ def test_is_vision_message():
 # === Tool Calling Tests ===
 
 def test_register_tool():
-    from advanced_features import ToolCallingSupport, ToolDefinition
+    from core.advanced_features import ToolCallingSupport, ToolDefinition
     tc = ToolCallingSupport()
 
     tool = ToolDefinition(
@@ -64,7 +64,7 @@ def test_register_tool():
 
 
 def test_get_tools_for_request():
-    from advanced_features import ToolCallingSupport, ToolDefinition
+    from core.advanced_features import ToolCallingSupport, ToolDefinition
     tc = ToolCallingSupport()
 
     tool = ToolDefinition("test_tool", "Test", {"type": "object", "properties": {}})
@@ -77,7 +77,7 @@ def test_get_tools_for_request():
 
 
 def test_execute_tool():
-    from advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
+    from core.advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
     tc = ToolCallingSupport()
 
     def weather_handler(location, unit="celsius"):
@@ -94,7 +94,7 @@ def test_execute_tool():
 
 
 def test_execute_tool_no_handler():
-    from advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
+    from core.advanced_features import ToolCallingSupport, ToolDefinition, ToolCall
     tc = ToolCallingSupport()
     tc.register_tool(ToolDefinition("no_handler", "No handler", {}))
 
@@ -103,7 +103,7 @@ def test_execute_tool_no_handler():
 
 
 def test_parse_tool_calls():
-    from advanced_features import ToolCallingSupport
+    from core.advanced_features import ToolCallingSupport
     response = {
         "choices": [{
             "message": {
@@ -125,7 +125,7 @@ def test_parse_tool_calls():
 
 
 def test_create_tool_response():
-    from advanced_features import ToolCallingSupport
+    from core.advanced_features import ToolCallingSupport
     response = ToolCallingSupport.create_tool_response("tc_1", {"temp": 25})
     assert response["role"] == "tool"
     assert response["tool_call_id"] == "tc_1"
@@ -135,7 +135,7 @@ def test_create_tool_response():
 # === Embedding Tests ===
 
 def test_calculate_similarity():
-    from advanced_features import EmbeddingSupport
+    from core.advanced_features import EmbeddingSupport
     vec1 = [1.0, 0.0, 0.0]
     vec2 = [1.0, 0.0, 0.0]
     assert EmbeddingSupport.calculate_similarity(vec1, vec2) == 1.0
@@ -145,13 +145,13 @@ def test_calculate_similarity():
 
 
 def test_calculate_similarity_different_length():
-    from advanced_features import EmbeddingSupport
+    from core.advanced_features import EmbeddingSupport
     with pytest.raises(ValueError):
         EmbeddingSupport.calculate_similarity([1.0], [1.0, 0.0])
 
 
 def test_find_most_similar():
-    from advanced_features import EmbeddingSupport
+    from core.advanced_features import EmbeddingSupport
     query = [1.0, 0.0, 0.0]
     embeddings = [
         {"id": 1, "embedding": [0.9, 0.1, 0.0], "text": "similar"},
@@ -165,7 +165,7 @@ def test_find_most_similar():
 
 
 def test_prepare_embedding_request():
-    from advanced_features import EmbeddingSupport
+    from core.advanced_features import EmbeddingSupport
     request = EmbeddingSupport.prepare_embedding_request(["hello", "world"])
     assert request["input"] == ["hello", "world"]
     assert "model" in request

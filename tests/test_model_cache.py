@@ -3,7 +3,7 @@ import json
 import time
 import pytest
 
-from model_cache import ModelCache, shared_model_cache
+from core.model_cache import ModelCache, shared_model_cache
 
 
 @pytest.fixture

@@ -86,7 +86,7 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "openai",
-        "enabled": False,  # Disabled - enable when g4f is running
+        "enabled": True,  # Disabled - enable when g4f is running
         "rpm_limit": None,
         "daily_limit": None,
         "current_key_index": 0,

@@ -6,7 +6,7 @@ import shutil
 
 @pytest.fixture
 def logger():
-    from logging_sla import StructuredLogger
+    from core.logging_sla import StructuredLogger
     temp_dir = tempfile.mkdtemp()
     log = StructuredLogger(log_dir=temp_dir)
     yield log
@@ -15,7 +15,7 @@ def logger():
 
 @pytest.fixture
 def sla_monitor():
-    from logging_sla import SLAMonitor
+    from core.logging_sla import SLAMonitor
     temp_dir = tempfile.mkdtemp()
     monitor = SLAMonitor(data_dir=temp_dir)
     yield monitor

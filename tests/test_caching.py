@@ -6,7 +6,7 @@ import threading
 # === Advanced Cache Tests ===
 
 def test_lru_cache_basic():
-    from caching import AdvancedCache, EvictionPolicy
+    from core.caching import AdvancedCache, EvictionPolicy
     cache = AdvancedCache(max_size=3, eviction_policy=EvictionPolicy.LRU)
 
     cache.set("a", 1)
@@ -19,7 +19,7 @@ def test_lru_cache_basic():
 
 
 def test_lru_cache_eviction():
-    from caching import AdvancedCache, EvictionPolicy
+    from core.caching import AdvancedCache, EvictionPolicy
     cache = AdvancedCache(max_size=3, eviction_policy=EvictionPolicy.LRU)
 
     cache.set("a", 1)
@@ -35,7 +35,7 @@ def test_lru_cache_eviction():
 
 
 def test_ttl_cache_expiration():
-    from caching import AdvancedCache, EvictionPolicy
+    from core.caching import AdvancedCache, EvictionPolicy
     cache = AdvancedCache(max_size=10, eviction_policy=EvictionPolicy.TTL)
 
     cache.set("a", 1, ttl=0.1)
@@ -46,7 +46,7 @@ def test_ttl_cache_expiration():
 
 
 def test_cache_delete():
-    from caching import AdvancedCache
+    from core.caching import AdvancedCache
     cache = AdvancedCache(max_size=10)
 
     cache.set("a", 1)
@@ -56,7 +56,7 @@ def test_cache_delete():
 
 
 def test_cache_clear():
-    from caching import AdvancedCache
+    from core.caching import AdvancedCache
     cache = AdvancedCache(max_size=10)
 
     cache.set("a", 1)
@@ -68,7 +68,7 @@ def test_cache_clear():
 
 
 def test_cache_stats():
-    from caching import AdvancedCache
+    from core.caching import AdvancedCache
     cache = AdvancedCache(max_size=10)
 
     cache.set("a", 1)
@@ -82,7 +82,7 @@ def test_cache_stats():
 
 
 def test_cache_get_keys():
-    from caching import AdvancedCache
+    from core.caching import AdvancedCache
     cache = AdvancedCache(max_size=10)
 
     cache.set("a", 1)
@@ -94,7 +94,7 @@ def test_cache_get_keys():
 
 
 def test_lfu_eviction():
-    from caching import AdvancedCache, EvictionPolicy
+    from core.caching import AdvancedCache, EvictionPolicy
     cache = AdvancedCache(max_size=3, eviction_policy=EvictionPolicy.LFU)
 
     cache.set("a", 1)
@@ -120,7 +120,7 @@ def test_lfu_eviction():
 # === Request Deduplicator Tests ===
 
 def test_deduplicator_register():
-    from caching import RequestDeduplicator
+    from core.caching import RequestDeduplicator
     dedup = RequestDeduplicator()
 
     assert dedup.register_request("req_1") is True
@@ -128,7 +128,7 @@ def test_deduplicator_register():
 
 
 def test_deduplicator_complete():
-    from caching import RequestDeduplicator
+    from core.caching import RequestDeduplicator
     dedup = RequestDeduplicator(timeout=1)
 
     def wait_for_result():
@@ -144,7 +144,7 @@ def test_deduplicator_complete():
 
 
 def test_deduplicator_stats():
-    from caching import RequestDeduplicator
+    from core.caching import RequestDeduplicator
     dedup = RequestDeduplicator()
 
     dedup.register_request("req_1")
@@ -155,7 +155,7 @@ def test_deduplicator_stats():
 
 
 def test_deduplicator_is_duplicate():
-    from caching import RequestDeduplicator
+    from core.caching import RequestDeduplicator
     dedup = RequestDeduplicator()
 
     assert dedup.is_duplicate("req_1") is False

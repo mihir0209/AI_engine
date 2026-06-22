@@ -6,13 +6,13 @@ import time
 # === Metrics Collector Tests ===
 
 def test_metrics_collector_init():
-    from middleware import MetricsCollector
+    from core.middleware import MetricsCollector
     mc = MetricsCollector()
     assert len(mc.requests) == 0
 
 
 def test_record_request():
-    from middleware import MetricsCollector, RequestMetrics
+    from core.middleware import MetricsCollector, RequestMetrics
     mc = MetricsCollector()
 
     metrics = RequestMetrics(
@@ -30,7 +30,7 @@ def test_record_request():
 
 
 def test_get_endpoint_stats():
-    from middleware import MetricsCollector, RequestMetrics
+    from core.middleware import MetricsCollector, RequestMetrics
     mc = MetricsCollector()
 
     for i in range(5):
@@ -50,7 +50,7 @@ def test_get_endpoint_stats():
 
 
 def test_get_overall_stats():
-    from middleware import MetricsCollector, RequestMetrics
+    from core.middleware import MetricsCollector, RequestMetrics
     mc = MetricsCollector()
 
     for i in range(10):
@@ -71,7 +71,7 @@ def test_get_overall_stats():
 
 
 def test_get_recent_requests():
-    from middleware import MetricsCollector, RequestMetrics
+    from core.middleware import MetricsCollector, RequestMetrics
     mc = MetricsCollector()
 
     for i in range(3):
@@ -90,7 +90,7 @@ def test_get_recent_requests():
 # === Request Tracker Tests ===
 
 def test_request_tracker_start():
-    from middleware import RequestTracker
+    from core.middleware import RequestTracker
     metrics = RequestTracker.start_request("/api/test", "POST")
 
     assert metrics.request_id is not None
@@ -99,7 +99,7 @@ def test_request_tracker_start():
 
 
 def test_request_tracker_get_current():
-    from middleware import RequestTracker
+    from core.middleware import RequestTracker
     RequestTracker.start_request("/api/test")
 
     current = RequestTracker.get_current()
@@ -107,7 +107,7 @@ def test_request_tracker_get_current():
 
 
 def test_request_tracker_end():
-    from middleware import RequestTracker
+    from core.middleware import RequestTracker
     RequestTracker.start_request("/api/test")
     RequestTracker.end_request(status_code=200)
 
@@ -117,7 +117,7 @@ def test_request_tracker_end():
 
 
 def test_request_tracker_set_provider():
-    from middleware import RequestTracker
+    from core.middleware import RequestTracker
     RequestTracker.start_request("/api/test")
     RequestTracker.set_provider("openai", "gpt-4")
 
@@ -127,7 +127,7 @@ def test_request_tracker_set_provider():
 
 
 def test_request_tracker_set_tokens():
-    from middleware import RequestTracker
+    from core.middleware import RequestTracker
     RequestTracker.start_request("/api/test")
     RequestTracker.set_tokens(150, 0.003)
 
@@ -139,7 +139,7 @@ def test_request_tracker_set_tokens():
 # === Tracked Request Decorator Tests ===
 
 def test_tracked_request_decorator():
-    from middleware import tracked_request
+    from core.middleware import tracked_request
 
     @tracked_request("/api/test")
     def test_func():
@@ -150,7 +150,7 @@ def test_tracked_request_decorator():
 
 
 def test_tracked_request_on_error():
-    from middleware import tracked_request
+    from core.middleware import tracked_request
 
     @tracked_request("/api/error")
     def failing_func():

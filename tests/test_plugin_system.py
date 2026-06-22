@@ -6,7 +6,7 @@ import shutil
 
 @pytest.fixture
 def plugin_manager():
-    from plugin_system import PluginManager
+    from core.plugin_system import PluginManager
     temp_dir = tempfile.mkdtemp()
     manager = PluginManager(plugins_dir=temp_dir)
     yield manager
@@ -52,7 +52,7 @@ def test_list_plugins_empty(plugin_manager):
 
 
 def test_enable_disable_plugin(plugin_manager):
-    from plugin_system import Plugin, PluginManifest
+    from core.plugin_system import Plugin, PluginManifest
     from unittest.mock import MagicMock
 
     manifest = PluginManifest(name="test", version="1.0", description="Test", author="Test")
@@ -68,7 +68,7 @@ def test_enable_disable_plugin(plugin_manager):
 
 
 def test_get_plugin_config(plugin_manager):
-    from plugin_system import Plugin, PluginManifest
+    from core.plugin_system import Plugin, PluginManifest
     from unittest.mock import MagicMock
 
     manifest = PluginManifest(name="test", version="1.0", description="Test", author="Test", config={"key": "value"})
@@ -80,7 +80,7 @@ def test_get_plugin_config(plugin_manager):
 
 
 def test_set_plugin_config(plugin_manager):
-    from plugin_system import Plugin, PluginManifest
+    from core.plugin_system import Plugin, PluginManifest
     from unittest.mock import MagicMock
 
     manifest = PluginManifest(name="test", version="1.0", description="Test", author="Test", config={})

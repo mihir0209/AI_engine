@@ -4,7 +4,7 @@
 # === Empty/Null Input Tests ===
 
 def test_empty_chat_messages():
-    from ai_engine import AI_engine
+    from core.ai_engine import AI_engine
     engine = AI_engine(verbose=False)
     # With providers enabled, empty messages may still get a response
     # Just verify the method doesn't crash
@@ -13,7 +13,7 @@ def test_empty_chat_messages():
 
 
 def test_null_model_name():
-    from ai_engine import AI_engine
+    from core.ai_engine import AI_engine
     engine = AI_engine(verbose=False)
     engine.providers = {}
     result = engine.chat_completion([{"role": "user", "content": "hi"}], model=None)
@@ -70,7 +70,7 @@ def test_min_length_message():
 
 
 def test_zero_rate_limit():
-    from enhanced_health import PerUserRateLimiter
+    from core.enhanced_health import PerUserRateLimiter
     rl = PerUserRateLimiter(default_rate=1, default_burst=1)
     allowed, info = rl.allow_request("user")
     assert allowed is True  # First request allowed
@@ -98,7 +98,7 @@ def test_large_context_window():
 # === Concurrency Tests ===
 
 def test_concurrent_cache_access():
-    from caching import AdvancedCache
+    from core.caching import AdvancedCache
     import threading
 
     cache = AdvancedCache(max_size=100)
@@ -127,7 +127,7 @@ def test_concurrent_cache_access():
 # === Error Recovery Tests ===
 
 def test_circuit_breaker_recovery():
-    from infrastructure import CircuitBreaker, CircuitState
+    from core.infrastructure import CircuitBreaker, CircuitState
     cb = CircuitBreaker("test", failure_threshold=2, recovery_timeout=0.1, half_open_max_calls=1)
 
     # Trip the circuit
@@ -150,7 +150,7 @@ def test_circuit_breaker_recovery():
 
 
 def test_retry_eventual_success():
-    from infrastructure import RetryHandler
+    from core.infrastructure import RetryHandler
     rh = RetryHandler(max_retries=3, base_delay=0.01, jitter=False)
 
     attempts = 0

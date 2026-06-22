@@ -144,13 +144,13 @@ def test_branching_integration(client):
 # === Load Testing Tests ===
 
 def test_load_tester_init():
-    from load_test import LoadTester
+    from core.load_test import LoadTester
     tester = LoadTester()
     assert len(tester.results) == 0
 
 
 def test_load_tester_run():
-    from load_test import LoadTester
+    from core.load_test import LoadTester
     tester = LoadTester()
 
     def mock_func():
@@ -171,7 +171,7 @@ def test_load_tester_run():
 
 
 def test_load_tester_with_errors():
-    from load_test import LoadTester
+    from core.load_test import LoadTester
     tester = LoadTester()
 
     call_count = 0
@@ -194,7 +194,7 @@ def test_load_tester_with_errors():
 
 
 def test_load_tester_summary():
-    from load_test import LoadTester
+    from core.load_test import LoadTester
     tester = LoadTester()
 
     def mock_func():
@@ -209,7 +209,7 @@ def test_load_tester_summary():
 
 
 def test_load_tester_print(capsys):
-    from load_test import LoadTester
+    from core.load_test import LoadTester
     tester = LoadTester()
 
     def mock_func():

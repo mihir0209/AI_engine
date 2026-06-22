@@ -9,13 +9,13 @@ import sqlite3
 
 @pytest.fixture
 def session_manager():
-    from session_backup import SessionManager
+    from core.session_backup import SessionManager
     return SessionManager(session_timeout=2)
 
 
 @pytest.fixture
 def backup_utils():
-    from session_backup import DatabaseBackup
+    from core.session_backup import DatabaseBackup
     temp_dir = tempfile.mkdtemp()
     db = DatabaseBackup(backup_dir=temp_dir)
     yield db

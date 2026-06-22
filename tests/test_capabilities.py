@@ -4,7 +4,7 @@
 # === Capability Manager Tests ===
 
 def test_get_capabilities():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     caps = cm.get_capabilities("openai")
@@ -14,7 +14,7 @@ def test_get_capabilities():
 
 
 def test_get_unknown_provider():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     caps = cm.get_capabilities("unknown_provider")
@@ -22,7 +22,7 @@ def test_get_unknown_provider():
 
 
 def test_supports_vision():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     assert cm.supports_vision("openai") is True
@@ -31,7 +31,7 @@ def test_supports_vision():
 
 
 def test_supports_tool_calling():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     assert cm.supports_tool_calling("openai") is True
@@ -39,7 +39,7 @@ def test_supports_tool_calling():
 
 
 def test_get_providers_with_vision():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     providers = cm.get_providers_with_vision()
@@ -49,7 +49,7 @@ def test_get_providers_with_vision():
 
 
 def test_get_fastest_providers():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     fastest = cm.get_fastest_providers(top_n=2)
@@ -57,7 +57,7 @@ def test_get_fastest_providers():
 
 
 def test_get_cheapest_providers():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     cheapest = cm.get_cheapest_providers(top_n=2)
@@ -65,7 +65,7 @@ def test_get_cheapest_providers():
 
 
 def test_get_provider_for_task():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     vision_providers = cm.get_provider_for_task("vision")
@@ -76,7 +76,7 @@ def test_get_provider_for_task():
 
 
 def test_get_all_capabilities():
-    from capabilities import CapabilityManager
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
     all_caps = cm.get_all_capabilities()
@@ -85,7 +85,7 @@ def test_get_all_capabilities():
 
 
 def test_set_custom_capabilities():
-    from capabilities import CapabilityManager, ProviderCapabilities
+    from core.capabilities import CapabilityManager, ProviderCapabilities
     cm = CapabilityManager()
 
     custom = ProviderCapabilities(provider="custom", vision=True, tool_calling=True)
@@ -99,7 +99,7 @@ def test_set_custom_capabilities():
 # === Error Message Tests ===
 
 def test_get_error_rate_limit():
-    from capabilities import ErrorMessageManager
+    from core.capabilities import ErrorMessageManager
     error = ErrorMessageManager.get_error("rate_limit")
 
     assert error["code"] == "RATE_LIMIT_EXCEEDED"
@@ -107,14 +107,14 @@ def test_get_error_rate_limit():
 
 
 def test_get_error_auth():
-    from capabilities import ErrorMessageManager
+    from core.capabilities import ErrorMessageManager
     error = ErrorMessageManager.get_error("auth_error")
 
     assert error["code"] == "AUTH_FAILED"
 
 
 def test_get_error_with_details():
-    from capabilities import ErrorMessageManager
+    from core.capabilities import ErrorMessageManager
     error = ErrorMessageManager.get_error("timeout", "Connection timed out after 30s")
 
     assert "details" in error
@@ -122,14 +122,14 @@ def test_get_error_with_details():
 
 
 def test_get_unknown_error():
-    from capabilities import ErrorMessageManager
+    from core.capabilities import ErrorMessageManager
     error = ErrorMessageManager.get_error("some_unknown_error")
 
     assert error["code"] == "UNKNOWN_ERROR"
 
 
 def test_get_all_errors():
-    from capabilities import ErrorMessageManager
+    from core.capabilities import ErrorMessageManager
     errors = ErrorMessageManager.get_all_errors()
 
     assert len(errors) > 0

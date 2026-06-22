@@ -3,7 +3,7 @@ import os
 import pytest
 from datetime import datetime
 
-from statistics_manager import StatisticsManager, KeyStatistics, get_stats_manager
+from core.statistics_manager import StatisticsManager, KeyStatistics, get_stats_manager
 
 
 @pytest.fixture

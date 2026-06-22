@@ -3,7 +3,7 @@ import time
 
 
 def test_cache_hit():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -16,7 +16,7 @@ def test_cache_hit():
 
 
 def test_cache_miss():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     import tempfile
     temp_dir = tempfile.mkdtemp()
     cache = ResponseCache(cache_dir=temp_dir)
@@ -30,7 +30,7 @@ def test_cache_miss():
 
 
 def test_cache_ttl_expiration():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -42,7 +42,7 @@ def test_cache_ttl_expiration():
 
 
 def test_cache_delete():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -54,7 +54,7 @@ def test_cache_delete():
 
 
 def test_cache_clear():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -66,7 +66,7 @@ def test_cache_clear():
 
 
 def test_cache_stats():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -80,7 +80,7 @@ def test_cache_stats():
 
 
 def test_cache_cleanup():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -94,7 +94,7 @@ def test_cache_cleanup():
 
 
 def test_cache_different_providers():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -109,7 +109,7 @@ def test_cache_different_providers():
 
 
 def test_cache_overwrite():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages = [{"role": "user", "content": "hello"}]
@@ -121,7 +121,7 @@ def test_cache_overwrite():
 
 
 def test_cache_find_similar():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     cache = ResponseCache()
 
     messages1 = [{"role": "user", "content": "what is python programming language"}]

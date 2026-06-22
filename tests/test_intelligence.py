@@ -8,7 +8,7 @@ import shutil
 # === Intelligent Router Tests ===
 
 def test_detect_task_type_coding():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Write a Python function to sort a list"}]
@@ -16,7 +16,7 @@ def test_detect_task_type_coding():
 
 
 def test_detect_task_type_writing():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Write an essay about climate change"}]
@@ -24,7 +24,7 @@ def test_detect_task_type_writing():
 
 
 def test_detect_task_type_math():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Calculate the integral of x^2"}]
@@ -32,7 +32,7 @@ def test_detect_task_type_math():
 
 
 def test_detect_task_type_translation():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Translate this to French"}]
@@ -40,7 +40,7 @@ def test_detect_task_type_translation():
 
 
 def test_detect_task_type_summary():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Please summarize this document for me"}]
@@ -48,7 +48,7 @@ def test_detect_task_type_summary():
 
 
 def test_detect_task_type_quick():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     messages = [{"role": "user", "content": "Hi"}]
@@ -56,7 +56,7 @@ def test_detect_task_type_quick():
 
 
 def test_get_task_profile():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     profile = router.get_task_profile("coding")
@@ -65,7 +65,7 @@ def test_get_task_profile():
 
 
 def test_calculate_model_score():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     profile = router.get_task_profile("coding")
@@ -74,7 +74,7 @@ def test_calculate_model_score():
 
 
 def test_estimate_cost():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     cost = router.estimate_cost("openai", "gpt-4", 1000, 500)
@@ -82,7 +82,7 @@ def test_estimate_cost():
 
 
 def test_get_cost_comparison():
-    from intelligent_router import IntelligentRouter
+    from core.intelligent_router import IntelligentRouter
     router = IntelligentRouter()
 
     comparisons = router.get_cost_comparison("coding")
@@ -94,7 +94,7 @@ def test_get_cost_comparison():
 
 @pytest.fixture
 def cache():
-    from response_cache import ResponseCache
+    from core.response_cache import ResponseCache
     temp_dir = tempfile.mkdtemp()
     cache = ResponseCache(cache_dir=temp_dir)
     yield cache

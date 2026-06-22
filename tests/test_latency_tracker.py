@@ -3,7 +3,7 @@ import pytest
 
 
 def test_record_latency():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     tracker.record("provider1", 100, True)
@@ -16,7 +16,7 @@ def test_record_latency():
 
 
 def test_get_avg_latency():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     tracker.record("provider1", 100, True)
@@ -27,7 +27,7 @@ def test_get_avg_latency():
 
 
 def test_get_p95_latency():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     # Add 20 measurements
@@ -39,7 +39,7 @@ def test_get_p95_latency():
 
 
 def test_is_slow():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker(slow_threshold_ms=500)
     
     tracker.record("fast_provider", 100, True)
@@ -50,7 +50,7 @@ def test_is_slow():
 
 
 def test_priority_adjustment():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     # Fast provider
@@ -68,7 +68,7 @@ def test_priority_adjustment():
 
 
 def test_get_stats_all():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     tracker.record("p1", 100, True)
@@ -80,7 +80,7 @@ def test_get_stats_all():
 
 
 def test_unknown_provider():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     avg = tracker.get_avg_latency("unknown")
@@ -91,7 +91,7 @@ def test_unknown_provider():
 
 
 def test_model_tracking():
-    from latency_tracker import LatencyTracker
+    from core.latency_tracker import LatencyTracker
     tracker = LatencyTracker()
     
     tracker.record("provider1", 100, True, model="gpt-4")

@@ -6,7 +6,7 @@ import shutil
 
 @pytest.fixture
 def tenant_manager():
-    from enterprise import TenantManager
+    from core.enterprise import TenantManager
     temp_dir = tempfile.mkdtemp()
     manager = TenantManager(data_dir=temp_dir)
     yield manager
@@ -15,7 +15,7 @@ def tenant_manager():
 
 @pytest.fixture
 def audit_logger():
-    from enterprise import AuditLogger
+    from core.enterprise import AuditLogger
     temp_dir = tempfile.mkdtemp()
     logger = AuditLogger(log_dir=temp_dir)
     yield logger
@@ -46,7 +46,7 @@ def test_get_tenant_by_api_key(tenant_manager):
 
 
 def test_tenant_quotas():
-    from enterprise import Tenant
+    from core.enterprise import Tenant
     tenant = Tenant(id="test", name="Test", api_key="sk_test")
     assert "daily_requests" in tenant.quotas
     assert "monthly_requests" in tenant.quotas
@@ -55,7 +55,7 @@ def test_tenant_quotas():
 # === User Tests ===
 
 def test_create_user(tenant_manager):
-    from enterprise import Role
+    from core.enterprise import Role
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "testuser", "test@example.com", Role.USER)
     assert user is not None
@@ -64,7 +64,7 @@ def test_create_user(tenant_manager):
 
 
 def test_get_user(tenant_manager):
-    from enterprise import Role
+    from core.enterprise import Role
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "testuser", "test@example.com", Role.ADMIN)
     retrieved = tenant_manager.get_user(user.id)
@@ -73,7 +73,7 @@ def test_get_user(tenant_manager):
 
 
 def test_get_user_by_api_key(tenant_manager):
-    from enterprise import Role
+    from core.enterprise import Role
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "testuser", "test@example.com", Role.USER)
     retrieved = tenant_manager.get_user_by_api_key(user.api_key)
@@ -82,7 +82,7 @@ def test_get_user_by_api_key(tenant_manager):
 
 
 def test_get_tenant_users(tenant_manager):
-    from enterprise import Role
+    from core.enterprise import Role
     tenant = tenant_manager.create_tenant("Test Tenant")
     tenant_manager.create_user(tenant.id, "user1", "user1@example.com", Role.USER)
     tenant_manager.create_user(tenant.id, "user2", "user2@example.com", Role.VIEWER)
@@ -94,7 +94,7 @@ def test_get_tenant_users(tenant_manager):
 # === Permission Tests ===
 
 def test_admin_has_all_permissions(tenant_manager):
-    from enterprise import Role, Permission
+    from core.enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "admin", "admin@example.com", Role.ADMIN)
 
@@ -103,7 +103,7 @@ def test_admin_has_all_permissions(tenant_manager):
 
 
 def test_user_limited_permissions(tenant_manager):
-    from enterprise import Role, Permission
+    from core.enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "user", "user@example.com", Role.USER)
 
@@ -114,7 +114,7 @@ def test_user_limited_permissions(tenant_manager):
 
 
 def test_viewer_read_only(tenant_manager):
-    from enterprise import Role, Permission
+    from core.enterprise import Role, Permission
     tenant = tenant_manager.create_tenant("Test Tenant")
     user = tenant_manager.create_user(tenant.id, "viewer", "viewer@example.com", Role.VIEWER)
 

@@ -4,14 +4,14 @@
 # === Version Registry Tests ===
 
 def test_register_version():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     vr.register("v1", released_at="2026-01-01")
     assert "v1" in vr.versions
 
 
 def test_get_version():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     vr.register("v1", released_at="2026-01-01")
     ver = vr.get_version("v1")
@@ -20,13 +20,13 @@ def test_get_version():
 
 
 def test_get_version_not_found():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     assert vr.get_version("v99") is None
 
 
 def test_get_all_versions():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     vr.register("v1", released_at="2026-01-01")
     vr.register("v2", released_at="2026-06-01")
@@ -37,7 +37,7 @@ def test_get_all_versions():
 
 
 def test_get_supported_versions():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     vr.register("v1", released_at="2026-01-01")
     vr.register("v2", released_at="2026-06-01")
@@ -50,7 +50,7 @@ def test_get_supported_versions():
 
 
 def test_set_current_version():
-    from api_versioning import VersionRegistry
+    from core.api_versioning import VersionRegistry
     vr = VersionRegistry()
     vr.register("v1")
     vr.register("v2")
@@ -61,7 +61,7 @@ def test_set_current_version():
 # === API Version Tests ===
 
 def test_api_version_deprecated():
-    from api_versioning import APIVersion
+    from core.api_versioning import APIVersion
     ver = APIVersion(
         version="v1",
         released_at="2026-01-01",
@@ -71,7 +71,7 @@ def test_api_version_deprecated():
 
 
 def test_api_version_not_deprecated():
-    from api_versioning import APIVersion
+    from core.api_versioning import APIVersion
     ver = APIVersion(
         version="v2",
         released_at="2026-06-01",
@@ -81,7 +81,7 @@ def test_api_version_not_deprecated():
 
 
 def test_api_version_sunset():
-    from api_versioning import APIVersion
+    from core.api_versioning import APIVersion
     ver = APIVersion(
         version="v1",
         released_at="2026-01-01",
@@ -93,7 +93,7 @@ def test_api_version_sunset():
 # === Deprecation Headers Tests ===
 
 def test_deprecation_headers_deprecated():
-    from api_versioning import get_deprecation_headers, version_registry
+    from core.api_versioning import get_deprecation_headers, version_registry
     # Register directly in the global registry
     version_registry.register("v1", released_at="2026-01-01", deprecated_at="2026-06-01")
 
@@ -102,14 +102,14 @@ def test_deprecation_headers_deprecated():
 
 
 def test_deprecation_headers_not_deprecated():
-    from api_versioning import get_deprecation_headers
+    from core.api_versioning import get_deprecation_headers
     # v2 is already registered globally without deprecation
     headers = get_deprecation_headers("v2")
     assert "Deprecation" not in headers
 
 
 def test_deprecation_headers_unknown():
-    from api_versioning import get_deprecation_headers
+    from core.api_versioning import get_deprecation_headers
     headers = get_deprecation_headers("v99")
     assert headers == {}
 
@@ -117,7 +117,7 @@ def test_deprecation_headers_unknown():
 # === Version Info Tests ===
 
 def test_get_version_info():
-    from api_versioning import get_version_info
+    from core.api_versioning import get_version_info
     info = get_version_info()
     assert "current" in info
     assert "supported" in info
