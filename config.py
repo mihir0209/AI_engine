@@ -807,3 +807,38 @@ def verbose_print(message: str, verbose_override: bool = None):
         except UnicodeEncodeError:
             safe_message = message.encode("ascii", "replace").decode("ascii")
             print(safe_message)
+
+
+# CDN Config Sync — merge remote provider definitions with local API keys
+def _apply_cdn_config():
+    """Attempt to fetch and apply CDN config. Preserves local API keys."""
+    try:
+        from core.config_sync import config_fetcher
+        config_fetcher.initialize()
+        cdn_configs = config_fetcher.fetch_and_apply()
+        if cdn_configs is None:
+            return
+        # Merge: use CDN provider metadata but keep local API keys
+        for name, cdn_cfg in cdn_configs.items():
+            if name in AI_CONFIGS:
+                local_keys = AI_CONFIGS[name].get("api_keys", [])
+                AI_CONFIGS[name].update({
+                    k: v for k, v in cdn_cfg.items()
+                    if k not in ("api_keys", "enabled")
+                })
+                AI_CONFIGS[name]["api_keys"] = local_keys
+                if AI_CONFIGS[name].get("_auto_disabled"):
+                    AI_CONFIGS[name].pop("_auto_disabled", None)
+                    AI_CONFIGS[name].pop("_auto_disabled_at", None)
+            else:
+                new_cfg = dict(cdn_cfg)
+                new_cfg["api_keys"] = [os.getenv(f"{name.upper()}_API_KEY")]
+                if new_cfg["api_keys"] == [None]:
+                    new_cfg["enabled"] = False
+                AI_CONFIGS[name] = new_cfg
+        verbose_print(f"🔄 CDN config applied: {len(AI_CONFIGS)} providers")
+    except Exception as e:
+        verbose_print(f"⚠️ CDN config sync failed: {e}")
+
+
+_apply_cdn_config()

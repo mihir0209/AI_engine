@@ -806,6 +806,26 @@ async def get_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/cdn-config")
+async def get_cdn_config_status():
+    """Get CDN config sync status"""
+    from core.config_sync import config_fetcher
+    return config_fetcher.get_status()
+
+@app.post("/api/cdn-config/refresh")
+async def refresh_cdn_config():
+    """Force refresh CDN config (bypasses TTL cache)"""
+    from core.config_sync import config_fetcher, CACHE_META, CACHE_FILE
+    try:
+        CACHE_META.unlink(missing_ok=True)
+        CACHE_FILE.unlink(missing_ok=True)
+        result = config_fetcher.fetch_and_apply()
+        if result:
+            return {"success": True, "providers": len(result), "message": "CDN config refreshed"}
+        return {"success": False, "message": "CDN fetch failed"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
 @app.get("/api/providers")
 async def get_providers():
     """Get all providers with their configurations (sanitized)"""
