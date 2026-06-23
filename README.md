@@ -1,10 +1,13 @@
 # AI Engine - Free AI Inference Router for Developers
 
-> **Stop paying for AI inference.** Route your requests through 17+ free providers with automatic failover, intelligent routing, and OpenAI-compatible API.
-
 [![Tests](https://img.shields.io/badge/tests-518%20passing-brightgreen)]()
 [![Providers](https://img.shields.io/badge/providers-21%20working-blue)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)]()
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)]()
+[![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991)]()
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)]()
+
+> **Stop paying for AI inference.** Route your requests through 21+ free providers with automatic failover, intelligent routing, and OpenAI-compatible API.
 
 ---
 
@@ -38,6 +41,14 @@
 | **HuggingFace** | $0.10/month | [huggingface.co](https://huggingface.co) |
 | **Kilo** | Auto free routing | [app.kilo.ai](https://app.kilo.ai) |
 
+### Custom Providers (Your Keys)
+
+| Provider | Models | Signup |
+|----------|--------|--------|
+| **Kimi (hcnsec)** | Kimi-K2.6 | Contact provider |
+| **LLM7** | Various | [llm7.io](https://llm7.io) |
+| **PaxSenix** | DeepSeek-R1 | Contact provider |
+
 ### Self-Hosted Options
 
 | Provider | Setup | Models |
@@ -49,16 +60,25 @@
 
 ## Quick Start
 
-### Option 1: GPT4Free (Recommended - Truly Free)
+### Option 1: Free Tier APIs (Recommended)
+
 ```bash
-docker run -p 8080:8080 hlohaus789/g4f
+# 1. Copy environment template
+cp .env.example .env
+
+# 2. Get free API keys (see guide below)
+# 3. Add keys to .env file
+# 4. Start server
 python server.py
 ```
 
-### Option 2: Free Tier APIs
+### Option 2: Self-Hosted (No API Keys Needed)
+
 ```bash
-cp .env.example .env
-# Add your free API keys
+# Start g4f server
+docker run -d -p 8080:8080 hlohaus789/g4f
+
+# Start AI Engine
 python server.py
 ```
 
@@ -145,11 +165,6 @@ const response = await client.chat.completions.create({
 - Workflow engine
 - CLI tool
 - Docker deployment
-
-### Providers (21 Working)
-- 6 truly free (no API key)
-- 12 free tier (signup required)
-- 3 self-hosted
 
 ---
 
