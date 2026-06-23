@@ -2,6 +2,7 @@
 FastAPI router for chat functionality
 """
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -20,35 +21,120 @@ from config import verbose_print
 IMAGE_REF_PATTERN = r'!\[([^\]]*)\]\(([^)]+)\)'
 FILE_REF_PATTERN = r'\[File: ([^\]]+)\]\(([^)]+)\)'
 
-logger = logging.getLogger(__name__)
-
-# Upload configuration
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-ALLOWED_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.py', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml'}
-ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
-
 # Global engine instance - will be set by server
 _global_engine = None
 
 def set_global_engine(engine):
-    """Set the global AI_engine instance to avoid creating duplicates"""
     global _global_engine
     _global_engine = engine
 
 def get_global_engine():
-    """Get the global AI_engine instance, create new one if not set"""
     global _global_engine
     if _global_engine is not None:
         return _global_engine
-
-    # Fallback: create new instance (for backward compatibility)
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from core.ai_engine import AI_engine
     return AI_engine()
+
+# Initialize components
+chat_db = ChatDB()
+websocket_manager = WebSocketManager()
+
+import re
+
+MIME_MAP = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif', '.webp': 'image/webp',
+}
+
+def _read_file_content(file_path: str, max_chars: int = 8000) -> str:
+    """Read content of an uploaded text file for AI context"""
+    try:
+        from pathlib import Path
+        p = Path(file_path)
+        if not p.exists():
+            return "[File not found]"
+        ext = p.suffix.lower()
+        if ext in MIME_MAP:
+            return "[Image file - cannot read as text]"
+        content = p.read_text(encoding='utf-8', errors='replace')
+        if len(content) > max_chars:
+            content = content[:max_chars] + f"\n\n... (truncated, {len(content)} total chars)"
+        return content
+    except Exception:
+        return "[Could not read file]"
+
+def _encode_image_base64(file_path: str) -> tuple:
+    """Encode an image file to base64 data URI. Returns (data_uri, mime_type) or (None, None)"""
+    try:
+        from pathlib import Path
+        p = Path(file_path)
+        if not p.exists():
+            return None, None
+        ext = p.suffix.lower()
+        mime = MIME_MAP.get(ext, 'image/png')
+        data = p.read_bytes()
+        b64 = base64.b64encode(data).decode('utf-8')
+        return f"data:{mime};base64,{b64}", mime
+    except Exception:
+        return None, None
+
+def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str = None) -> tuple:
+    """Prepare messages for AI: handle file content injection, image encoding, and vision stripping.
+    Returns (messages, has_images, vision_warning)
+    """
+    from core.capabilities import capability_manager
+    vision_ok = capability_manager.supports_vision(provider or '', model)
+
+    has_images = any(re.search(IMAGE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
+    has_files = any(re.search(FILE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
+
+    if not has_images and not has_files:
+        return formatted_messages, False, None
+
+    processed = []
+    for msg in formatted_messages:
+        content = msg.get('content', '')
+
+        # Inject file contents for text files
+        file_matches = list(re.finditer(FILE_REF_PATTERN, content))
+        if file_matches:
+            for match in reversed(file_matches):
+                file_url = match.group(2)
+                file_path = file_url.lstrip('/')
+                text_content = _read_file_content(file_path)
+                placeholder = match.group(0)
+                content = content.replace(placeholder, f"{placeholder}\n\n```\n{text_content}\n```")
+
+        # Handle images
+        image_matches = list(re.finditer(IMAGE_REF_PATTERN, content))
+        if image_matches:
+            if vision_ok:
+                # Encode images as base64 for vision models
+                for match in reversed(image_matches):
+                    file_url = match.group(2)
+                    file_path = file_url.lstrip('/')
+                    data_uri, mime = _encode_image_base64(file_path)
+                    if data_uri:
+                        alt_text = match.group(1) or 'uploaded image'
+                        img_md = match.group(0)
+                        replacement = f"![{alt_text}]({data_uri})"
+                        content = content.replace(img_md, replacement)
+            else:
+                # Strip images for non-vision models
+                for match in reversed(image_matches):
+                    img_md = match.group(0)
+                    content = content.replace(img_md, '[Image attached - not supported by current model]')
+                vision_providers = capability_manager.get_vision_providers()
+                warning = f"Images removed: {provider or 'current provider'} does not support vision. Use: {', '.join(vision_providers[:3])}"
+                processed.append({**msg, 'content': content})
+                return processed, True, warning
+
+        processed.append({**msg, 'content': content})
+
+    return processed, has_images, None
 
 # Pydantic models for API
 class CreateChatRequest(BaseModel):
@@ -57,8 +143,8 @@ class CreateChatRequest(BaseModel):
     provider: Optional[str] = None
     system_prompt: Optional[str] = None
     is_temporary: bool = False
-    force_provider: bool = False  # New field to force specific provider usage
-    temporary_timer_minutes: int = Field(default=5, ge=1, le=60)  # Timer in minutes (1-60)
+    force_provider: bool = False
+    temporary_timer_minutes: int = Field(default=5, ge=1, le=60)
 
 class SendMessageRequest(BaseModel):
     role: str = Field(..., pattern="^(user|system)$")
@@ -78,7 +164,7 @@ class UpdateChatRequest(BaseModel):
     model: Optional[str] = None
     provider: Optional[str] = None
     system_prompt: Optional[str] = None
-    force_provider: Optional[bool] = None  # New field to update force provider setting
+    force_provider: Optional[bool] = None
 
 class ChatResponse(BaseModel):
     id: int
@@ -105,36 +191,6 @@ class MessageResponse(BaseModel):
     tokens: int
     created_at: str
     response_to: Optional[int]
-
-# Initialize components
-chat_db = ChatDB()
-websocket_manager = WebSocketManager()
-
-import re
-
-def _check_vision_and_strip_images(formatted_messages: list, provider: str, model: str = None) -> tuple:
-    """Check if provider supports vision. If not, strip image references from messages.
-    Returns (messages, has_images, vision_warning)
-    """
-    has_images = any(re.search(IMAGE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
-    if not has_images:
-        return formatted_messages, False, None
-
-    from core.capabilities import capability_manager
-    if capability_manager.supports_vision(provider or '', model):
-        return formatted_messages, True, None
-
-    stripped = []
-    for msg in formatted_messages:
-        content = msg.get('content', '')
-        if re.search(IMAGE_REF_PATTERN, content):
-            content = re.sub(IMAGE_REF_PATTERN, '[Image attached - not supported by current model]', content)
-        stripped.append({**msg, 'content': content})
-
-    vision_providers = capability_manager.get_vision_providers()
-    warning = f"Image removed: {provider or 'current provider'} does not support vision. Use: {', '.join(vision_providers[:3])}"
-
-    return stripped, True, warning
 
 # Background task for cleaning up temporary chats
 async def cleanup_expired_temporary_chats():
@@ -780,7 +836,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _check_vision_and_strip_images(
+        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         ai = get_global_engine()
@@ -862,7 +918,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _check_vision_and_strip_images(
+        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         force_provider_setting = chat.get('force_provider', False) if chat else False

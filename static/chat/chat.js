@@ -561,6 +561,9 @@ class ChatInterface {
                             <button class="btn btn-sm btn-outline-primary" onclick="chatInterface.editMessage(${message.id})" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="chatInterface.regenerateResponse(${message.id})" title="Regenerate from here">
+                                <i class="fas fa-redo"></i>
+                            </button>
                         ` : ''}
                     </div>
                 ` : ''}
@@ -1186,6 +1189,89 @@ class ChatInterface {
         }
     }
 
+    // Chat Search
+    async searchChats(query) {
+        if (!query || query.length < 2) {
+            await this.loadChats();
+            return;
+        }
+        try {
+            const response = await fetch('/api/chat/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, limit: 20 })
+            });
+            const data = await response.json();
+            if (data.success && data.results.length > 0) {
+                const chatIds = [...new Set(data.results.map(r => r.chat_id))];
+                const chatPromises = chatIds.map(id => fetch(`/api/chat/chats/${id}`).then(r => r.json()));
+                const chats = (await chatPromises).map(d => d.chat).filter(Boolean);
+                this.renderChatList(chats);
+            } else {
+                document.getElementById('chatList').innerHTML = `
+                    <div class="text-center p-3 text-muted">
+                        <p class="mb-0">No results for "${this.escapeHtml(query)}"</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error searching chats:', error);
+        }
+    }
+
+    // Message Regeneration
+    async regenerateResponse(messageId) {
+        if (!this.currentChatId || this.isAIResponding) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/regenerate/${messageId}`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            if (result.success) {
+                if (this.isConnected && this.websocket) {
+                    this.loadCurrentChatMessages();
+                } else {
+                    setTimeout(() => this.loadCurrentChatMessages(), 2000);
+                }
+            } else {
+                this.showError('Failed to regenerate response');
+            }
+        } catch (error) {
+            console.error('Error regenerating response:', error);
+            this.showError('Failed to regenerate response');
+        }
+    }
+
+    // Message Export
+    async exportChat(format = 'markdown') {
+        if (!this.currentChatId) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/export?format=${format}`);
+            const data = await response.json();
+            if (format === 'markdown' && data.export) {
+                const blob = new Blob([data.export], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chat-${this.currentChatId}.md`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } else if (format === 'json') {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chat-${this.currentChatId}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            this.showSuccess(`Chat exported as ${format}`);
+        } catch (error) {
+            console.error('Error exporting chat:', error);
+            this.showError('Failed to export chat');
+        }
+    }
+
     // Utility Methods
     setupEventListeners() {
         // Enter key to send message
@@ -1342,6 +1428,31 @@ class ChatInterface {
         navigator.clipboard.writeText(text).then(() => {
             this.showSuccess('Message copied to clipboard');
         });
+    }
+
+    async editMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .message-content`);
+        if (!messageElement) return;
+        const currentContent = messageElement.textContent.trim();
+        const newContent = prompt('Edit message:', currentContent);
+        if (newContent === null || newContent === currentContent) return;
+        try {
+            const response = await fetch(`/api/chat/messages/${messageId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: newContent })
+            });
+            const result = await response.json();
+            if (result.success) {
+                await this.loadCurrentChatMessages();
+                this.showSuccess('Message edited');
+            } else {
+                this.showError('Failed to edit message');
+            }
+        } catch (error) {
+            console.error('Error editing message:', error);
+            this.showError('Failed to edit message');
+        }
     }
 
     copyStreamingMessage() {
@@ -1690,8 +1801,12 @@ function convertCurrentChatToPermanent() {
 
 function createCustomTemporaryChat() {
     if (chatInterface) {
-        chatInterface.createNewChat(true, 15); // Default to 15 minutes for custom
+        chatInterface.createNewChat(true, 15);
     }
+}
+
+function exportChat(format) {
+    chatInterface.exportChat(format);
 }
 
 // Initialize chat interface when page loads

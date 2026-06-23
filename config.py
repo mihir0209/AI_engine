@@ -706,6 +706,29 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
+
+    # Z AI / BigModel - Free models: glm-4.5-flash, glm-4.7-flash, glm-4.6v-flash (vision)
+    "zai": {
+        "id": 37, "priority": 6,
+        "api_keys": [os.getenv("ZAI_API_KEY")],
+        "endpoint": "https://bigmodel.cn/api/paas/v4/chat/completions",
+        "model_endpoint": "https://bigmodel.cn/api/paas/v4/models",
+        "model_endpoint_auth": True,
+        "model": "glm-4.7-flash",
+        "method": "POST",
+        "auth_type": "bearer",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": bool(os.getenv("ZAI_API_KEY")),
+        "rpm_limit": 30,
+        "daily_limit": 1000,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
 }
 
 ENGINE_SETTINGS = {

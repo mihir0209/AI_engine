@@ -89,6 +89,11 @@ MODEL_CAPABILITIES: Dict[str, Dict[str, ModelCapabilities]] = {
         "nvidia/nemotron-ultra-253b-vl": ModelCapabilities(vision=True, max_context_length=131072),
         "google/gemma-4-27b-it-bf16": ModelCapabilities(max_context_length=128000),
     },
+    "zai": {
+        "glm-4.7-flash": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+        "glm-4.5-flash": ModelCapabilities(vision=True, max_context_length=128000, supported_formats=["text", "image"]),
+        "glm-4.6v-flash": ModelCapabilities(vision=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
 }
 
 # ============================================
@@ -111,6 +116,7 @@ PROVIDER_CAPABILITIES: Dict[str, ProviderCapabilities] = {
     "pollinations": ProviderCapabilities(provider="pollinations", vision=False, max_context_length=4096, supported_formats=["text"]),
     "hermes": ProviderCapabilities(provider="hermes", vision=False, max_context_length=4096, supported_formats=["text"]),
     "longcat": ProviderCapabilities(provider="longcat", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "zai": ProviderCapabilities(provider="zai", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
     "hcnsec": ProviderCapabilities(provider="hcnsec", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
     "mimo": ProviderCapabilities(provider="mimo", vision=False, max_context_length=4096, supported_formats=["text"]),
     "paxsenix": ProviderCapabilities(provider="paxsenix", vision=False, max_context_length=4096, supported_formats=["text"]),

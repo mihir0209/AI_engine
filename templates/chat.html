@@ -52,7 +52,16 @@
                         </div>
                     </div>
 
-                    <!-- Chat List -->
+                    <!-- Search -->
+                    <div class="p-2 border-bottom">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control" id="chatSearchInput" 
+                                   placeholder="Search chats..." oninput="chatInterface.searchChats(this.value)">
+                        </div>
+                    </div>
+
+                    <!-- Chat Items -->
                     <div class="flex-grow-1 overflow-auto" id="chatList">
                         <div class="text-center p-3">
                             <div class="spinner-border spinner-border-sm text-primary" role="status">
@@ -116,6 +125,9 @@
                                 
                                 <!-- Chat Actions -->
                                 <div class="btn-group">
+                                    <button class="btn btn-outline-info btn-sm" onclick="exportChat('markdown')" title="Export as Markdown">
+                                        <i class="fas fa-download"></i>
+                                    </button>
                                     <button class="btn btn-outline-primary btn-sm" onclick="editChatTitle()" title="Edit Title">
                                         <i class="fas fa-edit"></i>
                                     </button>
