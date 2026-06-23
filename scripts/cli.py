@@ -69,7 +69,7 @@ def format_provider(name, config):
 
 def save_provider(name, config):
     """Save provider inside AI_CONFIGS dict"""
-    config_path = Path(__file__).parent / "config.py"
+    config_path = Path(__file__).parent.parent / "config.py"
     with open(config_path, 'r') as f:
         content = f.read()
 

@@ -21,6 +21,12 @@ from config import verbose_print
 IMAGE_REF_PATTERN = r'!\[([^\]]*)\]\(([^)]+)\)'
 FILE_REF_PATTERN = r'\[File: ([^\]]+)\]\(([^)]+)\)'
 
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+MAX_FILE_SIZE = 10 * 1024 * 1024
+ALLOWED_EXTENSIONS = {'.txt', '.md', '.json', '.csv', '.py', '.js', '.ts', '.html', '.css', '.yaml', '.yml', '.xml'}
+ALLOWED_IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
+
 # Global engine instance - will be set by server
 _global_engine = None
 

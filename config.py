@@ -632,7 +632,7 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "openai",
-        "enabled": bool(os.getenv("MISTRAL_API_KEY")),
+        "enabled": True,
         "rpm_limit": 60,
         "daily_limit": 50000,
         "current_key_index": 0,

@@ -171,13 +171,16 @@ class ConfigFetcher:
 
             dict_str = content[block_start:end]
 
-            # Execute just the dict definition with os and basic types
+            # Execute just the dict definition — only os.getenv allowed (no file/network access)
+            import types
+            safe_os = types.ModuleType("os")
+            safe_os.getenv = os.getenv
             safe_builtins = {
                 "True": True, "False": False, "None": None,
                 "int": int, "str": str, "float": float, "bool": bool,
                 "list": list, "dict": dict, "tuple": tuple,
             }
-            namespace = {"__builtins__": safe_builtins, "os": os}
+            namespace = {"__builtins__": safe_builtins, "os": safe_os}
             exec(f"AI_CONFIGS = {dict_str}", namespace)
             configs = namespace.get("AI_CONFIGS")
 

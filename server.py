@@ -1367,10 +1367,10 @@ async def discover_model_providers(model: str):
             }
 
         # Check cache first
-        if model not in engine.autodecide_cache or not engine._is_cache_valid(model):
+        if not engine._is_cache_valid(model):
             providers_with_model = engine._discover_model_providers(model)
         else:
-            providers_with_model = engine.autodecide_cache.get(model, [])
+            providers_with_model = shared_model_cache.find_providers_for_model(model) if shared_model_cache.is_cache_valid() else []
 
         # Format response
         provider_list = []
@@ -1484,7 +1484,7 @@ async def chat_page(request: Request):
 async def save_statistics_async():
     """Save statistics asynchronously"""
     try:
-        from statistics_manager import save_statistics_now
+        from core.statistics_manager import save_statistics_now
         save_statistics_now()
     except Exception as e:
         logger.warning(f"Failed to save statistics: {e}")
@@ -1570,30 +1570,10 @@ async def get_provider_health():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/capabilities")
-async def get_capabilities():
-    """Get provider capabilities (vision, tool calling, etc.)"""
-    return {"capabilities": capability_manager.get_all_capabilities()}
-
 @app.get("/api/capabilities/vision")
 async def get_vision_providers():
     """Get all providers that support vision"""
-    return {"providers": capability_manager.get_providers_with_vision()}
-
-@app.get("/api/capabilities/tool-calling")
-async def get_tool_calling_providers():
-    """Get all providers that support tool calling"""
-    return {"providers": capability_manager.get_providers_with_tool_calling()}
-
-@app.get("/api/capabilities/fast")
-async def get_fast_providers():
-    """Get fastest providers"""
-    return {"providers": capability_manager.get_fastest_providers()}
-
-@app.get("/api/capabilities/cheap")
-async def get_cheap_providers():
-    """Get cheapest providers"""
-    return {"providers": capability_manager.get_cheapest_providers()}
+    return {"providers": capability_manager.get_vision_providers()}
 
 @app.get("/api/cache/stats")
 async def get_cache_stats():
@@ -1916,7 +1896,7 @@ def main():
         verbose_print("🛑 Shutting down gracefully...")
         # Save statistics
         try:
-            from statistics_manager import save_statistics_now
+            from core.statistics_manager import save_statistics_now
             save_statistics_now()
         except:
             pass
