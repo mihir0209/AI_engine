@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-engine"
+version = "3.0.0"
+description = "Free AI inference router - 29 providers, OpenAI-compatible API, no API keys needed for self-hosted"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "AI Engine Contributors"}
+]
+keywords = ["ai", "llm", "openai", "inference", "router", "free-ai", "groq", "gemini"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests>=2.28.0",
+    "aiohttp>=3.8.0",
+    "python-dotenv>=0.19.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.0.0",
+    "prometheus-client>=0.17.0",
+    "slowapi>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/mihir0209/AI_engine"
+Documentation = "https://github.com/mihir0209/AI_engine/tree/main/docs"
+Repository = "https://github.com/mihir0209/AI_engine"
+Issues = "https://github.com/mihir0209/AI_engine/issues"
+
+[project.scripts]
+ai-engine = "server:main"
+
+[tool.setuptools.packages.find]
+include = ["core*", "chat_module*", "providers*"]
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

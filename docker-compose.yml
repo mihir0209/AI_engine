@@ -1,40 +1,15 @@
-version: '3.8'
-
 services:
-  # GPT4Free - Free AI inference proxy
-  g4f:
-    image: hlohaus789/g4f:latest
-    container_name: g4f
-    ports:
-      - "8080:8080"
-      - "7900:7900"  # VNC for provider logins
-    volumes:
-      - ./har_and_cookies:/app/har_and_cookies
-      - ./generated_media:/app/generated_media
-    shm_size: '2g'
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # AI Engine - Free provider router
   ai-engine:
     build: .
     container_name: ai-engine
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - G4F_ENDPOINT=http://g4f:8080/v1/chat/completions
-      - G4F_MODELS_ENDPOINT=http://g4f:8080/v1/models
       - CORS_ORIGINS=*
-    depends_on:
-      g4f:
-        condition: service_healthy
     volumes:
       - ./data:/app/data
-      - ./logs:/app/logs
       - ./uploads:/app/uploads
     restart: unless-stopped
     healthcheck:
@@ -43,9 +18,21 @@ services:
       timeout: 10s
       retries: 3
 
-volumes:
-  har_and_cookies:
-  generated_media:
-  data:
-  logs:
-  uploads:
+  # Optional: GPT4Free self-hosted provider
+  # Uncomment below to enable GPT4Free backend
+  #
+  # g4f:
+  #   image: hlohaus789/g4f:latest
+  #   container_name: g4f
+  #   ports:
+  #     - "8080:8080"
+  #     - "7900:7900"
+  #   volumes:
+  #     - ./har_and_cookies:/app/har_and_cookies
+  #   shm_size: '2g'
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
