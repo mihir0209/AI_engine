@@ -1,8 +1,11 @@
 """
 Provider and model capabilities detection and management.
 Tracks vision, tool calling, streaming, etc. at BOTH provider and model level.
+Loads pre-computed cache from data/capabilities_cache.json for fast startup.
 """
-from typing import Dict, List, Optional, Set
+import json
+import os
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 
@@ -127,6 +130,45 @@ class CapabilityManager:
         self.model_caps: Dict[str, Dict[str, ModelCapabilities]] = dict(MODEL_CAPABILITIES)
         self.provider_caps: Dict[str, ProviderCapabilities] = dict(PROVIDER_CAPABILITIES)
         self.custom_caps: Dict[str, ProviderCapabilities] = {}
+        self._cache = self._load_cache()
+
+    def _load_cache(self) -> Dict:
+        """Load pre-computed capabilities cache"""
+        cache_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'capabilities_cache.json')
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {}
+
+    def _rebuild_cache(self):
+        """Rebuild and save the capabilities cache"""
+        cache = {
+            'vision_providers': self.get_vision_providers(),
+            'provider_capabilities': {},
+            'model_capabilities': {},
+            'image_compatibility': {},
+        }
+        for name, caps in self.provider_caps.items():
+            cache['provider_capabilities'][name] = {
+                'vision': caps.vision, 'tool_calling': caps.tool_calling,
+                'streaming': caps.streaming, 'max_context_length': caps.max_context_length,
+                'supported_formats': caps.supported_formats,
+            }
+        for provider, models in self.model_caps.items():
+            for model_name, caps in models.items():
+                cache['model_capabilities'][f'{provider}/{model_name}'] = {
+                    'vision': caps.vision, 'tool_calling': caps.tool_calling,
+                    'streaming': caps.streaming, 'max_context_length': caps.max_context_length,
+                    'supported_formats': caps.supported_formats,
+                }
+        cache_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'capabilities_cache.json')
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, 'w') as f:
+            json.dump(cache, f, indent=2)
+        self._cache = cache
 
     def get_model_capabilities(self, provider: str, model: str) -> Optional[ModelCapabilities]:
         """Get capabilities for a specific model under a provider"""
