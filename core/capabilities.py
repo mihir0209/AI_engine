@@ -1,156 +1,175 @@
 """
-Provider capabilities detection and management
-Detects what features each provider supports
+Provider and model capabilities detection and management.
+Tracks vision, tool calling, streaming, etc. at BOTH provider and model level.
 """
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from dataclasses import dataclass, field
 
 
 @dataclass
+class ModelCapabilities:
+    """Capabilities of a specific model"""
+    vision: bool = False
+    tool_calling: bool = False
+    streaming: bool = True
+    embeddings: bool = False
+    max_context_length: int = 4096
+    supported_formats: List[str] = field(default_factory=lambda: ["text"])
+
+
+@dataclass
 class ProviderCapabilities:
-    """Capabilities of a provider"""
+    """Capabilities of a provider (fallback when model-level unknown)"""
     provider: str
     vision: bool = False
     tool_calling: bool = False
-    streaming: bool = False
+    streaming: bool = True
     embeddings: bool = False
-    function_calling: bool = False
     max_context_length: int = 4096
     supported_formats: List[str] = field(default_factory=lambda: ["text"])
-    cost_tier: str = "medium"  # low, medium, high
-    speed_tier: str = "medium"  # slow, medium, fast
 
 
-# Pre-configured capabilities for known providers
+# ============================================
+# MODEL-LEVEL CAPABILITY DATABASE
+# ============================================
+# Only models that actually support vision are marked vision=True
+# If a model is not listed, it's treated as text-only (conservative)
+
+MODEL_CAPABILITIES: Dict[str, Dict[str, ModelCapabilities]] = {
+    "gemini": {
+        "gemini-2.5-flash": ModelCapabilities(vision=True, tool_calling=True, max_context_length=1000000, supported_formats=["text", "image"]),
+        "gemini-2.5-flash-lite": ModelCapabilities(vision=True, max_context_length=1000000, supported_formats=["text", "image"]),
+        "gemini-2.0-flash": ModelCapabilities(vision=True, tool_calling=True, max_context_length=1000000, supported_formats=["text", "image"]),
+        "gemini-2.0-flash-lite": ModelCapabilities(vision=True, max_context_length=1000000, supported_formats=["text", "image"]),
+        "gemini-1.5-flash": ModelCapabilities(vision=True, tool_calling=True, max_context_length=1000000, supported_formats=["text", "image"]),
+        "gemini-1.5-pro": ModelCapabilities(vision=True, tool_calling=True, max_context_length=2000000, supported_formats=["text", "image"]),
+    },
+    "groq": {
+        "llama-3.3-70b-versatile": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "llama-3.1-8b-instant": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "mixtral-8x7b-32768": ModelCapabilities(max_context_length=32768),
+        "gemma2-9b-it": ModelCapabilities(max_context_length=8192),
+        "meta-llama/llama-4-scout-17b-16e-instruct": ModelCapabilities(vision=True, tool_calling=True, max_context_length=131072),
+    },
+    "nvidia": {
+        "nvidia/nemotron-3-nano-30b-a3b": ModelCapabilities(tool_calling=True, max_context_length=4096),
+        "meta/llama-3.1-8b-instruct": ModelCapabilities(max_context_length=4096),
+        "mistralai/mistral-7b-instruct-v0.3": ModelCapabilities(max_context_length=4096),
+    },
+    "openrouter": {
+        "google/gemini-2.5-flash-preview": ModelCapabilities(vision=True, tool_calling=True, max_context_length=1000000),
+        "meta-llama/llama-4-maverick-17b-128e-instruct": ModelCapabilities(vision=True, tool_calling=True, max_context_length=1000000),
+        "openai/gpt-4o-mini": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000),
+    },
+    "cloudflare": {
+        "meta/llama-3.1-8b-instruct-fp8": ModelCapabilities(max_context_length=8192),
+        "meta/llama-3-8b-instruct": ModelCapabilities(max_context_length=8192),
+    },
+    "cerebras": {
+        "llama-3.3-70b": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "llama-3.1-8b": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "zai-glm-4.7": ModelCapabilities(max_context_length=128000),
+        "gpt-oss-120b": ModelCapabilities(max_context_length=128000),
+    },
+    "cohere": {
+        "command-r-plus": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "command-r": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "command": ModelCapabilities(max_context_length=4096),
+    },
+    "mistral": {
+        "mistral-large-latest": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "mistral-small-latest": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "pixtral-large-latest": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000),
+    },
+    "kilo": {
+        "kilo-auto/free": ModelCapabilities(max_context_length=128000),
+        "nvidia/nemotron-ultra-253b-vl": ModelCapabilities(vision=True, max_context_length=131072),
+        "google/gemma-4-27b-it-bf16": ModelCapabilities(max_context_length=128000),
+    },
+}
+
+# ============================================
+# PROVIDER-LEVEL FALLBACKS
+# ============================================
 PROVIDER_CAPABILITIES: Dict[str, ProviderCapabilities] = {
-    "openai": ProviderCapabilities(
-        provider="openai",
-        vision=True,
-        tool_calling=True,
-        streaming=True,
-        embeddings=True,
-        function_calling=True,
-        max_context_length=128000,
-        supported_formats=["text", "image", "audio"],
-        cost_tier="high",
-        speed_tier="fast"
-    ),
-    "anthropic": ProviderCapabilities(
-        provider="anthropic",
-        vision=True,
-        tool_calling=True,
-        streaming=True,
-        embeddings=False,
-        function_calling=True,
-        max_context_length=200000,
-        supported_formats=["text", "image"],
-        cost_tier="high",
-        speed_tier="medium"
-    ),
-    "gemini": ProviderCapabilities(
-        provider="gemini",
-        vision=True,
-        tool_calling=True,
-        streaming=True,
-        embeddings=True,
-        function_calling=True,
-        max_context_length=1000000,
-        supported_formats=["text", "image", "video", "audio"],
-        cost_tier="medium",
-        speed_tier="fast"
-    ),
-    "groq": ProviderCapabilities(
-        provider="groq",
-        vision=False,
-        tool_calling=True,
-        streaming=True,
-        embeddings=False,
-        function_calling=True,
-        max_context_length=32000,
-        supported_formats=["text"],
-        cost_tier="low",
-        speed_tier="fast"
-    ),
-    "cloudflare": ProviderCapabilities(
-        provider="cloudflare",
-        vision=False,
-        tool_calling=False,
-        streaming=True,
-        embeddings=True,
-        function_calling=False,
-        max_context_length=8192,
-        supported_formats=["text"],
-        cost_tier="low",
-        speed_tier="fast"
-    ),
+    "gemini": ProviderCapabilities(provider="gemini", vision=True, tool_calling=True, max_context_length=1000000, supported_formats=["text", "image"]),
+    "groq": ProviderCapabilities(provider="groq", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
+    "nvidia": ProviderCapabilities(provider="nvidia", vision=False, tool_calling=True, max_context_length=4096, supported_formats=["text"]),
+    "openrouter": ProviderCapabilities(provider="openrouter", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "cloudflare": ProviderCapabilities(provider="cloudflare", vision=False, max_context_length=8192, supported_formats=["text"]),
+    "cerebras": ProviderCapabilities(provider="cerebras", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
+    "cohere": ProviderCapabilities(provider="cohere", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
+    "mistral": ProviderCapabilities(provider="mistral", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "huggingface": ProviderCapabilities(provider="huggingface", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "kilo": ProviderCapabilities(provider="kilo", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "github": ProviderCapabilities(provider="github", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "vercel": ProviderCapabilities(provider="vercel", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "opencode_zen": ProviderCapabilities(provider="opencode_zen", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "pollinations": ProviderCapabilities(provider="pollinations", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "hermes": ProviderCapabilities(provider="hermes", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "longcat": ProviderCapabilities(provider="longcat", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "hcnsec": ProviderCapabilities(provider="hcnsec", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "mimo": ProviderCapabilities(provider="mimo", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "paxsenix": ProviderCapabilities(provider="paxsenix", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "llm7": ProviderCapabilities(provider="llm7", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "g4f_groq": ProviderCapabilities(provider="g4f_groq", vision=False, max_context_length=128000, supported_formats=["text"]),
+    "g4f_gemini": ProviderCapabilities(provider="g4f_gemini", vision=True, max_context_length=1000000, supported_formats=["text", "image"]),
+    "g4f_ollama": ProviderCapabilities(provider="g4f_ollama", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "g4f_pollinations": ProviderCapabilities(provider="g4f_pollinations", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "g4f_nvidia": ProviderCapabilities(provider="g4f_nvidia", vision=False, max_context_length=4096, supported_formats=["text"]),
 }
 
 
 class CapabilityManager:
-    """Manages provider capabilities"""
+    """Manages provider and model capabilities with vision detection"""
 
     def __init__(self):
-        self.capabilities: Dict[str, ProviderCapabilities] = dict(PROVIDER_CAPABILITIES)
-        self.custom_capabilities: Dict[str, ProviderCapabilities] = {}
+        self.model_caps: Dict[str, Dict[str, ModelCapabilities]] = dict(MODEL_CAPABILITIES)
+        self.provider_caps: Dict[str, ProviderCapabilities] = dict(PROVIDER_CAPABILITIES)
+        self.custom_caps: Dict[str, ProviderCapabilities] = {}
 
-    def get_capabilities(self, provider: str) -> Optional[ProviderCapabilities]:
-        """Get capabilities for a provider"""
-        return self.custom_capabilities.get(provider) or self.capabilities.get(provider)
+    def get_model_capabilities(self, provider: str, model: str) -> Optional[ModelCapabilities]:
+        """Get capabilities for a specific model under a provider"""
+        provider_models = self.model_caps.get(provider, {})
+        if model in provider_models:
+            return provider_models[model]
+        for pattern, caps in provider_models.items():
+            if model and pattern in model:
+                return caps
+        return None
 
-    def set_capabilities(self, provider: str, capabilities: ProviderCapabilities):
-        """Set custom capabilities for a provider"""
-        self.custom_capabilities[provider] = capabilities
+    def get_provider_capabilities(self, provider: str) -> Optional[ProviderCapabilities]:
+        """Get provider-level capabilities (fallback)"""
+        return self.custom_caps.get(provider) or self.provider_caps.get(provider)
 
-    def supports_vision(self, provider: str) -> bool:
-        """Check if provider supports vision"""
-        caps = self.get_capabilities(provider)
-        return caps.vision if caps else False
+    def supports_vision(self, provider: str, model: str = None) -> bool:
+        """Check if a provider/model supports vision/image input"""
+        if model:
+            model_caps = self.get_model_capabilities(provider, model)
+            if model_caps:
+                return model_caps.vision
+        provider_caps = self.get_provider_capabilities(provider)
+        return provider_caps.vision if provider_caps else False
 
-    def supports_tool_calling(self, provider: str) -> bool:
-        """Check if provider supports tool calling"""
-        caps = self.get_capabilities(provider)
-        return caps.tool_calling if caps else False
+    def supports_tool_calling(self, provider: str, model: str = None) -> bool:
+        if model:
+            model_caps = self.get_model_capabilities(provider, model)
+            if model_caps:
+                return model_caps.tool_calling
+        provider_caps = self.get_provider_capabilities(provider)
+        return provider_caps.tool_calling if provider_caps else False
 
-    def supports_streaming(self, provider: str) -> bool:
-        """Check if provider supports streaming"""
-        caps = self.get_capabilities(provider)
-        return caps.streaming if caps else False
+    def get_max_context(self, provider: str, model: str = None) -> int:
+        if model:
+            model_caps = self.get_model_capabilities(provider, model)
+            if model_caps:
+                return model_caps.max_context_length
+        provider_caps = self.get_provider_capabilities(provider)
+        return provider_caps.max_context_length if provider_caps else 4096
 
-    def get_providers_with_vision(self) -> List[str]:
-        """Get all providers that support vision"""
-        return [name for name, caps in self.capabilities.items() if caps.vision]
-
-    def get_providers_with_tool_calling(self) -> List[str]:
-        """Get all providers that support tool calling"""
-        return [name for name, caps in self.capabilities.items() if caps.tool_calling]
-
-    def get_fastest_providers(self, top_n: int = 3) -> List[str]:
-        """Get fastest providers"""
-        speed_order = {"fast": 0, "medium": 1, "slow": 2}
-        sorted_providers = sorted(
-            self.capabilities.items(),
-            key=lambda x: speed_order.get(x[1].speed_tier, 1)
-        )
-        return [name for name, _ in sorted_providers[:top_n]]
-
-    def get_cheapest_providers(self, top_n: int = 3) -> List[str]:
-        """Get cheapest providers"""
-        cost_order = {"low": 0, "medium": 1, "high": 2}
-        sorted_providers = sorted(
-            self.capabilities.items(),
-            key=lambda x: cost_order.get(x[1].cost_tier, 1)
-        )
-        return [name for name, _ in sorted_providers[:top_n]]
-
-    def get_provider_for_task(self, task_type: str) -> List[str]:
-        """Get best providers for a task type"""
-        recommendations = {
-            "vision": self.get_providers_with_vision(),
-            "tool_calling": self.get_providers_with_tool_calling(),
-            "fast": self.get_fastest_providers(),
-            "cheap": self.get_cheapest_providers(),
-        }
-        return recommendations.get(task_type, list(self.capabilities.keys()))
+    def get_vision_providers(self) -> List[str]:
+        """Get all providers that support vision at provider level"""
+        return [name for name, caps in self.provider_caps.items() if caps.vision]
 
     def get_all_capabilities(self) -> Dict[str, Dict]:
         """Get all provider capabilities"""
@@ -159,12 +178,44 @@ class CapabilityManager:
                 "vision": caps.vision,
                 "tool_calling": caps.tool_calling,
                 "streaming": caps.streaming,
-                "embeddings": caps.embeddings,
                 "max_context_length": caps.max_context_length,
-                "cost_tier": caps.cost_tier,
-                "speed_tier": caps.speed_tier
+                "supported_formats": caps.supported_formats,
             }
-            for name, caps in self.capabilities.items()
+            for name, caps in self.provider_caps.items()
+        }
+
+    def get_model_list(self) -> List[Dict]:
+        """Get all known models with their capabilities"""
+        result = []
+        for provider, models in self.model_caps.items():
+            for model_name, caps in models.items():
+                result.append({
+                    "provider": provider,
+                    "model": model_name,
+                    "vision": caps.vision,
+                    "tool_calling": caps.tool_calling,
+                    "max_context_length": caps.max_context_length,
+                })
+        return result
+
+    def check_image_compatibility(self, provider: str, model: str = None) -> Dict:
+        """Check if a provider/model can handle image uploads.
+        Returns: {compatible: bool, reason: str, suggestions: list}
+        """
+        vision_ok = self.supports_vision(provider, model)
+
+        if vision_ok:
+            return {"compatible": True, "reason": "Model supports vision", "suggestions": []}
+
+        suggestions = []
+        for prov_name, prov_caps in self.provider_caps.items():
+            if prov_caps.vision:
+                suggestions.append(prov_name)
+
+        return {
+            "compatible": False,
+            "reason": f"'{provider}' with model '{model or 'default'}' does not support image input",
+            "suggestions": suggestions[:5],
         }
 
 
@@ -172,99 +223,35 @@ class ErrorMessageManager:
     """Manages user-friendly error messages"""
 
     ERROR_MESSAGES = {
-        "rate_limit": {
-            "message": "Rate limit exceeded. Please wait before retrying.",
-            "suggestion": "Try a different provider or wait a few minutes.",
-            "code": "RATE_LIMIT_EXCEEDED"
-        },
-        "auth_error": {
-            "message": "Authentication failed. Invalid or missing API key.",
-            "suggestion": "Check your API key configuration in .env file.",
-            "code": "AUTH_FAILED"
-        },
-        "quota_exceeded": {
-            "message": "Daily quota exceeded for this provider.",
-            "suggestion": "Try a different provider or wait until quota resets.",
-            "code": "QUOTA_EXCEEDED"
-        },
-        "service_unavailable": {
-            "message": "Provider service is currently unavailable.",
-            "suggestion": "Try again later or use a different provider.",
-            "code": "SERVICE_UNAVAILABLE"
-        },
-        "timeout": {
-            "message": "Request timed out.",
-            "suggestion": "Try a shorter prompt or use a faster provider.",
-            "code": "TIMEOUT"
-        },
-        "empty_response": {
-            "message": "Provider returned an empty response.",
-            "suggestion": "Try rephrasing your message.",
-            "code": "EMPTY_RESPONSE"
-        },
-        "model_not_found": {
-            "message": "Requested model not found.",
-            "suggestion": "Check available models with GET /v1/models.",
-            "code": "MODEL_NOT_FOUND"
-        },
-        "no_providers": {
-            "message": "No providers available.",
-            "suggestion": "Configure at least one provider in config.py.",
-            "code": "NO_PROVIDERS"
-        },
-        "provider_not_found": {
-            "message": "Provider not found.",
-            "suggestion": "Check available providers with GET /api/providers.",
-            "code": "PROVIDER_NOT_FOUND"
-        },
-        "chat_not_found": {
-            "message": "Chat not found.",
-            "suggestion": "Check the chat ID or create a new chat.",
-            "code": "CHAT_NOT_FOUND"
-        },
-        "message_not_found": {
-            "message": "Message not found.",
-            "suggestion": "Check the message ID.",
-            "code": "MESSAGE_NOT_FOUND"
-        },
-        "file_too_large": {
-            "message": "File exceeds maximum size limit (10MB).",
-            "suggestion": "Compress or split the file.",
-            "code": "FILE_TOO_LARGE"
-        },
-        "invalid_file_type": {
-            "message": "File type not supported.",
-            "suggestion": "Use supported formats: .txt, .md, .json, .py, .js, .ts, .html, .css, .yaml, .png, .jpg",
-            "code": "INVALID_FILE_TYPE"
-        },
-        "circuit_open": {
-            "message": "Service temporarily unavailable due to repeated failures.",
-            "suggestion": "Wait a moment and try again.",
-            "code": "CIRCUIT_OPEN"
-        }
+        "rate_limit": {"message": "Rate limit exceeded. Please wait before retrying.", "suggestion": "Try a different provider or wait a few minutes.", "code": "RATE_LIMIT_EXCEEDED"},
+        "auth_error": {"message": "Authentication failed. Invalid or missing API key.", "suggestion": "Check your API key configuration in .env file.", "code": "AUTH_FAILED"},
+        "quota_exceeded": {"message": "Daily quota exceeded for this provider.", "suggestion": "Try a different provider or wait until quota resets.", "code": "QUOTA_EXCEEDED"},
+        "service_unavailable": {"message": "Provider service is currently unavailable.", "suggestion": "Try again later or use a different provider.", "code": "SERVICE_UNAVAILABLE"},
+        "timeout": {"message": "Request timed out.", "suggestion": "Try a shorter prompt or use a faster provider.", "code": "TIMEOUT"},
+        "empty_response": {"message": "Provider returned an empty response.", "suggestion": "Try rephrasing your message.", "code": "EMPTY_RESPONSE"},
+        "model_not_found": {"message": "Requested model not found.", "suggestion": "Check available models with GET /v1/models.", "code": "MODEL_NOT_FOUND"},
+        "no_providers": {"message": "No providers available.", "suggestion": "Configure at least one provider in config.py.", "code": "NO_PROVIDERS"},
+        "no_vision_support": {"message": "This model does not support image input.", "suggestion": "Switch to a vision-capable provider (Gemini, OpenRouter, Mistral).", "code": "NO_VISION_SUPPORT"},
+        "provider_not_found": {"message": "Provider not found.", "suggestion": "Check available providers with GET /api/providers.", "code": "PROVIDER_NOT_FOUND"},
+        "chat_not_found": {"message": "Chat not found.", "suggestion": "Check the chat ID or create a new chat.", "code": "CHAT_NOT_FOUND"},
+        "message_not_found": {"message": "Message not found.", "suggestion": "Check the message ID.", "code": "MESSAGE_NOT_FOUND"},
+        "file_too_large": {"message": "File exceeds maximum size limit (10MB).", "suggestion": "Compress or split the file.", "code": "FILE_TOO_LARGE"},
+        "invalid_file_type": {"message": "File type not supported.", "suggestion": "Use supported formats: .txt, .md, .json, .py, .js, .ts, .html, .css, .yaml, .png, .jpg", "code": "INVALID_FILE_TYPE"},
+        "circuit_open": {"message": "Service temporarily unavailable due to repeated failures.", "suggestion": "Wait a moment and try again.", "code": "CIRCUIT_OPEN"},
     }
 
     @classmethod
     def get_error(cls, error_type: str, details: str = None) -> Dict:
-        """Get formatted error message"""
-        error_info = cls.ERROR_MESSAGES.get(error_type, {
-            "message": f"Unknown error: {error_type}",
-            "suggestion": "Please try again or contact support.",
-            "code": "UNKNOWN_ERROR"
-        })
-
+        error_info = cls.ERROR_MESSAGES.get(error_type, {"message": f"Unknown error: {error_type}", "suggestion": "Please try again or contact support.", "code": "UNKNOWN_ERROR"})
         result = dict(error_info)
         if details:
             result["details"] = details
-
         return result
 
     @classmethod
     def get_all_errors(cls) -> Dict:
-        """Get all error messages"""
         return cls.ERROR_MESSAGES
 
 
-# Global instances
 capability_manager = CapabilityManager()
 error_message_manager = ErrorMessageManager()

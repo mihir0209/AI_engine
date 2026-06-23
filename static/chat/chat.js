@@ -81,10 +81,41 @@ class ChatInterface {
         });
     }
 
-    handleFileSelect(e) {
+    async checkImageCompatibility() {
+        if (!this.pendingFile || !this.pendingFile.type.startsWith('image/')) return true;
+        const provider = document.getElementById('providerSelect')?.value || '';
+        const model = document.getElementById('modelSelect')?.value || '';
+        try {
+            const params = new URLSearchParams();
+            if (model) params.set('model', model);
+            const resp = await fetch(`/api/capabilities/check-image/${provider}?${params}`);
+            const result = await resp.json();
+            if (!result.compatible) {
+                const suggestions = result.suggestions?.length ? '\nTry: ' + result.suggestions.join(', ') : '';
+                this.showAlert('warning', `${result.reason}${suggestions}`);
+                return false;
+            }
+        } catch (e) {
+            console.warn('Vision check failed, allowing upload:', e);
+        }
+        return true;
+    }
+
+    async handleFileSelect(e) {
         const file = e.target.files?.[0];
         if (!file) return;
         this.pendingFile = file;
+
+        if (file.type.startsWith('image/')) {
+            const compatible = await this.checkImageCompatibility();
+            if (!compatible) {
+                this.pendingFile = null;
+                const fileInput = document.getElementById('fileInput');
+                if (fileInput) fileInput.value = '';
+                return;
+            }
+        }
+
         const preview = document.getElementById('uploadPreview');
         const nameEl = document.getElementById('uploadFileName');
         const sizeEl = document.getElementById('uploadFileSize');
@@ -748,6 +779,10 @@ class ChatInterface {
                 const streamingErr = document.getElementById('streamingResponse');
                 if (streamingErr) streamingErr.remove();
                 this.showError('AI Error: ' + data.content);
+                break;
+
+            case 'vision_warning':
+                this.showAlert('warning', '⚠️ ' + data.message);
                 break;
                 
             case 'pong':

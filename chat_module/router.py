@@ -17,6 +17,9 @@ from .db import ChatDB
 from .websocket_manager import WebSocketManager
 from config import verbose_print
 
+IMAGE_REF_PATTERN = r'!\[([^\]]*)\]\(([^)]+)\)'
+FILE_REF_PATTERN = r'\[File: ([^\]]+)\]\(([^)]+)\)'
+
 logger = logging.getLogger(__name__)
 
 # Upload configuration
@@ -106,6 +109,32 @@ class MessageResponse(BaseModel):
 # Initialize components
 chat_db = ChatDB()
 websocket_manager = WebSocketManager()
+
+import re
+
+def _check_vision_and_strip_images(formatted_messages: list, provider: str, model: str = None) -> tuple:
+    """Check if provider supports vision. If not, strip image references from messages.
+    Returns (messages, has_images, vision_warning)
+    """
+    has_images = any(re.search(IMAGE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
+    if not has_images:
+        return formatted_messages, False, None
+
+    from core.capabilities import capability_manager
+    if capability_manager.supports_vision(provider or '', model):
+        return formatted_messages, True, None
+
+    stripped = []
+    for msg in formatted_messages:
+        content = msg.get('content', '')
+        if re.search(IMAGE_REF_PATTERN, content):
+            content = re.sub(IMAGE_REF_PATTERN, '[Image attached - not supported by current model]', content)
+        stripped.append({**msg, 'content': content})
+
+    vision_providers = capability_manager.get_vision_providers()
+    warning = f"Image removed: {provider or 'current provider'} does not support vision. Use: {', '.join(vision_providers[:3])}"
+
+    return stripped, True, warning
 
 # Background task for cleaning up temporary chats
 async def cleanup_expired_temporary_chats():
@@ -751,6 +780,9 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
+        formatted_messages, has_images, vision_warning = _check_vision_and_strip_images(
+            formatted_messages, provider, model)
+
         ai = get_global_engine()
         start_time = time.time()
 
@@ -767,18 +799,20 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         response_time = time.time() - start_time
 
         if result.success:
-            # Save assistant message
+            metadata = {
+                "provider": result.provider_used,
+                "model": result.model_used,
+                "response_time": response_time,
+                "timestamp": datetime.now().isoformat()
+            }
+            if vision_warning:
+                metadata["vision_warning"] = vision_warning
             chat_db.add_message(
                 chat_id=chat_id,
                 role="assistant",
                 content=result.content,
-                metadata={
-                    "provider": result.provider_used,
-                    "model": result.model_used,
-                    "response_time": response_time,
-                    "timestamp": datetime.now().isoformat()
-                },
-                tokens=len(result.content) // 4,  # Rough estimate
+                metadata=metadata,
+                tokens=len(result.content) // 4,
                 response_to=user_message_id
             )
         else:
@@ -828,7 +862,13 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
+        formatted_messages, has_images, vision_warning = _check_vision_and_strip_images(
+            formatted_messages, provider, model)
+
         force_provider_setting = chat.get('force_provider', False) if chat else False
+
+        if vision_warning:
+            await websocket.send_text(json.dumps({"type": "vision_warning", "message": vision_warning}))
 
         await websocket.send_text(json.dumps({"type": "ai_thinking", "provider": provider, "model": model}))
 

@@ -818,6 +818,20 @@ async def get_providers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/capabilities")
+async def get_capabilities():
+    """Get provider and model capabilities"""
+    return {
+        "providers": capability_manager.get_all_capabilities(),
+        "vision_providers": capability_manager.get_vision_providers(),
+        "models": capability_manager.get_model_list(),
+    }
+
+@app.get("/api/capabilities/check-image/{provider}")
+async def check_image_compatibility(provider: str, model: str = None):
+    """Check if a provider/model supports image uploads"""
+    return capability_manager.check_image_compatibility(provider, model)
+
 @app.post("/api/providers/{provider_name}/toggle")
 async def toggle_provider(provider_name: str, request: Request, x_api_key: str = Header(None, alias="X-API-Key")):
     """Toggle a provider's enabled status (requires API key)"""
