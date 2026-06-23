@@ -1586,6 +1586,50 @@ async def get_sla_status():
     """Get SLA monitoring status"""
     return sla_monitor.get_status()
 
+@app.post("/api/health/{provider_name}/ping")
+async def ping_provider(provider_name: str):
+    """Actually ping a provider to check if it's alive (sends a minimal request)"""
+    import time as _time
+    if provider_name not in AI_CONFIGS:
+        raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+    config = AI_CONFIGS[provider_name]
+    endpoint = config.get("endpoint", "")
+    if not endpoint:
+        return {"provider": provider_name, "status": "no_endpoint", "alive": False}
+
+    api_keys = [k for k in config.get("api_keys", []) if k]
+    headers = {"Content-Type": "application/json"}
+    auth_type = config.get("auth_type")
+    if auth_type in ("bearer", "bearer_lowercase") and api_keys:
+        headers["Authorization"] = f"Bearer {api_keys[0]}"
+
+    model = config.get("model", "gpt-4")
+    payload = {"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 5}
+
+    start = _time.time()
+    try:
+        import requests as _requests
+        resp = _requests.post(endpoint, json=payload, headers=headers, timeout=15)
+        elapsed = _time.time() - start
+        alive = resp.status_code == 200
+        return {
+            "provider": provider_name,
+            "alive": alive,
+            "status_code": resp.status_code,
+            "latency_ms": round(elapsed * 1000),
+            "error": None if alive else resp.text[:200],
+        }
+    except Exception as e:
+        elapsed = _time.time() - start
+        return {
+            "provider": provider_name,
+            "alive": False,
+            "status_code": None,
+            "latency_ms": round(elapsed * 1000),
+            "error": str(e)[:200],
+        }
+
 @app.get("/api/health/providers")
 async def get_provider_health_status():
     """Get provider health monitoring status"""

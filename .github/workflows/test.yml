@@ -30,6 +30,19 @@ jobs:
       run: |
         ruff check . --select=E,F,W --ignore=E501 || true
 
+    - name: Validate config
+      run: |
+        python -c "
+        from config import AI_CONFIGS
+        ids = [c['id'] for c in AI_CONFIGS.values()]
+        assert len(ids) == len(set(ids)), f'Duplicate IDs: {[i for i in ids if ids.count(i) > 1]}'
+        for name, c in AI_CONFIGS.items():
+            assert 'endpoint' in c, f'{name}: missing endpoint'
+            assert 'model' in c, f'{name}: missing model'
+            assert 'priority' in c, f'{name}: missing priority'
+        print(f'Config OK: {len(AI_CONFIGS)} providers, no issues')
+        "
+
     - name: Run tests
       run: |
         pytest tests/ -v --tb=short -x
