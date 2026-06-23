@@ -45,9 +45,9 @@
 
 | Provider | Models | Signup |
 |----------|--------|--------|
-| **Kimi (hcnsec)** | Kimi-K2.6 | Contact provider |
-| **LLM7** | Various | [llm7.io](https://llm7.io) |
-| **PaxSenix** | DeepSeek-R1 | Contact provider |
+| **hcnsec** | [Various](https://api.hcnsec.cn/pricing) | [api.hcnsec.cn](https://api.hcnsec.cn) |
+| **LLM7** | [Various](https://docs.llm7.io/guides/models) | [llm7.io](https://llm7.io) |
+| **PaxSenix** | [Various](https://api.paxsenix.org/v1/models) | [api.paxsenix.org](https://api.paxsenix.org) |
 
 ### Self-Hosted Options
 
