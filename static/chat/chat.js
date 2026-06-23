@@ -744,6 +744,9 @@ class ChatInterface {
                 
             case 'ai_error':
                 this.hideTypingIndicator();
+                this.messageBuffer = '';
+                const streamingErr = document.getElementById('streamingResponse');
+                if (streamingErr) streamingErr.remove();
                 this.showError('AI Error: ' + data.content);
                 break;
                 
@@ -763,6 +766,7 @@ class ChatInterface {
         
         if (!content && !this.pendingFile) return;
         if (!this.currentChatId) return;
+        if (this.isAIResponding) return;
 
         // Upload file first if one is pending
         let fileInfo = null;

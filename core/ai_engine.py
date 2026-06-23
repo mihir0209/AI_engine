@@ -865,16 +865,15 @@ class AI_engine:
                     
                     available.append((provider_name, config))
 
-        # If all providers are unavailable, try anyway (last resort)
+        # If all providers are unavailable, try anyway (last resort - try all enabled providers)
         if not available:
             for provider_name in provider_order:
                 if provider_name in self.providers:
                     config = self.providers[provider_name]
                     if config.get('enabled', True):
                         available.append((provider_name, config))
-                        if self.verbose:
-                            verbose_print(f"⚠️ All providers unavailable, trying {provider_name}", self.verbose)
-                        break
+            if available and self.verbose:
+                verbose_print(f"⚠️ All providers unavailable, trying {len(available)} as last resort", self.verbose)
 
         return available
 

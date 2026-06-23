@@ -1272,32 +1272,32 @@ async def test_model(request: Request):
         response_time = (end_time - start_time).total_seconds()
 
         if result.success:
-            return {
+            return JSONResponse(status_code=200, content={
                 'success': True,
                 'provider': result.provider_used,
                 'model': result.model_used or model_name,
                 'response': result.content[:200] + "..." if len(result.content) > 200 else result.content,
                 'response_time': round(response_time, 2),
                 'timestamp': start_time.isoformat()
-            }
+            })
         else:
-            return {
+            return JSONResponse(status_code=502, content={
                 'success': False,
                 'provider': provider_name,
                 'model': model_name,
                 'error': result.error_message,
                 'response_time': round(response_time, 2),
                 'timestamp': start_time.isoformat()
-            }
+            })
 
     except Exception as e:
-        return {
+        return JSONResponse(status_code=500, content={
             'success': False,
             'provider': provider_name if 'provider_name' in locals() else 'unknown',
             'model': model_name if 'model_name' in locals() else 'unknown',
             'error': str(e),
             'timestamp': datetime.now().isoformat()
-        }
+        })
 
 # Autodecide API Endpoints
 @app.get("/api/autodecide/{model}")
