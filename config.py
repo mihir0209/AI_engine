@@ -363,10 +363,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # === OpenCode Zen (Free models available) ===
     "opencode_zen": {
-        "id": 31, "priority": 14,
+        "id": 31,
+        "priority": 14,
         "api_keys": [None],
         "endpoint": "https://opencode.ai/zen/v1/chat/completions",
         "model_endpoint": "https://opencode.ai/zen/v1/models",
@@ -386,10 +386,10 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # Kilo AI - Free tier: auto-routes to free models
     "kilo": {
-        "id": 32, "priority": 15,
+        "id": 32,
+        "priority": 15,
         "api_keys": [os.getenv("KILO_API_KEY")],
         "endpoint": "https://api.kilo.ai/api/gateway/v1/chat/completions",
         "model_endpoint": "https://api.kilo.ai/api/gateway/v1/models",
@@ -409,7 +409,6 @@ AI_CONFIGS = {
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
-
     # === USER CUSTOM PROVIDERS ===
     "hcnsec": {
         "id": 26,
@@ -671,6 +670,28 @@ AI_CONFIGS = {
         "model_endpoint": None,
         "model_endpoint_auth": False,
         "model": "openai",
+        "method": "POST",
+        "auth_type": None,
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 60,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "rpm_limit": 10,
+        "daily_limit": 100,
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+    "longcat": {
+        "id": 34,
+        "priority": 2,
+        "api_keys": [os.getenv("LONGCAT_API_KEY")],
+        "endpoint": "https://api.longcat.chat/openai/v1/chat/completions",
+        "model_endpoint": "https://api.longcat.chat/openai/v1/models",
+        "model": "openai",
+        "model_endpoint_auth": False,
         "method": "POST",
         "auth_type": None,
         "max_tokens": 4096,

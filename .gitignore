@@ -67,4 +67,4 @@ model_cache.json
 .pytest_cache/
 
 # Agent
-.agent/
+.agent/uploads/

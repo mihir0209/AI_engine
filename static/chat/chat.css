@@ -670,3 +670,69 @@
 .code-block-wrapper code {
     background-color: transparent;
 }
+
+/* File Upload Styles */
+.drop-zone {
+    border: 2px dashed #0d6efd;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 8px;
+    background-color: rgba(13, 110, 253, 0.05);
+    transition: all 0.2s ease;
+}
+
+.drop-zone i {
+    font-size: 2rem;
+    color: #0d6efd;
+    margin-bottom: 8px;
+}
+
+.drop-zone p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.upload-preview {
+    margin-bottom: 8px;
+}
+
+.upload-preview .bg-light {
+    background-color: #f8f9fa !important;
+}
+
+/* Image rendering in messages */
+.message-content img {
+    max-width: 300px;
+    max-height: 300px;
+    border-radius: 8px;
+    margin: 4px 0;
+    cursor: pointer;
+}
+
+.message-content img:hover {
+    opacity: 0.9;
+}
+
+/* File attachment display */
+.file-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+    margin: 4px 0;
+}
+
+.message.user .file-attachment {
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.file-attachment:hover {
+    opacity: 0.8;
+}

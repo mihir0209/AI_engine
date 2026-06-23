@@ -182,10 +182,28 @@
 
                     <!-- Message Input -->
                     <div class="chat-input border-top p-3" id="messageInput" style="display: none;">
+                        <div id="dropZone" class="drop-zone" style="display: none;">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Drop files here to upload</p>
+                        </div>
+                        <div id="uploadPreview" class="upload-preview" style="display: none;">
+                            <div class="d-flex align-items-center gap-2 p-2 bg-light rounded">
+                                <i class="fas fa-file"></i>
+                                <span id="uploadFileName"></span>
+                                <span id="uploadFileSize" class="text-muted small"></span>
+                                <button class="btn btn-sm btn-outline-danger ms-auto" onclick="clearUpload()">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
                         <div class="d-flex gap-2">
+                            <input type="file" id="fileInput" style="display: none;" accept=".txt,.md,.json,.csv,.py,.js,.ts,.html,.css,.yaml,.yml,.xml,.png,.jpg,.jpeg,.gif,.webp">
+                            <button class="btn btn-outline-secondary" onclick="document.getElementById('fileInput').click()" title="Attach file">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
                             <div class="flex-grow-1">
                                 <textarea class="form-control" id="messageTextarea" rows="1" 
-                                         placeholder="Type your message..." 
+                                         placeholder="Type your message... (drag & drop files or paste images)" 
                                          style="resize: none; max-height: 120px;"></textarea>
                             </div>
                             <div class="d-flex flex-column gap-1">

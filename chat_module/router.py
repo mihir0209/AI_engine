@@ -41,11 +41,10 @@ def get_global_engine():
         return _global_engine
 
     # Fallback: create new instance (for backward compatibility)
-    # Import here to avoid circular imports and reduce import-time side effects
     import sys
     import os
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from ai_engine import AI_engine
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+    from core.ai_engine import AI_engine
     return AI_engine()
 
 # Pydantic models for API
@@ -480,14 +479,16 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
         if chat_id:
             chat = chat_db.get_chat(chat_id)
             if chat:
-                file_ref = f"[File: {file.filename}]({file_path})"
+                file_url = f"/uploads/{safe_filename}"
+                file_ref = f"[File: {file.filename}]({file_url})"
                 if is_image:
-                    file_ref = f"![{file.filename}]({file_path})"
+                    file_ref = f"![{file.filename}]({file_url})"
 
                 metadata = {
                     "file_upload": True,
                     "filename": file.filename,
                     "file_path": str(file_path),
+                    "file_url": file_url,
                     "file_type": file_type,
                     "file_size": len(content)
                 }
@@ -737,30 +738,22 @@ async def handle_websocket_message(websocket: WebSocket, chat_id: int, message_d
 async def process_ai_response(chat_id: int, user_message_id: int, model: str = None, provider: str = None):
     """Process AI response in background (for REST API)"""
     try:
-        # Import ai_engine here to avoid circular imports
         import sys
         import os
-        sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-        # Get context messages
+        chat = chat_db.get_chat(chat_id)
         context_messages = chat_db.get_context_messages(chat_id)
 
-        # Format messages for AI Engine
         formatted_messages = []
+        if chat and chat.get('system_prompt'):
+            formatted_messages.append({"role": "system", "content": chat['system_prompt']})
         for msg in context_messages:
-            formatted_messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        # Use global AI Engine instance
         ai = get_global_engine()
-
-        # Get response with correct parameter names and forced provider usage
         start_time = time.time()
 
-        # Determine autodecide behavior and force provider based on chat settings
-        chat = chat_db.get_chat(chat_id)
         force_provider_setting = chat.get('force_provider', False) if chat else False
         use_autodecide = provider is None and not force_provider_setting
 
@@ -805,7 +798,6 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
 
     except Exception as e:
         logger.error(f"Error processing AI response for chat {chat_id}: {e}")
-        # Save error message
         chat_db.add_message(
             chat_id=chat_id,
             role="assistant",
@@ -823,28 +815,26 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
     persists the assistant message.
     """
     try:
-        # Import ai_engine here to avoid circular imports
         import sys
         import os
-        sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+        sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-        # Get context messages
         context_messages = chat_db.get_context_messages(chat_id)
-
-        # Format messages for AI Engine
-        formatted_messages = [{"role": msg["role"], "content": msg["content"]} for msg in context_messages]
-
-        # Get chat settings for force provider
         chat = chat_db.get_chat(chat_id)
+
+        formatted_messages = []
+        if chat and chat.get('system_prompt'):
+            formatted_messages.append({"role": "system", "content": chat['system_prompt']})
+        for msg in context_messages:
+            formatted_messages.append({"role": msg["role"], "content": msg["content"]})
+
         force_provider_setting = chat.get('force_provider', False) if chat else False
 
-        # Immediate client update so UI knows we're processing
         await websocket.send_text(json.dumps({"type": "ai_thinking", "provider": provider, "model": model}))
 
         ai = get_global_engine()
         verbose_print(f"Starting threaded AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
-        # Determine autodecide behavior and force provider based on chat settings
         use_autodecide = provider is None and not force_provider_setting
 
         # Start AI call in thread with correct parameter names

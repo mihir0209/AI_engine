@@ -18,6 +18,108 @@ class ChatInterface {
         this.setupEventListeners();
         this.setupAutoResize();
         this.setupTemporaryChatCleanup();
+        this.setupFileUpload();
+        this.setupDragDrop();
+        this.setupPaste();
+    }
+
+    // File Upload Support
+    setupFileUpload() {
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        }
+        this.pendingFile = null;
+    }
+
+    setupDragDrop() {
+        const container = document.querySelector('.chat-main');
+        const dropZone = document.getElementById('dropZone');
+        if (!container || !dropZone) return;
+
+        let dragCounter = 0;
+        container.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            dropZone.style.display = 'block';
+        });
+        container.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                dropZone.style.display = 'none';
+            }
+        });
+        container.addEventListener('dragover', (e) => e.preventDefault());
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dropZone.style.display = 'none';
+            if (e.dataTransfer.files.length > 0) {
+                this.handleFileSelect({ target: { files: e.dataTransfer.files } });
+            }
+        });
+    }
+
+    setupPaste() {
+        const textarea = document.getElementById('messageTextarea');
+        if (!textarea) return;
+        textarea.addEventListener('paste', (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) {
+                        this.handleFileSelect({ target: { files: [file] } });
+                    }
+                    break;
+                }
+            }
+        });
+    }
+
+    handleFileSelect(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        this.pendingFile = file;
+        const preview = document.getElementById('uploadPreview');
+        const nameEl = document.getElementById('uploadFileName');
+        const sizeEl = document.getElementById('uploadFileSize');
+        if (preview && nameEl && sizeEl) {
+            nameEl.textContent = file.name;
+            sizeEl.textContent = this.formatFileSize(file.size);
+            preview.style.display = 'block';
+        }
+    }
+
+    formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    async uploadFile() {
+        if (!this.pendingFile) return null;
+        const formData = new FormData();
+        formData.append('file', this.pendingFile);
+        if (this.currentChatId) {
+            formData.append('chat_id', this.currentChatId);
+        }
+        try {
+            const response = await fetch('/api/chat/upload', { method: 'POST', body: formData });
+            const result = await response.json();
+            this.pendingFile = null;
+            const preview = document.getElementById('uploadPreview');
+            if (preview) preview.style.display = 'none';
+            return result;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            this.showError('Failed to upload file');
+            return null;
+        }
     }
 
     // Setup temporary chat cleanup on page unload
@@ -436,12 +538,10 @@ class ChatInterface {
     }
 
     formatMessageContent(content) {
-        // Enhanced markdown support using marked.js if available, otherwise basic formatting
         if (typeof marked !== 'undefined') {
             try {
                 const renderer = new marked.Renderer();
                 
-                // Custom code block rendering for syntax highlighting with copy button
                 renderer.code = function(code, language) {
                     const validLanguage = language && Prism.languages[language] ? language : 'javascript';
                     const highlightedCode = Prism.highlight(code, Prism.languages[validLanguage], validLanguage);
@@ -461,11 +561,26 @@ class ChatInterface {
                     `;
                 };
                 
+                // Custom image renderer to open images in new tab
+                renderer.image = function(href, title, text) {
+                    const src = typeof href === 'object' ? href.href : href;
+                    const alt = typeof href === 'object' ? href.text : text;
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    return `<img src="${src}" alt="${alt || ''}"${titleAttr} loading="lazy" onclick="window.open('${src}', '_blank')" style="cursor: pointer;">`;
+                };
+                
+                // Custom link renderer
+                renderer.link = function(href, title, text) {
+                    const url = typeof href === 'object' ? href.href : href;
+                    const linkText = typeof href === 'object' ? href.text : text;
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer"${titleAttr}>${linkText}</a>`;
+                };
+                
                 return marked.parse(content, { 
                     renderer: renderer,
                     breaks: true,
-                    gfm: true,
-                    sanitize: false
+                    gfm: true
                 });
             } catch (e) {
                 console.warn('Marked.js error, falling back to basic formatting:', e);
@@ -474,6 +589,8 @@ class ChatInterface {
         
         // Basic markdown formatting fallback
         return this.escapeHtml(content)
+            // Images
+            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" onclick="window.open(\'$2\', \'_blank\')" style="max-width:300px;max-height:300px;border-radius:8px;cursor:pointer;">')
             // Headers
             .replace(/^### (.*$)/gm, '<h3>$1</h3>')
             .replace(/^## (.*$)/gm, '<h2>$1</h2>')
@@ -631,7 +748,7 @@ class ChatInterface {
                 break;
                 
             case 'pong':
-                // Keep-alive response
+            case 'ai_typing_keepalive':
                 break;
                 
             default:
@@ -644,7 +761,15 @@ class ChatInterface {
         const textarea = document.getElementById('messageTextarea');
         const content = textarea.value.trim();
         
-        if (!content || !this.currentChatId) return;
+        if (!content && !this.pendingFile) return;
+        if (!this.currentChatId) return;
+
+        // Upload file first if one is pending
+        let fileInfo = null;
+        if (this.pendingFile) {
+            fileInfo = await this.uploadFile();
+            if (!fileInfo) return;
+        }
 
         // Check autodecide mode
         const autodecideBtn = document.getElementById('autodecideBtn');
@@ -654,44 +779,59 @@ class ChatInterface {
         let model = null;
         
         if (!isAutodecideOn) {
-            // Manual mode - use selected provider/model
             provider = document.getElementById('providerSelect').value || null;
             model = document.getElementById('modelSelect').value || null;
         }
-        // If autodecide is on, provider and model stay null (AI Engine will decide)
 
-        // Clear input
+        // Build message content
+        let messageContent = content;
+        if (fileInfo && fileInfo.success) {
+            const fileUrl = fileInfo.saved_as ? `/uploads/${fileInfo.saved_as}` : '';
+            const fileRef = fileInfo.type === 'image' 
+                ? `![${fileInfo.filename}](${fileUrl})`
+                : `[File: ${fileInfo.filename}](${fileUrl})`;
+            messageContent = fileRef + (content ? '\n' + content : '');
+        }
+
         textarea.value = '';
         this.resizeTextarea(textarea);
 
-        // Add user message to UI immediately
-        this.addUserMessageToUI(content);
+        this.addUserMessageToUI(messageContent);
 
         if (this.isConnected && this.websocket) {
-            // Send via WebSocket for real-time streaming
             this.websocket.send(JSON.stringify({
                 type: 'user_message',
-                content: content,
+                content: messageContent,
                 provider: provider,
                 model: model,
-                metadata: { autodecide: isAutodecideOn }
+                metadata: { 
+                    autodecide: isAutodecideOn,
+                    ...(fileInfo && fileInfo.success ? { 
+                        file_upload: true, 
+                        filename: fileInfo.filename,
+                        file_type: fileInfo.type 
+                    } : {})
+                }
             }));
         } else {
-            // Fallback to REST API
             try {
                 await fetch(`/api/chat/chats/${this.currentChatId}/messages`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         role: 'user',
-                        content: content,
-                        metadata: { provider, model, autodecide: isAutodecideOn }
+                        content: messageContent,
+                        metadata: { 
+                            provider, model, autodecide: isAutodecideOn,
+                            ...(fileInfo && fileInfo.success ? { 
+                                file_upload: true, 
+                                filename: fileInfo.filename,
+                                file_type: fileInfo.type 
+                            } : {})
+                        }
                     })
                 });
                 
-                // Poll for response
                 setTimeout(() => this.pollForNewMessages(), 1000);
                 
             } catch (error) {
@@ -1269,7 +1409,8 @@ class ChatInterface {
         try {
             const response = await fetch(`/api/chat/chats/${chatId}`);
             if (response.ok) {
-                return await response.json();
+                const data = await response.json();
+                return data.chat || data;
             }
         } catch (error) {
             console.error('Error fetching chat:', error);
@@ -1465,6 +1606,15 @@ function sendMessage() {
 
 function clearInput() {
     chatInterface.clearInput();
+    clearUpload();
+}
+
+function clearUpload() {
+    chatInterface.pendingFile = null;
+    const preview = document.getElementById('uploadPreview');
+    if (preview) preview.style.display = 'none';
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.value = '';
 }
 
 function toggleSidebar() {
