@@ -172,14 +172,23 @@ const response = await client.chat.completions.create({
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/chat/completions` | POST | Chat completions (OpenAI-compatible) |
-| `/v1/chat/completions/stream` | POST | Streaming chat |
-| `/v1/models` | GET | List all models |
+| `/v1/chat/completions` | POST | Chat completions (OpenAI-compatible, supports `stream: true`) |
+| `/v1/models` | GET/POST | List all models |
 | `/api/providers` | GET | List providers |
+| `/api/health/{name}/ping` | POST | Live health ping for a provider |
+| `/api/capabilities` | GET | Provider/model capabilities (vision, etc.) |
 | `/api/status` | GET | Engine status |
 | `/api/statistics` | GET | Usage statistics |
 | `/health` | GET | Health check |
 | `/metrics` | GET | Prometheus metrics |
+| `/docs` | GET | Swagger UI (interactive API explorer) |
+| `/redoc` | GET | ReDoc API documentation |
+
+### Rate Limit Headers
+
+All API responses include:
+- `X-RateLimit-Limit` — Max requests per minute
+- `X-RateLimit-Remaining` — Remaining requests in current window
 
 ---
 

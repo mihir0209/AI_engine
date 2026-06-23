@@ -206,6 +206,26 @@ async def limit_request_size(request: Request, call_next):
             )
     return await call_next(request)
 
+# Rate limit headers middleware
+@app.middleware("http")
+async def add_rate_limit_headers(request: Request, call_next):
+    """Add X-RateLimit-* headers to API responses"""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/v1/") or path.startswith("/api/"):
+        client_ip = request.client.host if request.client else "unknown"
+        key = f"{client_ip}:{path}"
+        if "/chat/completions" in path:
+            limit = 10
+        elif "/test-model" in path:
+            limit = 5
+        else:
+            limit = 60
+        response.headers["X-RateLimit-Limit"] = str(limit)
+        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - 1))
+        response.headers["X-RateLimit-Policy"] = f"{limit}-per-minute"
+    return response
+
 # Request/response logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -492,12 +512,11 @@ async def chat_completions_stream_legacy(request: Request, background_tasks: Bac
     )
 
 @app.get("/v1/models")
-async def list_models(provider: str = None, search: str = None):
-    """List all available models across all providers in OpenAI format with caching
+@app.post("/v1/models")
+async def list_models(request: Request = None, provider: str = None, search: str = None):
+    """List all available models across all providers in OpenAI-compatible format.
     
-    Query Parameters:
-        provider: Filter by provider name (e.g., ?provider=groq)
-        search: Search models by name (e.g., ?search=llama)
+    Supports both GET and POST (some SDK clients send POST).
     """
 
     # Check if we have valid cached models
