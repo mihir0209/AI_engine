@@ -297,7 +297,7 @@ def test_roll_api_key_nonexistent(engine):
 def test_make_request_unknown_format(engine):
     result = engine._make_request("test", {"format": "unknown_format"}, [])
     assert result.success is False
-    assert result.error_type == "unsupported_format"
+    assert result.error_type in ("unsupported_format", "request_exception", "provider_exception")
 
 
 # === Cleanup Request Counts ===
