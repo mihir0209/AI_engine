@@ -1,9 +1,10 @@
 import os
 import json
 import time
+import uuid
 import asyncio
 import aiohttp
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Header
@@ -266,40 +267,51 @@ def sanitize_input(text: str) -> str:
 
 # Pydantic models for API
 class ChatMessage(BaseModel):
-    role: str  # "system", "user", "assistant"
-    content: str
+    role: str  # "system", "user", "assistant", "tool", "developer"
+    content: Optional[str] = None  # Can be null for tool calls
+    name: Optional[str] = None
+    tool_calls: Optional[List[Any]] = None
+    tool_call_id: Optional[str] = None
 
     @field_validator('role')
     @classmethod
     def validate_role(cls, v):
-        if v not in ('system', 'user', 'assistant'):
-            raise ValueError('role must be system, user, or assistant')
+        if v not in ('system', 'user', 'assistant', 'tool', 'developer'):
+            raise ValueError(f'role must be one of: system, user, assistant, tool, developer')
         return v
 
     @field_validator('content')
     @classmethod
     def validate_content(cls, v):
+        if v is None:
+            return None
         return sanitize_input(v)
 
 class ChatCompletionRequest(BaseModel):
     model: str = "auto"
     messages: List[ChatMessage]
     max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     n: Optional[int] = 1
     stream: bool = False
+    stream_options: Optional[Dict[str, Any]] = None
     stop: Optional[List[str]] = None
     presence_penalty: Optional[float] = None
     frequency_penalty: Optional[float] = None
     logit_bias: Optional[Dict[str, float]] = None
     user: Optional[str] = None
+    tools: Optional[List[Any]] = None
+    tool_choice: Optional[Any] = None
+    response_format: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
 
 class ChatCompletionChoice(BaseModel):
     index: int
     message: ChatMessage
-    finish_reason: str
-    logprobs: Optional[Dict] = None
+    finish_reason: Optional[str] = None  # "stop", "length", "tool_calls", null
+    logprobs: Optional[Any] = None
 
 class ChatCompletionUsage(BaseModel):
     prompt_tokens: int
@@ -312,7 +324,7 @@ class ChatCompletionResponse(BaseModel):
     created: int
     model: str
     choices: List[ChatCompletionChoice]
-    usage: ChatCompletionUsage
+    usage: Optional[ChatCompletionUsage] = None
     system_fingerprint: Optional[str] = None
 
 class ModelInfo(BaseModel):
@@ -329,23 +341,19 @@ class ModelsResponse(BaseModel):
 def format_openai_response(result, messages, request, start_time) -> ChatCompletionResponse:
     """Transform AI Engine response to OpenAI-compatible format"""
 
-    # Calculate more accurate token counts (rough estimation)
-    prompt_text = " ".join([msg.get("content", "") for msg in messages])
-    prompt_tokens = max(1, len(prompt_text.split()) + len(prompt_text) // 4)  # Words + rough char count
+    prompt_text = " ".join([msg.get("content", "") or "" for msg in messages])
+    prompt_tokens = max(1, len(prompt_text.split()) + len(prompt_text) // 4)
     completion_tokens = max(1, len(result.content.split()) + len(result.content) // 4)
 
-    # Determine finish reason
     finish_reason = "stop"
     if hasattr(request, 'max_tokens') and request.max_tokens and len(result.content.split()) >= request.max_tokens:
         finish_reason = "length"
-    elif not result.content.strip():
-        finish_reason = "stop"
 
-    # Generate unique chat completion ID
-    completion_id = f"chatcmpl-{int(start_time * 1000000) % 999999999}"
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
 
-    # Format model as provider_name/model_name
-    model_name = f"{result.provider_used}/{result.model_used}" if result.model_used else result.provider_used or "unknown"
+    # Use the model from the request, falling back to what the provider returned
+    requested_model = getattr(request, 'model', None) or "auto"
+    model_name = result.model_used or requested_model
 
     return ChatCompletionResponse(
         id=completion_id,
@@ -366,6 +374,8 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
             completion_tokens=completion_tokens,
             total_tokens=prompt_tokens + completion_tokens
         ),
+        system_fingerprint=None
+    )
         system_fingerprint=None
     )
 
@@ -391,7 +401,7 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks, 
         if not messages:
             return JSONResponse(
                 status_code=400,
-                content={"error": {"message": "messages is required", "type": "invalid_request_error", "code": "missing_messages"}}
+                content={"error": {"message": "messages is required", "type": "invalid_request_error", "param": "messages", "code": "missing_messages"}}
             )
         
         # Handle streaming
@@ -411,7 +421,6 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks, 
         background_tasks.add_task(save_statistics_async)
         
         if not result.success:
-            # Return OpenAI-compatible error format
             error_code = "server_error"
             status_code = 500
             if "rate_limit" in (result.error_type or "").lower():
@@ -424,28 +433,38 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks, 
                 error_code = "model_not_found"
                 status_code = 404
             
+            request_id = f"req-{uuid.uuid4().hex[:12]}"
             return JSONResponse(
                 status_code=status_code,
-                content={"error": {"message": result.error_message, "type": error_code, "code": error_code}}
+                headers={"x-request-id": request_id},
+                content={"error": {"message": result.error_message, "type": error_code, "param": None, "code": error_code}}
             )
         
         response = format_openai_response(result, messages, body, start_time)
-        return response
+        request_id = f"req-{uuid.uuid4().hex[:12]}"
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"x-request-id": request_id}
+        )
         
     except Exception as e:
+        request_id = f"req-{uuid.uuid4().hex[:12]}"
         return JSONResponse(
             status_code=500,
-            content={"error": {"message": str(e), "type": "server_error", "code": "internal_error"}}
+            headers={"x-request-id": request_id},
+            content={"error": {"message": str(e), "type": "server_error", "param": None, "code": "internal_error"}}
         )
 
 
 async def handle_streaming_response(messages, model, preferred_provider, background_tasks):
-    """Handle streaming chat completion"""
+    """Handle streaming chat completion — fully OpenAI-compatible SSE"""
     from fastapi.responses import StreamingResponse
-    
+
     async def generate_stream():
-        completion_id = f"chatcmpl-{int(time.time() * 1000000) % 999999999}"
-        
+        completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+        created = int(time.time())
+        model_name = model if model and model != "auto" else "auto"
+
         def stream_from_engine():
             for chunk in engine.chat_completion_stream(
                 messages=messages,
@@ -453,31 +472,47 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
                 preferred_provider=preferred_provider
             ):
                 yield chunk
-        
+
         loop = asyncio.get_event_loop()
         stream_iter = stream_from_engine()
-        
+
+        # First chunk must include role
+        first_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model_name,
+            "choices": [{
+                "index": 0,
+                "delta": {"role": "assistant", "content": ""},
+                "finish_reason": None
+            }]
+        }
+        yield f"data: {json.dumps(first_chunk)}\n\n"
+
+        total_content = ""
+
         try:
             while True:
                 chunk = await loop.run_in_executor(None, lambda: next(stream_iter, None))
                 if chunk is None:
                     break
-                
+
                 if chunk.get('error'):
-                    error_data = {"error": {"message": chunk['error'], "type": "server_error"}}
+                    error_data = {"error": {"message": chunk['error'], "type": "server_error", "param": None, "code": None}}
                     yield f"data: {json.dumps(error_data)}\n\n"
                     break
-                
+
                 if chunk.get('done'):
-                    yield "data: [DONE]\n\n"
                     break
-                
+
                 if chunk.get('content'):
+                    total_content += chunk['content']
                     chunk_data = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": model or "auto",
+                        "created": created,
+                        "model": model_name,
                         "choices": [{
                             "index": 0,
                             "delta": {"content": chunk['content']},
@@ -486,19 +521,35 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
                     }
                     yield f"data: {json.dumps(chunk_data)}\n\n"
         except Exception as e:
-            error_data = {"error": {"message": str(e), "type": "server_error"}}
+            error_data = {"error": {"message": str(e), "type": "server_error", "param": None, "code": None}}
             yield f"data: {json.dumps(error_data)}\n\n"
-            yield "data: [DONE]\n\n"
-        
+
+        # Final chunk with finish_reason: stop
+        final_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model_name,
+            "choices": [{
+                "index": 0,
+                "delta": {},
+                "finish_reason": "stop"
+            }]
+        }
+        yield f"data: {json.dumps(final_chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+
         background_tasks.add_task(save_statistics_async)
-    
+
+    request_id = f"req-{uuid.uuid4().hex[:12]}"
     return StreamingResponse(
         generate_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "x-request-id": request_id
         }
     )
 
