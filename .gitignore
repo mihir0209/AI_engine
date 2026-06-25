@@ -64,8 +64,17 @@ tmp/
 
 model_cache.json
 coverage.xml
+coverage.xml
 .coverage
 .pytest_cache/
+
+# Runtime data
+data/capabilities_cache.json
+data/cdn_config_cache.py
+data/cdn_config_meta.json
+data/cdn_config.lock
+data/billing/usage.json
+data/billing/invoices.json
 
 # Runtime data
 uploads/

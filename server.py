@@ -1989,7 +1989,7 @@ def main():
         try:
             from core.statistics_manager import save_statistics_now
             save_statistics_now()
-        except:
+        except Exception:
             pass
         # Stop auto-refresh
         shared_model_cache.stop_auto_refresh()

@@ -83,7 +83,7 @@ def test_provider(name, config, max_retries=2, retry_delay=2):
                     result["status"] = "working"
                     result["response"] = content[:50]
                     return result
-                except:
+                except Exception:
                     result["status"] = "parse_error"
                     result["error"] = "Could not parse response"
                     return result

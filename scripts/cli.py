@@ -181,7 +181,7 @@ def show_status():
         try:
             resp = requests.get(endpoint.replace('/chat/completions', '/models'), timeout=5)
             status = "OK" if resp.status_code < 500 else f"ERR {resp.status_code}"
-        except:
+        except Exception:
             status = "UNREACHABLE"
 
         print(f"{name:<15} {status:<10} {endpoint[:30]}")
@@ -237,7 +237,7 @@ def show_stats():
             print(f"Success Rate: {summary.get('overall_success_rate', 'N/A')}")
         else:
             print("Server not running or statistics unavailable")
-    except:
+    except Exception:
         print("Server not running")
 
 
