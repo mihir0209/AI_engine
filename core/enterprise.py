@@ -99,7 +99,14 @@ class TenantManager:
         os.makedirs(data_dir, exist_ok=True)
         self.tenants: Dict[str, Tenant] = {}
         self.users: Dict[str, User] = {}
+        self._tenant_key_index: Dict[str, Tenant] = {}
+        self._user_key_index: Dict[str, User] = {}
         self._load_data()
+
+    def _rebuild_key_indexes(self):
+        """Rebuild O(1) API key lookup indexes"""
+        self._tenant_key_index = {t.api_key: t for t in self.tenants.values()}
+        self._user_key_index = {u.api_key: u for u in self.users.values()}
 
     def _load_data(self):
         """Load tenant and user data from disk"""
@@ -120,6 +127,7 @@ class TenantManager:
                     udata["role"] = Role(udata["role"])
                     udata["permissions"] = [Permission(p) for p in udata.get("permissions", [])]
                     self.users[uid] = User(**udata)
+        self._rebuild_key_indexes()
 
     def _save_data(self):
         """Save tenant and user data to disk"""
@@ -147,6 +155,7 @@ class TenantManager:
         )
 
         self.tenants[tenant_id] = tenant
+        self._rebuild_key_indexes()
         self._save_data()
         return tenant
 
@@ -155,11 +164,8 @@ class TenantManager:
         return self.tenants.get(tenant_id)
 
     def get_tenant_by_api_key(self, api_key: str) -> Optional[Tenant]:
-        """Get tenant by API key"""
-        for tenant in self.tenants.values():
-            if tenant.api_key == api_key:
-                return tenant
-        return None
+        """Get tenant by API key (O(1) via index)"""
+        return self._tenant_key_index.get(api_key)
 
     def create_user(self, tenant_id: str, username: str, email: str, role: Role) -> Optional[User]:
         """Create a new user in a tenant"""
@@ -179,6 +185,7 @@ class TenantManager:
         )
 
         self.users[user_id] = user
+        self._rebuild_key_indexes()
         self._save_data()
         return user
 
@@ -187,11 +194,9 @@ class TenantManager:
         return self.users.get(user_id)
 
     def get_user_by_api_key(self, api_key: str) -> Optional[User]:
-        """Get user by API key"""
-        for user in self.users.values():
-            if user.api_key == api_key:
-                return user
-        return None
+    def get_user_by_api_key(self, api_key: str) -> Optional[User]:
+        """Get user by API key (O(1) via index)"""
+        return self._user_key_index.get(api_key)
 
     def get_tenant_users(self, tenant_id: str) -> List[User]:
         """Get all users for a tenant"""

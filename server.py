@@ -146,6 +146,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown (cleanup if needed)
     shared_model_cache.stop_auto_refresh()
+    try:
+        from chat_module.router import stop_cleanup_task
+        stop_cleanup_task()
+    except Exception:
+        pass
     verbose_print("🛑 Server shutting down...")
 
 # FastAPI app with lifespan handler
@@ -1820,26 +1825,36 @@ async def get_version():
 
 @app.post("/api/config/reload")
 async def reload_config():
-    """Reload configuration from config.py"""
+    """Reload configuration from config.py or CDN"""
     try:
         import sys
-        # Force reload config
-        if 'config' in sys.modules:
-            del sys.modules['config']
+
+        # Try CDN refresh first if enabled
+        from core.config_sync import config_fetcher
+        if config_fetcher._enabled:
+            try:
+                config_fetcher.fetch_and_apply()
+            except Exception:
+                pass
+
+        # Force reload local config
+        for mod_name in list(sys.modules.keys()):
+            if mod_name == 'config' or mod_name.startswith('config.'):
+                del sys.modules[mod_name]
+
         from config import AI_CONFIGS as new_configs, ENGINE_SETTINGS as new_settings
 
-        # Update global references
         global AI_CONFIGS, ENGINE_SETTINGS
         AI_CONFIGS = new_configs
         ENGINE_SETTINGS = new_settings
 
-        # Reload engine providers
         engine.providers = engine._load_enabled_providers()
 
         return {
             "status": "reloaded",
             "providers": len(AI_CONFIGS),
-            "enabled": sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True))
+            "enabled": sum(1 for c in AI_CONFIGS.values() if c.get('enabled', True)),
+            "cdn_refreshed": config_fetcher._enabled,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reload config: {str(e)}")

@@ -199,11 +199,13 @@ class MessageResponse(BaseModel):
     response_to: Optional[int]
 
 # Background task for cleaning up temporary chats
+_cleanup_running = True
+
 async def cleanup_expired_temporary_chats():
     """Background task to delete temporary chats after their configured timer expires"""
-    while True:
+    global _cleanup_running
+    while _cleanup_running:
         try:
-            # Get all temporary chats that have exceeded their timer
             expired_chats = chat_db.get_expired_temporary_chats()
 
             for chat in expired_chats:
@@ -235,6 +237,14 @@ def start_cleanup_task():
     global cleanup_task
     if cleanup_task is None:
         cleanup_task = asyncio.create_task(cleanup_expired_temporary_chats())
+
+def stop_cleanup_task():
+    """Stop the background cleanup task (for clean shutdown/testing)"""
+    global _cleanup_running, cleanup_task
+    _cleanup_running = False
+    if cleanup_task and not cleanup_task.done():
+        cleanup_task.cancel()
+    cleanup_task = None
 
 # Create router
 router = APIRouter(prefix="/api/chat", tags=["chat"])
