@@ -495,6 +495,99 @@ Prometheus-compatible metrics endpoint.
 
 ---
 
+## CDN Config Sync
+
+### GET `/api/cdn-config`
+
+Get CDN config sync status.
+
+**Response:**
+```json
+{
+  "enabled": true,
+  "url": "https://cdn.jsdelivr.net/gh/mihir0209/AI_engine@main/config.py",
+  "cached": true,
+  "providers": 29,
+  "ttl": 86400
+}
+```
+
+### POST `/api/cdn-config/refresh`
+
+Force refresh CDN config (bypasses TTL cache).
+
+**Response:**
+```json
+{
+  "success": true,
+  "providers": 29,
+  "message": "CDN config refreshed"
+}
+```
+
+---
+
+## Provider Health
+
+### POST `/api/health/{provider_name}/ping`
+
+Send a live ping to a provider.
+
+**Response:**
+```json
+{
+  "provider": "groq",
+  "alive": true,
+  "status_code": 200,
+  "latency_ms": 450
+}
+```
+
+---
+
+## Provider Capabilities
+
+### GET `/api/capabilities`
+
+Get all provider and model capabilities.
+
+### GET `/api/capabilities/check-image/{provider}?model=gpt-4`
+
+Check if a provider/model supports image input.
+
+**Response:**
+```json
+{
+  "compatible": false,
+  "reason": "'groq' with model 'llama-3.3-70b' does not support image input",
+  "suggestions": ["gemini", "openrouter", "mistral", "kilo", "github"]
+}
+```
+
+### GET `/api/capabilities/vision`
+
+Get all vision-capable providers.
+
+---
+
+## Config Reload
+
+### POST `/api/config/reload`
+
+Reload configuration from config.py or CDN.
+
+**Response:**
+```json
+{
+  "status": "reloaded",
+  "providers": 29,
+  "enabled": 25,
+  "cdn_refreshed": true
+}
+```
+
+---
+
 ## Interactive API Docs
 
 - **Swagger UI**: `/docs`
