@@ -376,8 +376,6 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
         ),
         system_fingerprint=None
     )
-        system_fingerprint=None
-    )
 
 # API Routes
 @app.post("/v1/chat/completions")

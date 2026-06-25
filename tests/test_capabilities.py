@@ -3,11 +3,11 @@
 
 # === Capability Manager Tests ===
 
-def test_get_capabilities():
+def test_get_provider_capabilities():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    caps = cm.get_capabilities("openai")
+    caps = cm.get_provider_capabilities("gemini")
     assert caps is not None
     assert caps.vision is True
     assert caps.tool_calling is True
@@ -17,7 +17,7 @@ def test_get_unknown_provider():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    caps = cm.get_capabilities("unknown_provider")
+    caps = cm.get_provider_capabilities("unknown_provider")
     assert caps is None
 
 
@@ -25,54 +25,54 @@ def test_supports_vision():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    assert cm.supports_vision("openai") is True
-    assert cm.supports_vision("anthropic") is True
+    assert cm.supports_vision("gemini") is True
+    assert cm.supports_vision("openrouter") is True
     assert cm.supports_vision("groq") is False
+
+
+def test_supports_vision_with_model():
+    from core.capabilities import CapabilityManager
+    cm = CapabilityManager()
+
+    assert cm.supports_vision("groq", "meta-llama/llama-4-scout-17b-16e-instruct") is True
+    assert cm.supports_vision("groq", "llama-3.3-70b-versatile") is False
 
 
 def test_supports_tool_calling():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    assert cm.supports_tool_calling("openai") is True
-    assert cm.supports_tool_calling("anthropic") is True
+    assert cm.supports_tool_calling("gemini") is True
+    assert cm.supports_tool_calling("groq") is True
 
 
-def test_get_providers_with_vision():
+def test_get_vision_providers():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    providers = cm.get_providers_with_vision()
-    assert "openai" in providers
-    assert "anthropic" in providers
+    providers = cm.get_vision_providers()
     assert "gemini" in providers
+    assert "openrouter" in providers
 
 
-def test_get_fastest_providers():
+def test_get_max_context():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    fastest = cm.get_fastest_providers(top_n=2)
-    assert len(fastest) == 2
+    ctx = cm.get_max_context("gemini", "gemini-2.5-flash")
+    assert ctx == 1000000
 
 
-def test_get_cheapest_providers():
+def test_check_image_compatibility():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    cheapest = cm.get_cheapest_providers(top_n=2)
-    assert len(cheapest) == 2
+    result = cm.check_image_compatibility("gemini", "gemini-2.5-flash")
+    assert result["compatible"] is True
 
-
-def test_get_provider_for_task():
-    from core.capabilities import CapabilityManager
-    cm = CapabilityManager()
-
-    vision_providers = cm.get_provider_for_task("vision")
-    assert "openai" in vision_providers
-
-    fast_providers = cm.get_provider_for_task("fast")
-    assert len(fast_providers) > 0
+    result = cm.check_image_compatibility("groq", "llama-3.3-70b-versatile")
+    assert result["compatible"] is False
+    assert len(result["suggestions"]) > 0
 
 
 def test_get_all_capabilities():
@@ -80,20 +80,19 @@ def test_get_all_capabilities():
     cm = CapabilityManager()
 
     all_caps = cm.get_all_capabilities()
-    assert "openai" in all_caps
-    assert "vision" in all_caps["openai"]
+    assert "gemini" in all_caps
+    assert "vision" in all_caps["gemini"]
 
 
-def test_set_custom_capabilities():
-    from core.capabilities import CapabilityManager, ProviderCapabilities
+def test_get_model_list():
+    from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    custom = ProviderCapabilities(provider="custom", vision=True, tool_calling=True)
-    cm.set_capabilities("custom", custom)
-
-    caps = cm.get_capabilities("custom")
-    assert caps is not None
-    assert caps.vision is True
+    models = cm.get_model_list()
+    assert len(models) > 0
+    gemini_models = [m for m in models if m["provider"] == "gemini"]
+    assert len(gemini_models) > 0
+    assert any(m["vision"] for m in gemini_models)
 
 
 # === Error Message Tests ===
