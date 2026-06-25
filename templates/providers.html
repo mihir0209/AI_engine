@@ -78,12 +78,19 @@
             try {
                 const response = await fetch('/api/providers');
                 const providers = await response.json();
+                
+                let healthData = {};
+                try {
+                    const healthResp = await fetch('/api/health/providers');
+                    healthData = await healthResp.json();
+                } catch(e) {}
 
                 let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
                 html += `<thead class="table-dark">
                     <tr>
                         <th>Provider</th>
                         <th>Status</th>
+                        <th>Health</th>
                         <th>Model</th>
                         <th>Keys</th>
                         <th>Priority</th>
@@ -95,6 +102,12 @@
                 Object.entries(providers).forEach(([name, provider]) => {
                     const isEnabled = provider.enabled;
                     const keys = provider.keys_count > 0 ? `<i class="fas fa-key text-success"></i> ${provider.keys_count}` : '<span class="text-muted"><i class="fas fa-key"></i> 0</span>';
+                    
+                    const health = healthData[name] || {};
+                    let healthBadge = '<span class="badge bg-secondary">Unknown</span>';
+                    if (health.status === 'healthy') healthBadge = '<span class="badge bg-success">Healthy</span>';
+                    else if (health.status === 'degraded') healthBadge = '<span class="badge bg-warning">Degraded</span>';
+                    else if (health.status === 'unhealthy') healthBadge = '<span class="badge bg-danger">Unhealthy</span>';
 
                     html += `<tr>
                         <td><strong>${name.toUpperCase()}</strong></td>
@@ -105,6 +118,7 @@
                                 ${isEnabled ? 'Enabled' : 'Disabled'}
                             </button>
                         </td>
+                        <td>${healthBadge}</td>
                         <td><code class="text-primary">${provider.model}</code></td>
                         <td>${keys}</td>
                         <td><span class="badge bg-info">${provider.priority}</span></td>

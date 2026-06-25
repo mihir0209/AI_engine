@@ -1936,6 +1936,31 @@ def create_templates():
 
     verbose_print("📄 Creating default templates...")
 
+# Billing API endpoints
+@app.get("/api/billing/usage")
+async def get_billing_usage(tenant_id: str = None, hours: int = 24):
+    """Get billing usage for a tenant"""
+    from core.billing import BillingManager
+    billing = BillingManager()
+    if tenant_id:
+        return billing.get_tenant_usage(tenant_id)
+    return {"message": "Provide tenant_id parameter"}
+
+@app.get("/api/billing/invoices")
+async def get_invoices(tenant_id: str):
+    """Get invoices for a tenant"""
+    from core.billing import BillingManager
+    billing = BillingManager()
+    invoices = billing.get_invoices(tenant_id)
+    return {"invoices": [{"id": inv.id, "total_cost": inv.total_cost, "status": inv.status, "period": f"{inv.period_start} to {inv.period_end}"} for inv in invoices]}
+
+@app.get("/api/billing/alerts")
+async def get_cost_alerts(tenant_id: str, threshold: float = 100.0):
+    """Get cost alerts for a tenant"""
+    from core.billing import BillingManager
+    billing = BillingManager()
+    return {"alerts": billing.get_cost_alerts(tenant_id, threshold)}
+
 def main():
     """Main function to run the server"""
     import logging
