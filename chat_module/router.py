@@ -940,7 +940,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         use_autodecide = provider is None and not force_provider_setting
 
         # Start AI call in thread with correct parameter names
-        ai_task = asyncio.create_task(asyncio.to_thread(ai.chat_completion,
+        ai_task = asyncio.create_task(asyncio.to_thread(ai.chat_completion_stream,
             messages=formatted_messages,
             model=model,
             autodecide=use_autodecide,
@@ -948,11 +948,14 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
             force_provider=force_provider_setting and provider is not None
         ))
 
-        # Keepalive loop while AI call runs
         keepalive_interval = 5.0
         last_keepalive = time.time()
         timeout = 120.0
         start_time = time.time()
+        response_content = ""
+        provider_used = provider
+        model_used = model
+        got_first_chunk = False
 
         while not ai_task.done():
             now = time.time()
@@ -961,17 +964,15 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                     await websocket.send_text(json.dumps({"type": "ai_typing_keepalive"}))
                 except Exception:
                     logger.warning(f"Failed to send keepalive for chat {chat_id}")
-                    # If we can't reach the client, cancel the AI task and persist an error
                     try:
                         ai_task.cancel()
                     except Exception:
-                        logger.exception("Failed to cancel AI task after keepalive failure")
-                    try:
-                        await websocket.send_text(json.dumps({"type": "ai_error", "content": "Client disconnected or send failed"}))
-                    except Exception:
-                        # ignore, we're already in a failure path
                         pass
-                    chat_db.add_message(chat_id=chat_id, role="assistant", content="Error: client disconnected during processing", metadata={"error": True})
+                    try:
+                        await websocket.send_text(json.dumps({"type": "ai_error", "content": "Client disconnected"}))
+                    except Exception:
+                        pass
+                    chat_db.add_message(chat_id=chat_id, role="assistant", content="Error: client disconnected", metadata={"error": True})
                     return
                 last_keepalive = now
 
@@ -985,33 +986,18 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                 chat_db.add_message(chat_id=chat_id, role="assistant", content="Error: AI provider timed out", metadata={"error": True})
                 return
 
-            await asyncio.sleep(0.25)
-
-        # Retrieve result (defensive: ensure task completed)
-        if not ai_task.done():
-            logger.error(f"AI task not completed for chat {chat_id} when expected; cancelling")
-            try:
-                ai_task.cancel()
-            except Exception:
-                pass
-            try:
-                await websocket.send_text(json.dumps({"type": "ai_error", "content": "AI call did not complete"}))
-            except Exception:
-                pass
-            chat_db.add_message(chat_id=chat_id, role="assistant", content="Error: AI call did not complete", metadata={"error": True})
-            return
+            await asyncio.sleep(0.1)
 
         try:
-            result = ai_task.result()
+            stream_gen = ai_task.result()
         except asyncio.CancelledError:
-            logger.error(f"AI task cancelled for chat {chat_id}")
             try:
                 await websocket.send_text(json.dumps({"type": "ai_error", "content": "AI call cancelled"}))
             except Exception:
                 pass
             return
         except Exception as e:
-            logger.exception(f"AI call raised exception for chat {chat_id}: {e}")
+            logger.exception(f"AI stream error for chat {chat_id}: {e}")
             try:
                 await websocket.send_text(json.dumps({"type": "ai_error", "content": str(e)}))
             except Exception:
@@ -1019,21 +1005,51 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
             chat_db.add_message(chat_id=chat_id, role="assistant", content=f"System Error: {str(e)}", metadata={"error": True})
             return
 
+        # Consume the stream generator in a thread
+        try:
+            def consume_stream():
+                chunks = []
+                for chunk in stream_gen:
+                    if chunk.get('error'):
+                        return {"error": chunk['error']}
+                    if chunk.get('done'):
+                        break
+                    if chunk.get('content'):
+                        chunks.append(chunk['content'])
+                    # Extract provider/model from first chunk if available
+                    if not chunks and chunk.get('provider'):
+                        return {"provider": chunk.get('provider'), "model": chunk.get('model'), "content": ""}
+                return {"content": "".join(chunks)}
+
+            stream_result = await asyncio.to_thread(consume_stream)
+
+            if stream_result.get('error'):
+                try:
+                    await websocket.send_text(json.dumps({"type": "ai_error", "content": stream_result['error']}))
+                except Exception:
+                    pass
+                chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {stream_result['error']}", metadata={"error": True}, response_to=user_message_id)
+                return
+
+            response_content = stream_result.get('content', '')
+            provider_used = stream_result.get('provider') or provider
+            model_used = stream_result.get('model') or model
+
+        except Exception as e:
+            logger.exception(f"Stream consumption error for chat {chat_id}: {e}")
+            try:
+                await websocket.send_text(json.dumps({"type": "ai_error", "content": str(e)}))
+            except Exception:
+                pass
+            chat_db.add_message(chat_id=chat_id, role="assistant", content=f"System Error: {str(e)}", metadata={"error": True}, response_to=user_message_id)
+            return
+
         response_time = time.time() - start_time
 
-        if result and getattr(result, 'success', False):
-            response_content = getattr(result, 'content', '')
-            provider_used = getattr(result, 'provider_used', provider)
-            model_used = getattr(result, 'model_used', model)
+        if response_content:
+            # Send the full response as final chunk
+            await websocket.send_text(json.dumps({"type": "ai_chunk", "content": response_content, "is_final": True}))
 
-            # Stream response content
-            chunk_size = 10
-            for i in range(0, len(response_content), chunk_size):
-                chunk = response_content[i:i+chunk_size]
-                await websocket.send_text(json.dumps({"type": "ai_chunk", "content": chunk, "is_final": i + chunk_size >= len(response_content)}))
-                await asyncio.sleep(0.02)
-
-            # Persist assistant message
             try:
                 assistant_message_id = chat_db.add_message(
                     chat_id=chat_id,
@@ -1043,33 +1059,21 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                     tokens=(len(response_content) // 4) if response_content else 0,
                     response_to=user_message_id
                 )
-
-                # Notify client of completion
                 await websocket.send_text(json.dumps({"type": "ai_complete", "message_id": assistant_message_id, "provider": provider_used, "model": model_used, "response_time": response_time}))
             except ValueError as e:
                 if "does not exist" in str(e) or "was deleted" in str(e):
-                    # Chat was deleted while processing
                     logger.warning(f"Chat {chat_id} was deleted while processing AI response")
                     await websocket.send_text(json.dumps({"type": "chat_deleted", "message": "Chat was deleted"}))
                     await websocket.close()
                     return
                 raise
         else:
-            error_msg = getattr(result, 'error_message', 'Unknown error') if result is not None else 'AI call failed'
-            logger.error(f"AI returned error for chat {chat_id}: {error_msg}")
+            error_msg = "No response from provider"
             try:
-                await websocket.send_text(json.dumps({"type": "ai_error", "content": f"Error: {error_msg}"}))
+                await websocket.send_text(json.dumps({"type": "ai_error", "content": error_msg}))
             except Exception:
                 pass
-
-            # Try to save error message, but handle chat deletion gracefully
-            try:
-                chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {error_msg}", metadata={"error": True}, response_to=user_message_id)
-            except ValueError as e:
-                if "does not exist" in str(e) or "was deleted" in str(e):
-                    logger.warning(f"Chat {chat_id} was deleted while saving error message")
-                else:
-                    raise
+            chat_db.add_message(chat_id=chat_id, role="assistant", content=f"Error: {error_msg}", metadata={"error": True}, response_to=user_message_id)
 
     except Exception as e:
         logger.exception(f"Error processing AI response stream for chat {chat_id}: {e}")

@@ -110,6 +110,10 @@
                         <td><span class="badge bg-info">${provider.priority}</span></td>
                         <td>
                             <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-success" onclick="pingProvider('${name}')" 
+                                        title="Live ping">
+                                    <i class="fas fa-signal"></i>
+                                </button>
                                 <button class="btn btn-sm btn-outline-primary" onclick="testProvider('${name}')" 
                                         ${!isEnabled ? 'disabled' : ''}>
                                     <i class="fas fa-play"></i> Test
@@ -171,6 +175,32 @@
                 }
             } catch (error) {
                 showAlert(`Error rolling key: ${error.message}`, 'danger');
+            }
+        }
+
+        async function pingProvider(providerName) {
+            const modal = new bootstrap.Modal(document.getElementById('testModal'));
+            document.getElementById('testModalTitle').textContent = `Pinging ${providerName.toUpperCase()}`;
+            document.getElementById('testModalBody').innerHTML = `
+                <div class="text-center">
+                    <div class="spinner-border text-success" role="status"></div>
+                    <p class="mt-2">Sending live ping...</p>
+                </div>`;
+            modal.show();
+            try {
+                const response = await fetch(`/api/health/${providerName}/ping`, { method: 'POST' });
+                const result = await response.json();
+                const icon = result.alive ? 'success' : 'danger';
+                const badge = result.alive ? '<span class="badge bg-success">ALIVE</span>' : '<span class="badge bg-danger">DOWN</span>';
+                document.getElementById('testModalBody').innerHTML = `
+                    <div class="alert alert-${icon}">
+                        <h6>${badge} ${result.provider.toUpperCase()}</h6>
+                        <p><strong>Status Code:</strong> ${result.status_code || 'N/A'}</p>
+                        <p><strong>Latency:</strong> ${result.latency_ms}ms</p>
+                        ${result.error ? `<p><strong>Error:</strong> <code>${result.error.substring(0, 200)}</code></p>` : ''}
+                    </div>`;
+            } catch (e) {
+                document.getElementById('testModalBody').innerHTML = `<div class="alert alert-danger">Ping failed: ${e.message}</div>`;
             }
         }
 

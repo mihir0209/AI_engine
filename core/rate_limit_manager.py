@@ -68,9 +68,16 @@ class RateLimitManager:
             return self.providers[provider_name]
     
     def is_available(self, provider_name: str) -> bool:
-        """Check if a provider is available"""
-        provider = self.get_provider(provider_name)
-        return provider.is_available()
+        """Check if a provider is available (atomic check+reset)"""
+        with self._lock:
+            provider = self.get_provider(provider_name)
+            if not provider.is_rate_limited:
+                return True
+            if time.time() > provider.rate_limit_until:
+                provider.is_rate_limited = False
+                provider.reset_window()
+                return True
+            return False
     
     def record_request(self, provider_name: str):
         """Record a request to a provider"""
