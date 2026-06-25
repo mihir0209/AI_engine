@@ -70,12 +70,12 @@ def test_min_length_message():
 
 
 def test_zero_rate_limit():
-    from core.enhanced_health import PerUserRateLimiter
-    rl = PerUserRateLimiter(default_rate=1, default_burst=1)
-    allowed, info = rl.allow_request("user")
-    assert allowed is True  # First request allowed
-    allowed, info = rl.allow_request("user")
-    assert allowed is False  # Second request blocked
+    from core.rate_limit_manager import RateLimitManager
+    rl = RateLimitManager(default_limit=1)
+    rl.mark_rate_limited("test_provider", retry_after=999)
+    assert rl.is_available("test_provider") is False
+    rl.reset_provider("test_provider")
+    assert rl.is_available("test_provider") is True
 
 
 def test_large_context_window():
