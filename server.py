@@ -455,7 +455,11 @@ async def chat_completions(request: Request, background_tasks: BackgroundTasks, 
 
 
 async def handle_streaming_response(messages, model, preferred_provider, background_tasks):
-    """Handle streaming chat completion — fully OpenAI-compatible SSE"""
+    """Handle streaming chat completion — fully OpenAI-compatible SSE.
+    
+    Uses non-streaming backend + simulated chunking. This is the standard approach
+    for proxies where upstream providers may not support real SSE streaming.
+    """
     from fastapi.responses import StreamingResponse
 
     async def generate_stream():
@@ -463,76 +467,62 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
         created = int(time.time())
         model_name = model if model and model != "auto" else "auto"
 
-        def stream_from_engine():
-            for chunk in engine.chat_completion_stream(
+        try:
+            result = await asyncio.to_thread(
+                engine.chat_completion,
                 messages=messages,
                 model=model if model != "auto" else None,
                 preferred_provider=preferred_provider
-            ):
-                yield chunk
+            )
+        except Exception as e:
+            error_data = {"error": {"message": str(e), "type": "server_error", "param": None, "code": None}}
+            yield f"data: {json.dumps(error_data)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
-        loop = asyncio.get_event_loop()
-        stream_iter = stream_from_engine()
+        if not result or not getattr(result, 'success', False):
+            error_msg = getattr(result, 'error_message', 'Provider error') if result else 'No response'
+            error_data = {"error": {"message": error_msg, "type": "server_error", "param": None, "code": None}}
+            yield f"data: {json.dumps(error_data)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
 
-        # First chunk must include role
+        actual_model = getattr(result, 'model_used', None) or model_name
+        content = getattr(result, 'content', '')
+
+        # First chunk: role
         first_chunk = {
             "id": completion_id,
             "object": "chat.completion.chunk",
             "created": created,
-            "model": model_name,
-            "choices": [{
-                "index": 0,
-                "delta": {"role": "assistant", "content": ""},
-                "finish_reason": None
-            }]
+            "model": actual_model,
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}, "finish_reason": None}]
         }
         yield f"data: {json.dumps(first_chunk)}\n\n"
 
-        total_content = ""
+        # Stream content in word-sized chunks
+        words = content.split(' ')
+        buffer = ""
+        for word in words:
+            buffer += (" " if buffer else "") + word
+            chunk_data = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": actual_model,
+                "choices": [{"index": 0, "delta": {"content": buffer + " "}, "finish_reason": None}]
+            }
+            yield f"data: {json.dumps(chunk_data)}\n\n"
+            buffer = ""
+            await asyncio.sleep(0.01)
 
-        try:
-            while True:
-                chunk = await loop.run_in_executor(None, lambda: next(stream_iter, None))
-                if chunk is None:
-                    break
-
-                if chunk.get('error'):
-                    error_data = {"error": {"message": chunk['error'], "type": "server_error", "param": None, "code": None}}
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                    break
-
-                if chunk.get('done'):
-                    break
-
-                if chunk.get('content'):
-                    total_content += chunk['content']
-                    chunk_data = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": model_name,
-                        "choices": [{
-                            "index": 0,
-                            "delta": {"content": chunk['content']},
-                            "finish_reason": None
-                        }]
-                    }
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-        except Exception as e:
-            error_data = {"error": {"message": str(e), "type": "server_error", "param": None, "code": None}}
-            yield f"data: {json.dumps(error_data)}\n\n"
-
-        # Final chunk with finish_reason: stop
+        # Final chunk: finish_reason
         final_chunk = {
             "id": completion_id,
             "object": "chat.completion.chunk",
             "created": created,
-            "model": model_name,
-            "choices": [{
-                "index": 0,
-                "delta": {},
-                "finish_reason": "stop"
-            }]
+            "model": actual_model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
         }
         yield f"data: {json.dumps(final_chunk)}\n\n"
         yield "data: [DONE]\n\n"
