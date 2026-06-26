@@ -597,6 +597,17 @@ async def list_models(request: Request = None, provider: str = None, search: str
         })
     
     return {"object": "list", "data": filtered_models}
+
+@app.get("/v1/models/{model_id}")
+async def retrieve_model(model_id: str):
+    """Retrieve a single model by ID (OpenAI SDK calls this)"""
+    return {
+        "id": model_id,
+        "object": "model",
+        "created": int(datetime.now().timestamp()),
+        "owned_by": model_id.split("/")[0] if "/" in model_id else "unknown"
+    }
+
 async def discover_and_cache_models():
     """Discover models from all providers and cache the results"""
     import concurrent.futures
