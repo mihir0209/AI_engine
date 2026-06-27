@@ -6,10 +6,10 @@
 def test_empty_chat_messages():
     from core.ai_engine import AI_engine
     engine = AI_engine(verbose=False)
-    # With providers enabled, empty messages may still get a response
-    # Just verify the method doesn't crash
+    engine.providers = {}  # Disable all providers to avoid blocking HTTP calls
     result = engine.chat_completion([])
     assert isinstance(result.success, bool)
+    assert result.success is False  # No providers = no response
 
 
 def test_null_model_name():

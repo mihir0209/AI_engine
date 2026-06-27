@@ -70,7 +70,12 @@ class RateLimitManager:
     def is_available(self, provider_name: str) -> bool:
         """Check if a provider is available (atomic check+reset)"""
         with self._lock:
-            provider = self.get_provider(provider_name)
+            if provider_name not in self.providers:
+                self.providers[provider_name] = RateLimitInfo(
+                    provider=provider_name,
+                    requests_limit=self.default_limit
+                )
+            provider = self.providers[provider_name]
             if not provider.is_rate_limited:
                 return True
             if time.time() > provider.rate_limit_until:

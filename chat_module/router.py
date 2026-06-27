@@ -18,6 +18,8 @@ from .db import ChatDB
 from .websocket_manager import WebSocketManager
 from config import verbose_print
 
+logger = logging.getLogger(__name__)
+
 IMAGE_REF_PATTERN = r'!\[([^\]]*)\]\(([^)]+)\)'
 FILE_REF_PATTERN = r'\[File: ([^\]]+)\]\(([^)]+)\)'
 

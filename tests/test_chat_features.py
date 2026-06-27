@@ -9,7 +9,8 @@ def client():
     from chat_module.router import router
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    with TestClient(app) as client:
+        return client
 
 
 # === Message Editing Tests ===

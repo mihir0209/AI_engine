@@ -9,27 +9,31 @@ def client():
     from chat_module.router import router
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    with TestClient(app) as client:
+        return client
 
 
 # === Branching Tests ===
+
+def _add_user_msg(client, chat_id, content):
+    """Add a user message that won't trigger AI processing (by also adding system response)"""
+    resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
+        "role": "user", "content": content
+    })
+    msg_id = resp.json()["message_id"]
+    # Add system response to prevent background AI processing from blocking
+    client.post(f"/api/chat/chats/{chat_id}/messages", json={
+        "role": "system", "content": f"Response to: {content}"
+    })
+    return msg_id
+
 
 def test_create_branch(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Branch Test"})
     chat_id = create_resp.json()["chat_id"]
 
-    # Add messages
-    msg1_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "user", "content": "Message 1"
-    })
-    msg1_id = msg1_resp.json()["message_id"]
-    client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "system", "content": "Response 1"
-    })
-    msg3_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "user", "content": "Message 3"
-    })
-    msg3_id = msg3_resp.json()["message_id"]
+    msg1_id = _add_user_msg(client, chat_id, "Message 1")
+    msg3_id = _add_user_msg(client, chat_id, "Message 3")
 
     # Create branch from message 3
     response = client.post(f"/api/chat/chats/{chat_id}/branch/{msg3_id}")
@@ -49,39 +53,29 @@ def test_create_branch_invalid_message(client):
 
 def test_create_branch_chat_not_found(client):
     response = client.post("/api/chat/chats/99999/branch/1")
-    assert response.status_code in [404, 500]  # May return 500 due to exception handling
+    assert response.status_code in [404, 500]
 
 
 def test_get_branches(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
 
-    msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "user", "content": "Hello"
-    })
-    msg_id = msg_resp.json()["message_id"]
+    msg_id = _add_user_msg(client, chat_id, "Hello")
     client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
 
     response = client.get(f"/api/chat/chats/{chat_id}/branches")
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert len(data["branches"]) >= 1  # At least main branch (0) and new branch (1)
+    assert len(data["branches"]) >= 1
 
 
 def test_get_branch_messages(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
 
-    msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "user", "content": "Hello"
-    })
-    msg_id = msg_resp.json()["message_id"]
-    client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "system", "content": "Hi!"
-    })
+    msg_id = _add_user_msg(client, chat_id, "Hello")
 
-    # Create branch
     branch_resp = client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
     branch_id = branch_resp.json()["branch_id"]
 
@@ -89,19 +83,15 @@ def test_get_branch_messages(client):
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert len(data["messages"]) == 1  # Only message 1 in branch
+    assert len(data["messages"]) == 1
 
 
 def test_switch_branch(client):
     create_resp = client.post("/api/chat/chats", json={"title": "Test"})
     chat_id = create_resp.json()["chat_id"]
 
-    msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
-        "role": "user", "content": "Hello"
-    })
-    msg_id = msg_resp.json()["message_id"]
+    msg_id = _add_user_msg(client, chat_id, "Hello")
 
-    # Create branch
     branch_resp = client.post(f"/api/chat/chats/{chat_id}/branch/{msg_id}")
     branch_id = branch_resp.json()["branch_id"]
 

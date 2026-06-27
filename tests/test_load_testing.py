@@ -9,7 +9,8 @@ import time
 def client():
     from fastapi.testclient import TestClient
     from server import app
-    return TestClient(app)
+    with TestClient(app) as client:
+        return client
 
 
 def test_health_check_integration(client):

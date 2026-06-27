@@ -194,7 +194,6 @@ class TenantManager:
         return self.users.get(user_id)
 
     def get_user_by_api_key(self, api_key: str) -> Optional[User]:
-    def get_user_by_api_key(self, api_key: str) -> Optional[User]:
         """Get user by API key (O(1) via index)"""
         return self._user_key_index.get(api_key)
 

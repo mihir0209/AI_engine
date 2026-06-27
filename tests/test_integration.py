@@ -183,4 +183,5 @@ class TestServerIntegration:
 def client():
     from fastapi.testclient import TestClient
     from server import app
-    return TestClient(app)
+    with TestClient(app) as client:
+        return client
