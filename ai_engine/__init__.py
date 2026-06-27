@@ -3,7 +3,7 @@
 __version__ = "4.0.0"
 
 from .openai import OpenAI, AsyncOpenAI
-from ._engine import get_engine, set_engine, AIEngine
+from ._engine import AIEngine, get_engine, set_engine, _global_config
 from ._exceptions import (
     AIEngineError,
     OpenAIError,
@@ -22,5 +22,4 @@ except ImportError:
 
 def use(**kwargs):
     """Configure global AI Engine settings (late configuration)."""
-    from ._engine import _global_config
     _global_config.update(kwargs)

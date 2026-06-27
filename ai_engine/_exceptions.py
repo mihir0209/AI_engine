@@ -17,33 +17,33 @@ class OpenAIError(AIEngineError):
 
 
 class BadRequestError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=400, error_type="invalid_request_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=400, error_type="invalid_request_error", **kwargs)
 
 
 class AuthenticationError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=401, error_type="authentication_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=401, error_type="authentication_error", **kwargs)
 
 
 class PermissionDeniedError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=403, error_type="permission_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=403, error_type="permission_error", **kwargs)
 
 
 class NotFoundError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=404, error_type="not_found_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=404, error_type="not_found_error", **kwargs)
 
 
 class RateLimitError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=429, error_type="rate_limit_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=429, error_type="rate_limit_error", **kwargs)
 
 
 class InternalServerError(OpenAIError):
-    def __init__(self, message=None, response=None, body=None):
-        super().__init__(message, status_code=500, error_type="server_error")
+    def __init__(self, message=None, response=None, body=None, **kwargs):
+        super().__init__(message, status_code=500, error_type="server_error", **kwargs)
 
 
 class AnthropicError(AIEngineError):
@@ -84,4 +84,6 @@ def raise_for_status(status_code, error_body):
     }
 
     exc_cls = exc_map.get(status_code, OpenAIError)
-    raise exc_cls(message=message, status_code=status_code, error_type=error_type, param=param, code=code)
+    if exc_cls in (OpenAIError,):
+        raise exc_cls(message=message, status_code=status_code, error_type=error_type, param=param, code=code)
+    raise exc_cls(message=message, param=param, code=code)
