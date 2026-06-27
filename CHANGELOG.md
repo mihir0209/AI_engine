@@ -2,7 +2,16 @@
 
 All notable changes to AI Engine are documented here.
 
-## [3.1.0] - 2026-06-25
+## [3.1.0] - 2026-06-27
+
+### Verified
+- **OpenAI SDK v2.44.0 compatibility** — Full test pass with `openai` Python package
+  - `client.models.list()` — 2349 models
+  - `client.models.retrieve()` — single model lookup
+  - `client.chat.completions.create()` — non-streaming
+  - `client.chat.completions.create(stream=True)` — SSE streaming
+  - Error format: `{error: {message, type, param, code}}`
+  - `x-request-id` header on all responses
 
 ### Added
 - **CDN Config Sync** — Auto-fetch latest provider configs from jsDelivr CDN (`CDN_CONFIG_URL=default`)

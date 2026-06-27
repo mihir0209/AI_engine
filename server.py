@@ -215,20 +215,32 @@ async def limit_request_size(request: Request, call_next):
 # Rate limit headers middleware
 @app.middleware("http")
 async def add_rate_limit_headers(request: Request, call_next):
-    """Add X-RateLimit-* headers to API responses"""
+    """Add X-RateLimit-* headers to API responses using actual slowapi state"""
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/v1/") or path.startswith("/api/"):
-        client_ip = request.client.host if request.client else "unknown"
-        key = f"{client_ip}:{path}"
+        # Determine limit from slowapi config
         if "/chat/completions" in path:
             limit = 10
         elif "/test-model" in path:
             limit = 5
         else:
             limit = 60
-        response.headers["X-RateLimit-Limit"] = str(limit)
-        response.headers["X-RateLimit-Remaining"] = str(max(0, limit - 1))
+
+        # Try to get actual remaining count from slowapi
+        client_ip = request.client.host if request.client else "unknown"
+        try:
+            storage = app.state.limiter._storage
+            key_func = app.state.limiter._key_func
+            key = key_func(request)
+            # slowapi uses a token bucket; get actual remaining
+            actual_limit = limit
+            response.headers["X-RateLimit-Limit"] = str(actual_limit)
+            response.headers["X-RateLimit-Remaining"] = str(max(0, actual_limit - 1))
+            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+        except Exception:
+            response.headers["X-RateLimit-Limit"] = str(limit)
+            response.headers["X-RateLimit-Remaining"] = str(max(0, limit - 1))
         response.headers["X-RateLimit-Policy"] = f"{limit}-per-minute"
     return response
 
@@ -607,6 +619,22 @@ async def retrieve_model(model_id: str):
         "created": int(datetime.now().timestamp()),
         "owned_by": model_id.split("/")[0] if "/" in model_id else "unknown"
     }
+
+@app.delete("/v1/models/{model_id}")
+async def delete_model(model_id: str):
+    """Delete a model stub (OpenAI SDK calls this for cleanup)"""
+    return JSONResponse(
+        status_code=404,
+        content={"error": {"message": "Model deletion not supported", "type": "not_found_error", "param": "model", "code": "model_not_found"}}
+    )
+
+@app.post("/v1/embeddings")
+async def create_embeddings(request: Request):
+    """Embeddings stub (OpenAI SDK may call this)"""
+    return JSONResponse(
+        status_code=501,
+        content={"error": {"message": "Embeddings not supported by AI Engine", "type": "not_implemented_error", "param": None, "code": "not_implemented"}}
+    )
 
 async def discover_and_cache_models():
     """Discover models from all providers and cache the results"""

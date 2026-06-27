@@ -1,13 +1,13 @@
 # AI Engine - Free AI Inference Router for Developers
 
-[![Tests](https://img.shields.io/badge/tests-518%20passing-brightgreen)]()
-[![Providers](https://img.shields.io/badge/providers-21%20working-blue)]()
+[![Tests](https://img.shields.io/badge/tests-573%20passing-brightgreen)]()
+[![Providers](https://img.shields.io/badge/providers-27%20enabled-blue)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)]()
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991)]()
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)]()
 
-> **Stop paying for AI inference.** Route your requests through 21+ free providers with automatic failover, intelligent routing, and OpenAI-compatible API.
+> **Stop paying for AI inference.** Route your requests through 27+ free providers with automatic failover, intelligent routing, and OpenAI-compatible API.
 
 ---
 
