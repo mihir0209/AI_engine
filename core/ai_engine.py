@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Import configuration from external config file
 try:
-    from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
+    from core.config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
     from core.model_cache import shared_model_cache
     from core.health_monitor import health_monitor
     from core.latency_tracker import latency_tracker
@@ -23,11 +23,21 @@ try:
     from core.usage_tracker import usage_tracker
     from core.provider_requests import ProviderRequestMixin, RequestResult
     from core.stress_test import StressTestMixin
-except ImportError as e:
-    print(f"Failed to import from config: {e}")
-    print("Falling back to inline configuration...")
-    AI_CONFIGS = {}
-    ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5, "verbose_mode": False}
+except ImportError:
+    try:
+        from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
+        from core.model_cache import shared_model_cache
+        from core.health_monitor import health_monitor
+        from core.latency_tracker import latency_tracker
+        from core.rate_limit_manager import rate_limit_manager
+        from core.usage_tracker import usage_tracker
+        from core.provider_requests import ProviderRequestMixin, RequestResult
+        from core.stress_test import StressTestMixin
+    except ImportError as e:
+        print(f"Failed to import from config: {e}")
+        print("Falling back to inline configuration...")
+        AI_CONFIGS = {}
+        ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5, "verbose_mode": False}
     AUTODECIDE_CONFIG = {"enabled": True, "cache_duration": 1800, "model_cache": {}}
 
     # Fallback verbose_print function

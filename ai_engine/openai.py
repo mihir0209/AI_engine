@@ -1,4 +1,4 @@
-"""Drop-in replacement for openai.OpenAI — routes through AI Engine core."""
+"""Drop-in replacement for openai.OpenAI — routes through AI Synapse core."""
 from functools import cached_property
 from typing import Dict, Any, Optional
 import logging
@@ -57,7 +57,7 @@ class OpenAI:
             max_retries=max_retries,
             **kwargs,
         )
-        self._engine = _init_engine(self._config)
+        self._engine = get_engine(self._config)
         self._chat = _ChatNamespace(self._engine)
         self._models = Models(self._engine)
 

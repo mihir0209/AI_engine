@@ -1,4 +1,4 @@
-"""Exception hierarchy for AI Engine SDK."""
+"""Exception hierarchy for AI Synapse SDK."""
 
 
 class AIEngineError(Exception):

@@ -8,7 +8,10 @@ import time
 import os
 import threading
 from typing import List, Dict, Tuple
-from config import verbose_print
+try:
+    from core.config import verbose_print
+except ImportError:
+    from config import verbose_print
 
 class ModelCache:
     """Centralized model cache with auto-refresh capability"""

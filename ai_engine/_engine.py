@@ -1,4 +1,4 @@
-"""Shared AI Engine singleton — initialized once, used by all SDK classes."""
+"""Shared AI Synapse engine singleton — initialized once, used by all SDK classes."""
 import os
 import json
 import logging
@@ -71,27 +71,49 @@ def _resolve_config(config=None, cdn_config=None, **kwargs) -> Dict[str, Any]:
 def _init_engine(config: Dict[str, Any]):
     """Initialize AI_engine from merged config."""
     import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent))
+    import os
+    # Add parent directory (project root) to sys.path so core/ and config.py are findable
+    pkg_dir = str(Path(__file__).parent.parent)
+    if pkg_dir not in sys.path:
+        sys.path.insert(0, pkg_dir)
+    
+    cwd = os.getcwd()
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
+    
+    # Apply config.json overrides to AI_CONFIGS before engine loads providers
+    try:
+        from core.config import AI_CONFIGS
+        _apply_config_overrides(AI_CONFIGS, config)
+    except ImportError:
+        pass
+    
     from core.ai_engine import AI_engine
-
-    # Apply provider overrides
     engine = AI_engine(verbose=False)
-
-    # Set API keys from config
-    api_keys = config.get("api_keys", {})
-    for provider_name, key in api_keys.items():
-        if provider_name in engine.providers:
-            engine.providers[provider_name]["api_keys"] = [key]
-            engine.providers[provider_name]["enabled"] = True
-
-    # Apply provider priority/enable overrides
-    provider_overrides = config.get("providers", {})
-    for provider_name, overrides in provider_overrides.items():
-        if provider_name in engine.providers:
-            for k, v in overrides.items():
-                engine.providers[provider_name][k] = v
-
     return engine
+
+
+def _apply_config_overrides(ai_configs: dict, config: dict):
+    """Apply config.json overrides to AI_CONFIGS before engine initialization."""
+    api_keys = config.get("api_keys", {})
+    provider_overrides = config.get("providers", {})
+
+    for provider_name, overrides in provider_overrides.items():
+        if provider_name not in ai_configs:
+            continue
+        for key, value in overrides.items():
+            ai_configs[provider_name][key] = value
+        # If provider is being enabled and requires auth but has no keys, add a dummy key
+        if overrides.get("enabled") and ai_configs[provider_name].get("auth_type"):
+            current_keys = ai_configs[provider_name].get("api_keys", [])
+            if not current_keys or all(k is None for k in current_keys):
+                ai_configs[provider_name]["api_keys"] = ["free"]
+
+    for provider_name, key in api_keys.items():
+        if provider_name not in ai_configs:
+            continue
+        ai_configs[provider_name]["api_keys"] = [key]
+        ai_configs[provider_name]["enabled"] = True
 
 
 def get_engine(config=None, **kwargs):

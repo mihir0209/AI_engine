@@ -12,14 +12,15 @@ from dataclasses import dataclass, asdict
 
 # Import verbose_print function
 try:
-    from config import verbose_print, ENGINE_SETTINGS
+    from core.config import verbose_print, ENGINE_SETTINGS
 except ImportError:
-    # Fallback verbose_print function
-    def verbose_print(message: str, verbose_override: bool = None):
-        # Default to False if no config available
-        if verbose_override or False:
-            print(message)
-    ENGINE_SETTINGS = {"verbose_mode": False}
+    try:
+        from config import verbose_print, ENGINE_SETTINGS
+    except ImportError:
+        def verbose_print(message: str, verbose_override: bool = None):
+            if verbose_override or False:
+                print(message)
+        ENGINE_SETTINGS = {"verbose_mode": False}
 
 @dataclass
 class KeyStatistics:

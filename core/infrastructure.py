@@ -277,6 +277,9 @@ def check_database():
 
 def check_providers():
     """Check if any providers are available"""
+    try:
+    from core.config import AI_CONFIGS
+except ImportError:
     from config import AI_CONFIGS
     enabled = [name for name, config in AI_CONFIGS.items() if config.get('enabled', True)]
     return len(enabled) > 0
