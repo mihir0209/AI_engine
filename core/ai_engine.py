@@ -1533,9 +1533,15 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         available_providers = self._get_available_providers(preferred_provider)
 
         if not available_providers:
+            # Diagnostic: count why providers are unavailable
+            total = len(self.providers)
+            enabled = sum(1 for c in self.providers.values() if c.get('enabled', True))
+            auto_disabled = sum(1 for c in self.providers.values() if c.get('_auto_disabled'))
+            healthy = sum(1 for n in self.providers if health_monitor.is_provider_healthy(n))
+            rate_limited = sum(1 for n in self.providers if not rate_limit_manager.is_available(n))
             return RequestResult(
                 success=False,
-                error_message="No available providers",
+                error_message=f"No available providers (total={total}, enabled={enabled}, auto_disabled={auto_disabled}, healthy={healthy}, rate_limited={rate_limited})",
                 error_type="no_providers"
             )
 
