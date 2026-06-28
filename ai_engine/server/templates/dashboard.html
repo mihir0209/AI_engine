@@ -3,124 +3,218 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Engine Dashboard</title>
+    <title>AI Synapse — Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <style>
+        :root {
+            --primary: #0d6efd;
+            --gradient-start: #667eea;
+            --gradient-end: #764ba2;
+        }
+        body { background: #f4f6f9; }
+        .hero-card {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .hero-card h1 { font-size: 1.8rem; font-weight: 700; margin: 0; }
+        .hero-card p { opacity: 0.9; margin: 0.5rem 0 0 0; font-size: 1rem; }
+        .stat-card {
+            border: none;
+            border-radius: 12px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            overflow: hidden;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        .stat-card .card-body { padding: 1.25rem; }
+        .stat-card .stat-icon { font-size: 2rem; opacity: 0.7; }
+        .stat-card .stat-value { font-size: 2rem; font-weight: 700; }
+        .stat-card .stat-label { font-size: 0.85rem; opacity: 0.8; }
+        .feature-card {
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        .feature-card:hover { border-color: var(--primary); box-shadow: 0 4px 15px rgba(13,110,253,0.1); }
+        .feature-card .card-body { padding: 1.5rem; }
+        .feature-card h5 { font-weight: 600; font-size: 1rem; }
+        .feature-card p { font-size: 0.9rem; color: #6c757d; }
+        .version-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        .provider-list { max-height: 300px; overflow-y: auto; }
+        .provider-item {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .provider-item:last-child { border-bottom: none; }
+        .provider-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .provider-dot.active { background: #198754; }
+        .provider-dot.inactive { background: #dc3545; }
+    </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-dark" style="background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));">
         <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-robot"></i> AI Engine v3.0
+            <a class="navbar-brand fw-bold" href="/">
+                <i class="fas fa-bolt"></i> AI Synapse <span class="version-badge" id="navVersion"></span>
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link active" href="/"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
-                <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
-                <a class="nav-link" href="/models"><i class="fas fa-cubes"></i> Models</a>
-                <a class="nav-link" href="/chat"><i class="fas fa-comments"></i> Chat</a>
-                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
-                <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API Docs</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav ms-auto">
+                    <a class="nav-link active" href="/"><i class="fas fa-th-large"></i> Dashboard</a>
+                    <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
+                    <a class="nav-link" href="/models"><i class="fas fa-cubes"></i> Models</a>
+                    <a class="nav-link" href="/chat"><i class="fas fa-comments"></i> Chat</a>
+                    <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Stats</a>
+                    <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API</a>
+                </div>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-4">
-        <div class="row">
-            <div class="col-md-12">
-                <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
-                <p class="text-muted">Monitor your AI Engine performance and providers</p>
-            </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-md-3">
-                <div class="card bg-success text-white">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-check-circle"></i> Active Providers</h5>
-                        <h2 id="activeProviders">-</h2>
-                    </div>
+    <div class="container py-4">
+        <!-- Hero -->
+        <div class="hero-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1><i class="fas fa-bolt"></i> AI Synapse</h1>
+                    <p>Free multi-provider AI inference — 27+ providers, zero server cost.</p>
                 </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-info text-white">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-server"></i> Total Providers</h5>
-                        <h2 id="totalProviders">-</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-warning text-white">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-exclamation-triangle"></i> Flagged</h5>
-                        <h2 id="flaggedProviders">-</h2>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card bg-primary text-white">
-                    <div class="card-body">
-                        <h5 class="card-title"><i class="fas fa-clock"></i> Uptime</h5>
-                        <h2 id="uptime">-</h2>
-                    </div>
+                <div class="text-end">
+                    <div class="version-badge" id="heroVersion">v4.0.11</div>
+                    <div class="mt-2" id="heroUptime" style="font-size:0.85rem;opacity:0.8"></div>
                 </div>
             </div>
         </div>
 
-        <div class="row mt-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-chart-pie"></i> Provider Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="providerStatusChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-comments"></i> Chat Interface</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted">Interactive chat with context-aware AI conversations</p>
-                        <div id="chatStats" class="mb-3">
-                            <small class="text-muted">Loading chat statistics...</small>
+        <!-- Stats -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="stat-value text-success" id="activeProviders">-</div>
+                            <div class="stat-label">Active Providers</div>
                         </div>
+                        <i class="fas fa-check-circle stat-icon text-success"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="stat-value text-primary" id="totalProviders">-</div>
+                            <div class="stat-label">Total Providers</div>
+                        </div>
+                        <i class="fas fa-server stat-icon text-primary"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="stat-value text-warning" id="flaggedProviders">-</div>
+                            <div class="stat-label">Flagged</div>
+                        </div>
+                        <i class="fas fa-exclamation-triangle stat-icon text-warning"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="stat-value text-info" id="totalModels">-</div>
+                            <div class="stat-label">Available Models</div>
+                        </div>
+                        <i class="fas fa-cubes stat-icon text-info"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="row g-4">
+            <!-- Provider Status -->
+            <div class="col-md-4">
+                <div class="card feature-card h-100">
+                    <div class="card-body">
+                        <h5><i class="fas fa-server text-primary"></i> Provider Health</h5>
+                        <div class="provider-list" id="providerList">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="col-md-4">
+                <div class="card feature-card h-100">
+                    <div class="card-body">
+                        <h5><i class="fas fa-bolt text-warning"></i> Quick Actions</h5>
                         <div class="d-grid gap-2">
                             <a href="/chat" class="btn btn-primary">
-                                <i class="fas fa-comments"></i> Open Chat Interface
+                                <i class="fas fa-comments"></i> Open Chat
                             </a>
-                            <button class="btn btn-outline-primary btn-sm" onclick="createQuickChat()">
-                                <i class="fas fa-plus"></i> Quick Temporary Chat
-                            </button>
+                            <a href="/providers" class="btn btn-outline-primary">
+                                <i class="fas fa-server"></i> Manage Providers
+                            </a>
+                            <a href="/models" class="btn btn-outline-primary">
+                                <i class="fas fa-cubes"></i> Browse Models
+                            </a>
+                            <a href="/statistics" class="btn btn-outline-primary">
+                                <i class="fas fa-chart-bar"></i> View Statistics
+                            </a>
+                            <a href="/docs" class="btn btn-outline-primary">
+                                <i class="fas fa-book"></i> API Documentation
+                            </a>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="row mt-4">
-            <div class="col-md-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-chart-line"></i> System Performance Overview</h5>
-                    </div>
+            <!-- System Info -->
+            <div class="col-md-4">
+                <div class="card feature-card h-100">
                     <div class="card-body">
-                        <p class="text-muted">For detailed statistics, key usage, and activity monitoring, visit the <a href="/statistics" class="text-decoration-none"><strong>Statistics</strong></a> page.</p>
-                        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
-                            <a href="/statistics" class="btn btn-outline-primary">
-                                <i class="fas fa-chart-bar"></i> View Detailed Statistics
-                            </a>
-                            <a href="/providers" class="btn btn-outline-secondary">
-                                <i class="fas fa-server"></i> Manage Providers
-                            </a>
-                            <a href="/models" class="btn btn-outline-info">
-                                <i class="fas fa-cubes"></i> Browse Models
-                            </a>
+                        <h5><i class="fas fa-info-circle text-info"></i> System Info</h5>
+                        <div id="systemInfo">
+                            <div class="d-flex justify-content-between py-2 border-bottom">
+                                <span class="text-muted">SDK Version</span>
+                                <span id="sysVersion" class="fw-bold">-</span>
+                            </div>
+                            <div class="d-flex justify-content-between py-2 border-bottom">
+                                <span class="text-muted">Python</span>
+                                <span id="sysPython" class="fw-bold">-</span>
+                            </div>
+                            <div class="d-flex justify-content-between py-2 border-bottom">
+                                <span class="text-muted">Uptime</span>
+                                <span id="sysUptime" class="fw-bold">-</span>
+                            </div>
+                            <div class="d-flex justify-content-between py-2">
+                                <span class="text-muted">CDN Sync</span>
+                                <span id="cdnStatus" class="fw-bold">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -134,169 +228,67 @@
 
         async function updateDashboard() {
             try {
-                const statusResponse = await fetch('/api/status');
-                const status = await statusResponse.json();
+                const [statusRes, cdnRes] = await Promise.all([
+                    fetch('/api/status'),
+                    fetch('/api/cdn-config').catch(() => ({json: () => ({})}))
+                ]);
+                const status = await statusRes.json();
+                const cdn = await cdnRes.json ? await cdnRes.json() : {};
 
-                document.getElementById('activeProviders').textContent = status.available_providers;
-                document.getElementById('totalProviders').textContent = status.total_providers;
-                document.getElementById('flaggedProviders').textContent = status.flagged_providers;
+                document.getElementById('activeProviders').textContent = status.available_providers || 0;
+                document.getElementById('totalProviders').textContent = status.total_providers || 0;
+                document.getElementById('flaggedProviders').textContent = status.flagged_providers || 0;
 
                 const uptime = Math.floor((Date.now() - startTime) / 1000 / 60);
-                document.getElementById('uptime').textContent = uptime + 'm';
+                document.getElementById('heroUptime').textContent = `Uptime: ${uptime}m`;
+                document.getElementById('sysUptime').textContent = `${uptime}m`;
+                document.getElementById('sysVersion').textContent = 'v4.0.11';
+                document.getElementById('sysPython').textContent = '3.12';
 
-                // Update provider status chart
-                updateProviderChart(status);
-
-                // Load chat statistics
-                loadChatStats();
-
-            } catch (error) {
-                console.error('Error updating dashboard:', error);
-            }
-        }
-
-        async function loadChatStats() {
-            try {
-                const response = await fetch('/api/chat/stats');
-                const data = await response.json();
-                
-                if (data.success) {
-                    const stats = data.stats;
-                    document.getElementById('chatStats').innerHTML = `
-                        <div class="row text-center">
-                            <div class="col-4">
-                                <strong>${stats.total_chats}</strong><br>
-                                <small class="text-muted">Total Chats</small>
-                            </div>
-                            <div class="col-4">
-                                <strong>${stats.total_messages}</strong><br>
-                                <small class="text-muted">Messages</small>
-                            </div>
-                            <div class="col-4">
-                                <strong>${stats.temporary_chats}</strong><br>
-                                <small class="text-muted">Temporary</small>
-                            </div>
-                        </div>
-                    `;
+                if (cdn && cdn.enabled !== undefined) {
+                    document.getElementById('cdnStatus').textContent = cdn.enabled ? `Active (${cdn.ttl}s TTL)` : 'Disabled';
+                } else {
+                    document.getElementById('cdnStatus').textContent = 'Disabled';
                 }
-            } catch (error) {
-                console.error('Error loading chat stats:', error);
-                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Error loading stats</small>';
+
+                // Models count
+                try {
+                    const modelsRes = await fetch('/v1/models');
+                    const models = await modelsRes.json();
+                    document.getElementById('totalModels').textContent = models.data ? models.data.length : 0;
+                } catch(e) {
+                    document.getElementById('totalModels').textContent = '-';
+                }
+
+                // Provider list
+                const enabled = status.enabled_provider_list || [];
+                const disabled = status.disabled_provider_list || [];
+                const providerHtml = enabled.map(name =>
+                    `<div class="provider-item"><div class="provider-dot active"></div><span class="text-truncate">${name}</span></div>`
+                ).join('') + disabled.map(name =>
+                    `<div class="provider-item"><div class="provider-dot inactive"></div><span class="text-truncate text-muted">${name}</span></div>`
+                ).join('');
+                document.getElementById('providerList').innerHTML = providerHtml || '<div class="text-muted text-center py-3">No providers</div>';
+
+            } catch(e) {
+                console.error('Dashboard error:', e);
             }
         }
 
         async function createQuickChat() {
             try {
-                const response = await fetch('/api/chat/chats', {
+                const resp = await fetch('/api/chat/chats', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
-                        is_temporary: true
-                    })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: 'Quick Chat', is_temporary: true})
                 });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Redirect to chat interface with the new chat
-                    window.location.href = `/chat#${result.chat_id}`;
-                } else {
-                    alert('Failed to create quick chat');
-                }
-
-            } catch (error) {
-                console.error('Error creating quick chat:', error);
-                alert('Error creating quick chat');
-            }
+                const data = await resp.json();
+                if (data.success) window.location.href = '/chat';
+            } catch(e) { console.error(e); }
         }
 
-        function updateProviderChart(status) {
-            const ctx = document.getElementById('providerStatusChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['Active', 'Flagged'],
-                    datasets: [{
-                        data: [status.available_providers, status.flagged_providers],
-                        backgroundColor: ['#28a745', '#ffc107']
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                        }
-                    }
-                }
-            });
-        }
-
-        async function loadChatStats() {
-            try {
-                const response = await fetch('/api/chat/stats');
-                const data = await response.json();
-                
-                if (data.success) {
-                    const stats = data.stats;
-                    document.getElementById('chatStats').innerHTML = `
-                        <div class="row text-center">
-                            <div class="col-4">
-                                <div class="h6 mb-0">${stats.total_chats || 0}</div>
-                                <small class="text-muted">Chats</small>
-                            </div>
-                            <div class="col-4">
-                                <div class="h6 mb-0">${stats.total_messages || 0}</div>
-                                <small class="text-muted">Messages</small>
-                            </div>
-                            <div class="col-4">
-                                <div class="h6 mb-0">${stats.temporary_chats || 0}</div>
-                                <small class="text-muted">Temp</small>
-                            </div>
-                        </div>
-                    `;
-                }
-            } catch (error) {
-                console.error('Error loading chat stats:', error);
-                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Stats unavailable</small>';
-            }
-        }
-
-        async function createQuickChat() {
-            try {
-                const response = await fetch('/api/chat/chats', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
-                        is_temporary: true
-                    })
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    window.location.href = `/chat#${result.chat_id}`;
-                } else {
-                    alert('Failed to create quick chat');
-                }
-
-            } catch (error) {
-                console.error('Error creating quick chat:', error);
-                alert('Failed to create quick chat');
-            }
-        }
-
-        // Update dashboard every 30 seconds
-        setInterval(updateDashboard, 30000);
-        setInterval(loadChatStats, 30000);
-        updateDashboard(); // Initial load
-        loadChatStats(); // Initial load
+        updateDashboard();
+        setInterval(updateDashboard, 10000);
     </script>
 </body>
 </html>

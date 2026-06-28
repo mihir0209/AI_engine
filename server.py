@@ -90,19 +90,14 @@ shared_model_cache.load_cache()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
-    # Startup
     import threading
 
     def initialize_cache():
         """Initialize cache in background thread - ALWAYS refresh on startup"""
         try:
             verbose_print("🚀 Initializing fresh model cache on server startup...")
-            verbose_print("🔄 Skipping old cache - refreshing models from providers...")
-
-            # Create new event loop for this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-
             try:
                 result = loop.run_until_complete(discover_and_cache_models())
                 verbose_print(f"✅ Fresh model cache initialized with {len(result['data'])} models")
@@ -110,7 +105,6 @@ async def lifespan(app: FastAPI):
                 verbose_print(f"❌ Error during cache initialization: {e}")
             finally:
                 loop.close()
-
         except Exception as e:
             verbose_print(f"❌ Critical error in cache initialization: {e}")
 
@@ -121,21 +115,19 @@ async def lifespan(app: FastAPI):
             asyncio.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(discover_and_cache_models())
-                verbose_print(f"🔄 Auto-refresh completed: {len(result['data'])} models")
+                verbose_print(f"🔄 Cache refreshed: {len(result['data'])} models")
             finally:
                 loop.close()
         except Exception as e:
-            verbose_print(f"❌ Auto-refresh failed: {e}")
+            verbose_print(f"❌ Cache refresh error: {e}")
 
-    # Start fresh cache initialization in background thread
-    cache_thread = threading.Thread(target=initialize_cache, daemon=True)
-    cache_thread.start()
-    verbose_print("🎯 Fresh model cache initialization started in background thread")
-
-    # Start auto-refresh background task
+    # Startup
+    import time
+    verbose_print("🚀 Starting AI Engine...")
+    initialize_cache()
     shared_model_cache.start_auto_refresh(refresh_cache)
+    verbose_print("🔄 Model cache auto-refresh started (30min interval)")
 
-    # Start temporary chat cleanup task
     try:
         from chat_module.router import start_cleanup_task
         start_cleanup_task()
@@ -145,14 +137,28 @@ async def lifespan(app: FastAPI):
 
     yield  # Server is running
 
-    # Shutdown (cleanup if needed)
+    # Graceful shutdown — drain in-flight requests
+    verbose_print("🛑 Shutting down gracefully...")
+    verbose_print("   Waiting for in-flight requests to complete...")
+    await asyncio.sleep(1)  # Give in-flight requests 1s to finish
+
+    # Stop background tasks
     shared_model_cache.stop_auto_refresh()
     try:
         from chat_module.router import stop_cleanup_task
         stop_cleanup_task()
     except Exception:
         pass
-    verbose_print("🛑 Server shutting down...")
+
+    # Save statistics
+    try:
+        from core.statistics_manager import save_statistics_now
+        save_statistics_now()
+        verbose_print("📊 Statistics saved")
+    except Exception:
+        pass
+
+    verbose_print("✅ Shutdown complete")
 
 # FastAPI app with lifespan handler
 app = FastAPI(

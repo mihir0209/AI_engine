@@ -40,7 +40,7 @@ try:
     from core.config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
     from core.model_cache import shared_model_cache
     # Import chat module
-    from .chat_module.router import router as chat_router
+    from chat_module.router import router as chat_router
     # Import new modules
     from core.caching import lru_cache, request_deduplicator
     from core.middleware import metrics_collector, RequestTracker
@@ -78,7 +78,7 @@ def verify_admin_api_key(api_key: str = Header(None, alias="X-API-Key")) -> bool
 
 # Set the global engine in chat module to prevent duplicate initialization
 try:
-    from .chat_module.router import set_global_engine
+    from chat_module.router import set_global_engine
     set_global_engine(engine)
 except ImportError:
     verbose_print("⚠️ Could not set global engine in chat module")
@@ -90,19 +90,14 @@ shared_model_cache.load_cache()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
-    # Startup
     import threading
 
     def initialize_cache():
         """Initialize cache in background thread - ALWAYS refresh on startup"""
         try:
             verbose_print("🚀 Initializing fresh model cache on server startup...")
-            verbose_print("🔄 Skipping old cache - refreshing models from providers...")
-
-            # Create new event loop for this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-
             try:
                 result = loop.run_until_complete(discover_and_cache_models())
                 verbose_print(f"✅ Fresh model cache initialized with {len(result['data'])} models")
@@ -110,7 +105,6 @@ async def lifespan(app: FastAPI):
                 verbose_print(f"❌ Error during cache initialization: {e}")
             finally:
                 loop.close()
-
         except Exception as e:
             verbose_print(f"❌ Critical error in cache initialization: {e}")
 
@@ -121,23 +115,21 @@ async def lifespan(app: FastAPI):
             asyncio.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(discover_and_cache_models())
-                verbose_print(f"🔄 Auto-refresh completed: {len(result['data'])} models")
+                verbose_print(f"🔄 Cache refreshed: {len(result['data'])} models")
             finally:
                 loop.close()
         except Exception as e:
-            verbose_print(f"❌ Auto-refresh failed: {e}")
+            verbose_print(f"❌ Cache refresh error: {e}")
 
-    # Start fresh cache initialization in background thread
-    cache_thread = threading.Thread(target=initialize_cache, daemon=True)
-    cache_thread.start()
-    verbose_print("🎯 Fresh model cache initialization started in background thread")
-
-    # Start auto-refresh background task
+    # Startup
+    import time
+    verbose_print("🚀 Starting AI Engine...")
+    initialize_cache()
     shared_model_cache.start_auto_refresh(refresh_cache)
+    verbose_print("🔄 Model cache auto-refresh started (30min interval)")
 
-    # Start temporary chat cleanup task
     try:
-        from .chat_module.router import start_cleanup_task
+        from chat_module.router import start_cleanup_task
         start_cleanup_task()
         verbose_print("🧹 Temporary chat cleanup task started")
     except ImportError:
@@ -145,14 +137,28 @@ async def lifespan(app: FastAPI):
 
     yield  # Server is running
 
-    # Shutdown (cleanup if needed)
+    # Graceful shutdown — drain in-flight requests
+    verbose_print("🛑 Shutting down gracefully...")
+    verbose_print("   Waiting for in-flight requests to complete...")
+    await asyncio.sleep(1)  # Give in-flight requests 1s to finish
+
+    # Stop background tasks
     shared_model_cache.stop_auto_refresh()
     try:
-        from .chat_module.router import stop_cleanup_task
+        from chat_module.router import stop_cleanup_task
         stop_cleanup_task()
     except Exception:
         pass
-    verbose_print("🛑 Server shutting down...")
+
+    # Save statistics
+    try:
+        from core.statistics_manager import save_statistics_now
+        save_statistics_now()
+        verbose_print("📊 Statistics saved")
+    except Exception:
+        pass
+
+    verbose_print("✅ Shutdown complete")
 
 # FastAPI app with lifespan handler
 app = FastAPI(
@@ -188,12 +194,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files and templates (resolve relative to this file's directory)
-_server_dir = os.path.dirname(os.path.abspath(__file__))
-app.mount("/static", StaticFiles(directory=os.path.join(_server_dir, "static")), name="static")
+# Mount static files and templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-templates = Jinja2Templates(directory=os.path.join(_server_dir, "templates"))
+templates = Jinja2Templates(directory="templates")
 
 # Include chat router
 app.include_router(chat_router)
@@ -1939,24 +1944,27 @@ async def reload_config():
         raise HTTPException(status_code=500, detail=f"Failed to reload config: {str(e)}")
 
 def create_directories():
-    """Create necessary directories for runtime data"""
-    os.makedirs("uploads", exist_ok=True)
-    os.makedirs("data", exist_ok=True)
+    """Create necessary directories for templates and static files"""
+    os.makedirs("templates", exist_ok=True)
+    os.makedirs("static/css", exist_ok=True)
+    os.makedirs("static/js", exist_ok=True)
+    os.makedirs("static/img", exist_ok=True)
 
 def create_templates():
     """Create HTML templates for the dashboard (only if they don't exist)"""
     import os
 
-    server_dir = os.path.dirname(os.path.abspath(__file__))
+    # Check if templates already exist
     template_files = [
-        os.path.join(server_dir, "templates", "dashboard.html"),
-        os.path.join(server_dir, "templates", "providers.html"),
-        os.path.join(server_dir, "templates", "statistics.html"),
-        os.path.join(server_dir, "templates", "models.html")
+        "templates/dashboard.html",
+        "templates/providers.html",
+        "templates/statistics.html",
+        "templates/models.html"
     ]
 
+    # If any template files exist, skip template creation to preserve manual edits
     if any(os.path.exists(file) for file in template_files):
-        verbose_print("Templates already exist")
+        verbose_print("📄 Templates already exist - preserving manual edits")
         return
 
     verbose_print("📄 Creating default templates...")
