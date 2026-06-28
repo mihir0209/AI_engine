@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Streaming chat completion example using AI Engine SDK."""
+"""Streaming chat completion example using AI Synapse SDK."""
 from ai_engine import OpenAI
 
 client = OpenAI()

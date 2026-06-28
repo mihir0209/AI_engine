@@ -1,4 +1,48 @@
-# AI Synapse — Free Multi-Provider AI SDK
+Metadata-Version: 2.4
+Name: ai-engine
+Version: 4.0.0
+Summary: Free multi-provider AI SDK — drop-in OpenAI & Anthropic compatibility with 27 free providers
+Author: AI Engine Contributors
+License: MIT
+Project-URL: Homepage, https://github.com/mihir0209/AI_engine
+Project-URL: Documentation, https://github.com/mihir0209/AI_engine/tree/main/docs
+Project-URL: Repository, https://github.com/mihir0209/AI_engine
+Project-URL: Issues, https://github.com/mihir0209/AI_engine/issues
+Keywords: ai,llm,openai,anthropic,inference,free-ai,groq,gemini,sdk
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: requests>=2.28.0
+Requires-Dist: python-dotenv>=0.19.0
+Requires-Dist: pydantic>=2.5.0
+Provides-Extra: server
+Requires-Dist: aiohttp>=3.8.0; extra == "server"
+Requires-Dist: fastapi>=0.104.0; extra == "server"
+Requires-Dist: uvicorn[standard]>=0.24.0; extra == "server"
+Requires-Dist: jinja2>=3.1.0; extra == "server"
+Requires-Dist: python-multipart>=0.0.6; extra == "server"
+Requires-Dist: aiofiles>=23.0.0; extra == "server"
+Requires-Dist: prometheus-client>=0.17.0; extra == "server"
+Requires-Dist: slowapi>=0.1.0; extra == "server"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+Requires-Dist: pytest-timeout>=2.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.20.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+Requires-Dist: openai>=2.0.0; extra == "dev"
+Dynamic: license-file
+
+# AI Engine - Free AI Inference Router for Developers
 
 [![Tests](https://img.shields.io/badge/tests-573%20passing-brightgreen)]()
 [![Providers](https://img.shields.io/badge/providers-27%20enabled-blue)]()
@@ -7,7 +51,7 @@
 [![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991)]()
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)]()
 
-> **Stop paying for AI inference.** Drop-in `from ai_engine import OpenAI` — routes through 27+ free providers with automatic failover and intelligent routing.
+> **Stop paying for AI inference.** Route your requests through 27+ free providers with automatic failover, intelligent routing, and OpenAI-compatible API.
 
 ---
 

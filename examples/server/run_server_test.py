@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Start AI Engine server and test with OpenAI SDK."""
+"""Start AI Synapse server and test with OpenAI SDK."""
 import subprocess
 import sys
 import time
 import signal
 
 # Start server in background
-print("Starting AI Engine server...")
+print("Starting AI Synapse server...")
 server = subprocess.Popen(
     [sys.executable, "-m", "uvicorn", "server:app", "--host", "127.0.0.1", "--port", "8766"],
     stdout=subprocess.DEVNULL,

@@ -1,0 +1,274 @@
+{
+  "version": "4.0.6",
+  "passed": 37,
+  "failed": 1,
+  "total": 38,
+  "results": [
+    {
+      "category": "imports",
+      "name": "from ai_engine import OpenAI",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "from ai_engine import AsyncOpenAI",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "from ai_engine import Anthropic",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "exception hierarchy",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "response types",
+      "status": "PASS",
+      "time": "0.02s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "AIEngine, get_engine",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "imports",
+      "name": "version = 4.0.6",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "OpenAI() default",
+      "status": "PASS",
+      "time": "0.54s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "OpenAI(api_keys={})",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "OpenAI(config={})",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "OpenAI(config='config.json')",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "ai_engine.use()",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "client_init",
+      "name": "reset_engine()",
+      "status": "FAIL",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "non-streaming",
+      "status": "PASS",
+      "time": "0.36s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "streaming",
+      "status": "PASS",
+      "time": "0.25s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "stream first chunk has role",
+      "status": "PASS",
+      "time": "3.81s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "stream last chunk finish_reason",
+      "status": "PASS",
+      "time": "0.66s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "with system message",
+      "status": "PASS",
+      "time": "29.40s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "finish_reason valid",
+      "status": "PASS",
+      "time": "0.26s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "usage counts consistent",
+      "status": "PASS",
+      "time": "0.39s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "id format",
+      "status": "PASS",
+      "time": "0.25s",
+      "detail": ""
+    },
+    {
+      "category": "chat",
+      "name": "created timestamp",
+      "status": "PASS",
+      "time": "0.25s",
+      "detail": ""
+    },
+    {
+      "category": "models",
+      "name": "retrieve",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "models",
+      "name": "retrieve with provider prefix",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "models",
+      "name": "list (empty in SDK-only mode)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "errors",
+      "name": "BadRequestError (400)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "errors",
+      "name": "AuthenticationError (401)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "errors",
+      "name": "RateLimitError (429)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "errors",
+      "name": "NotFoundError (404)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "errors",
+      "name": "InternalServerError (500)",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "capabilities",
+      "name": "image compatibility",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "config_sync",
+      "name": "config_status()",
+      "status": "PASS",
+      "time": "0.00s",
+      "detail": ""
+    },
+    {
+      "category": "providers",
+      "name": "pollinations",
+      "status": "PASS",
+      "time": "0.34s",
+      "detail": ""
+    },
+    {
+      "category": "providers",
+      "name": "groq",
+      "status": "PASS",
+      "time": "0.24s",
+      "detail": ""
+    },
+    {
+      "category": "concurrency",
+      "name": "3 parallel requests",
+      "status": "PASS",
+      "time": "0.29s",
+      "detail": ""
+    },
+    {
+      "category": "edge_cases",
+      "name": "empty messages (should fail gracefully)",
+      "status": "PASS",
+      "time": "29.04s",
+      "detail": ""
+    },
+    {
+      "category": "edge_cases",
+      "name": "long message (2500 words)",
+      "status": "PASS",
+      "time": "30.39s",
+      "detail": ""
+    },
+    {
+      "category": "edge_cases",
+      "name": "unicode message",
+      "status": "PASS",
+      "time": "28.79s",
+      "detail": ""
+    }
+  ]
+}

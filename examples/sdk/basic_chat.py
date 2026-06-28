@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Basic chat completion example using AI Engine SDK."""
+"""Basic chat completion example using AI Synapse SDK."""
 from ai_engine import OpenAI
 
 # Initialize client (uses config.json for provider priorities)

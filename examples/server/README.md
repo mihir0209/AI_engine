@@ -1,11 +1,11 @@
-# AI Engine Server Examples
+# AI Synapse Server Examples
 
-Examples for running AI Engine as a web server with API and chat interface.
+Examples for running AI Synapse as a web server with API and chat interface.
 
 ## Prerequisites
 
 ```bash
-pip install ai-engine[server]
+pip install ai-synapse[server]
 # or
 pip install -r requirements.txt
 ```

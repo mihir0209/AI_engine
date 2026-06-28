@@ -86,7 +86,7 @@ AI_CONFIGS = {
         "retries": 3,
         "backoff": 5,
         "format": "openai",
-        "enabled": False,  # Enable only when g4f Docker is running
+        "enabled": True,  # Enable only when g4f Docker is running
         "rpm_limit": None,
         "daily_limit": None,
         "current_key_index": 0,

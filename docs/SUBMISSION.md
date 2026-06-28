@@ -1,14 +1,14 @@
-# AI Engine — Free AI Inference Router
+# AI Synapse — Free Multi-Provider AI SDK
 
 > **Awesome-list submission text.** Copy-paste into PRs for awesome-selfhosted, awesome-python, etc.
 
 ## One-liner
 
-Free AI inference router for developers — 29 providers, OpenAI-compatible API, automatic failover, no API keys needed for self-hosted.
+Free multi-provider AI SDK — drop-in OpenAI & Anthropic compatibility with 27+ free providers, no server needed.
 
 ## Description (100 words)
 
-AI Engine is a Python-based multi-provider AI proxy that aggregates 29 free AI providers behind a single OpenAI-compatible API. It features intelligent API key rotation with load balancing, provider auto-failover, response caching, vision capability detection, and a WebSocket-based chat UI. Supports Groq, Gemini, OpenRouter, NVIDIA, Cerebras, Cloudflare, Cohere, Mistral, HuggingFace, and more. Drop-in replacement for OpenAI SDK — works with Python, JavaScript, and cURL. Docker-ready. Includes 40+ tests, Swagger/ReDoc API docs, Prometheus metrics, and health monitoring.
+AI Synapse is a Python SDK that provides drop-in replacements for OpenAI and Anthropic client classes, routing through 27+ free AI providers automatically. One word change (`from openai import OpenAI` → `from ai_engine import OpenAI`) and you get free Groq, Gemini, OpenRouter, NVIDIA, Cerebras, Cloudflare, and more — with automatic failover, intelligent routing, and CDN-powered provider updates. Zero server required. Also works as a standalone server with web dashboard, chat UI, and full OpenAI-compatible REST API. Docker-ready. Includes 600+ tests, Swagger/ReDoc API docs, Prometheus metrics, and health monitoring.
 
 ## Links
 

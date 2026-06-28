@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Battle test: AI Engine SDK end-to-end."""
+"""Battle test: AI Synapse SDK end-to-end."""
 import sys
 import os
 import time

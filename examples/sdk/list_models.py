@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List and retrieve models using AI Engine SDK."""
+"""List and retrieve models using AI Synapse SDK."""
 from ai_engine import OpenAI
 
 client = OpenAI()

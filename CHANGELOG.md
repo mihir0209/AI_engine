@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AI Engine are documented here.
+All notable changes to AI Synapse are documented here.
 
 ## [3.1.0] - 2026-06-27
 
