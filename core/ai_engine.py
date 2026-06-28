@@ -624,11 +624,6 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         latency_tracker.record(provider_name, response_time * 1000, success=True)
         usage_tracker.record(provider_name, "unknown", True, response_time)
 
-        # Reset auto-disable on success
-        if provider_name in self.providers:
-            self.providers[provider_name].pop('_auto_disabled', None)
-            self.providers[provider_name].pop('_auto_disabled_at', None)
-
         with self._key_rotation_lock:
             self.consecutive_failures[provider_name] = 0
 
@@ -665,39 +660,8 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 verbose_print(f"🔄 Reset rate limit status for {reset_count} keys in {provider_name}", self.verbose)
 
     def _check_provider_recovery(self, provider_name: str) -> bool:
-        """
-        Check if a provider has likely recovered from previous issues
-        Returns True if provider should be tried again
-        """
-        if provider_name not in self.usage_stats:
-            return True  # No history, worth trying
-
-        stats = self.usage_stats[provider_name]
-        current_time = datetime.now()
-
-        # If provider was flagged, check if flag has expired
-        if self._is_key_flagged(provider_name):
-            return False
-
-        # Check if enough time has passed since last failure
-        last_failure = stats.get('last_failure')
-        if last_failure:
-            time_since_failure = current_time - last_failure
-            # Recovery time increases with consecutive failures
-            recovery_minutes = min(stats.get('consecutive_failures', 0) * 2, 30)
-
-            if time_since_failure.total_seconds() < recovery_minutes * 60:
-                return False
-
-        # Check success rate - if it's too low recently, wait longer
-        recent_requests = stats.get('requests', 0)
-        recent_successes = stats.get('successes', 0)
-
-        if recent_requests > 5:  # Only check if we have enough data
-            success_rate = recent_successes / recent_requests
-            if success_rate < 0.3:  # Less than 30% success rate
-                return False
-
+        """Check if a provider should be tried (recovery check). Always returns True
+        so all providers stay in rotation. Health monitor handles actual blocking."""
         return True
 
     def _get_preferred_provider_order(self, preferred_provider: str = None) -> List[str]:
@@ -848,19 +812,6 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             if provider_name in self.providers:
                 config = self.providers[provider_name]
                 if config.get('enabled', True):
-                    # Check auto-disable with 5-minute recovery
-                    if config.get('_auto_disabled'):
-                        elapsed = time.time() - config.get('_auto_disabled_at', 0)
-                        if elapsed < 300:
-                            if self.verbose:
-                                verbose_print(f"🔴 Skipping {provider_name} - auto-disabled ({300-elapsed:.0f}s recovery left)", self.verbose)
-                            continue
-                        else:
-                            config.pop('_auto_disabled', None)
-                            config.pop('_auto_disabled_at', None)
-                            if self.verbose:
-                                verbose_print(f"🟢 Auto-recovered {provider_name} after cooldown", self.verbose)
-
                     # Check health monitor status
                     if not health_monitor.is_provider_healthy(provider_name):
                         if self.verbose:
@@ -905,15 +856,9 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             stats['failures'] += 1
             stats['consecutive_failures'] += 1
 
-            # Auto-flag and disable after 5 consecutive failures
+            # Auto-flag after 5 consecutive failures (don't auto-disable — keep available)
             if stats['consecutive_failures'] >= 5:
                 self._flag_key(provider_name, "consecutive_failures")
-                # Auto-disable temporarily - recovery happens via health monitor
-                if provider_name in self.providers and self.providers[provider_name].get('enabled', True):
-                    self.providers[provider_name]['_auto_disabled'] = True
-                    self.providers[provider_name]['_auto_disabled_at'] = time.time()
-                    if self.verbose:
-                        verbose_print(f"🔴 Auto-disabled {provider_name} after {stats['consecutive_failures']} consecutive failures", self.verbose)
 
     # =============================================
     # AUTODECIDE FEATURE METHODS
