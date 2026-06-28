@@ -1,6 +1,8 @@
-"""Models resource — wraps AI_engine model discovery."""
+"""Models resource — wraps AI_engine model discovery with auto-population."""
 import time
-from typing import Optional
+import logging
+
+logger = logging.getLogger("ai_engine")
 
 
 class Models:
@@ -10,12 +12,24 @@ class Models:
         self._engine = engine
 
     def list(self, **kwargs):
-        """List all available models."""
+        """List all available models.
+
+        On first call, triggers model discovery from all enabled providers.
+        Subsequent calls use the cached results.
+        """
         from ..types import ModelList, Model
 
-        # Use shared model cache for fast listing
         try:
             from core.model_cache import shared_model_cache
+
+            # If cache is empty, trigger discovery
+            if not shared_model_cache.is_cache_valid():
+                try:
+                    self._engine._discover_and_cache_models_sync()
+                except Exception as e:
+                    logger.warning(f"Model discovery failed: {e}")
+
+            # Now read from cache
             if shared_model_cache.is_cache_valid():
                 model_ids = shared_model_cache.get_models()
             else:
@@ -25,10 +39,21 @@ class Models:
 
         models = []
         for model_id in model_ids:
-            parts = model_id.split("/", 1)
-            owned_by = parts[0] if len(parts) > 1 else "unknown"
+            # Models come in "provider|model" format from discovery
+            if "|" in model_id:
+                parts = model_id.split("|", 1)
+                owned_by = parts[0]
+                model_id_display = parts[1]
+            elif "/" in model_id:
+                parts = model_id.split("/", 1)
+                owned_by = parts[0]
+                model_id_display = model_id
+            else:
+                owned_by = "unknown"
+                model_id_display = model_id
+
             models.append(Model(
-                id=model_id,
+                id=model_id_display,
                 object="model",
                 created=int(time.time()),
                 owned_by=owned_by,
