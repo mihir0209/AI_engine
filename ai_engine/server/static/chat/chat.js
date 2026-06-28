@@ -1,0 +1,1880 @@
+// Chat Interface JavaScript
+class ChatInterface {
+    constructor() {
+        this.currentChatId = null;
+        this.websocket = null;
+        this.providers = {};
+        this.isConnected = false;
+        this.messageBuffer = '';
+        this.isAIResponding = false; // Track if AI is currently responding
+        
+        this.init();
+    }
+
+    async init() {
+        await this.loadProviders();
+        await this.loadChats();
+        await this.loadStats();
+        this.setupEventListeners();
+        this.setupAutoResize();
+        this.setupTemporaryChatCleanup();
+        this.setupFileUpload();
+        this.setupDragDrop();
+        this.setupPaste();
+    }
+
+    // File Upload Support
+    setupFileUpload() {
+        const fileInput = document.getElementById('fileInput');
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+        }
+        this.pendingFile = null;
+    }
+
+    setupDragDrop() {
+        const container = document.querySelector('.chat-main');
+        const dropZone = document.getElementById('dropZone');
+        if (!container || !dropZone) return;
+
+        let dragCounter = 0;
+        container.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            dropZone.style.display = 'block';
+        });
+        container.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                dropZone.style.display = 'none';
+            }
+        });
+        container.addEventListener('dragover', (e) => e.preventDefault());
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dropZone.style.display = 'none';
+            if (e.dataTransfer.files.length > 0) {
+                this.handleFileSelect({ target: { files: e.dataTransfer.files } });
+            }
+        });
+    }
+
+    setupPaste() {
+        const textarea = document.getElementById('messageTextarea');
+        if (!textarea) return;
+        textarea.addEventListener('paste', (e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    e.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) {
+                        this.handleFileSelect({ target: { files: [file] } });
+                    }
+                    break;
+                }
+            }
+        });
+    }
+
+    async checkImageCompatibility() {
+        if (!this.pendingFile || !this.pendingFile.type.startsWith('image/')) return true;
+        const provider = document.getElementById('providerSelect')?.value || '';
+        const model = document.getElementById('modelSelect')?.value || '';
+        try {
+            const params = new URLSearchParams();
+            if (model) params.set('model', model);
+            const resp = await fetch(`/api/capabilities/check-image/${provider}?${params}`);
+            const result = await resp.json();
+            if (!result.compatible) {
+                const suggestions = result.suggestions?.length ? '\nTry: ' + result.suggestions.join(', ') : '';
+                this.showAlert('warning', `${result.reason}${suggestions}`);
+                return false;
+            }
+        } catch (e) {
+            console.warn('Vision check failed, allowing upload:', e);
+        }
+        return true;
+    }
+
+    async handleFileSelect(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        this.pendingFile = file;
+
+        if (file.type.startsWith('image/')) {
+            const compatible = await this.checkImageCompatibility();
+            if (!compatible) {
+                this.pendingFile = null;
+                const fileInput = document.getElementById('fileInput');
+                if (fileInput) fileInput.value = '';
+                return;
+            }
+        }
+
+        const preview = document.getElementById('uploadPreview');
+        const nameEl = document.getElementById('uploadFileName');
+        const sizeEl = document.getElementById('uploadFileSize');
+        if (preview && nameEl && sizeEl) {
+            nameEl.textContent = file.name;
+            sizeEl.textContent = this.formatFileSize(file.size);
+            preview.style.display = 'block';
+        }
+    }
+
+    formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    async uploadFile() {
+        if (!this.pendingFile) return null;
+        const formData = new FormData();
+        formData.append('file', this.pendingFile);
+        if (this.currentChatId) {
+            formData.append('chat_id', this.currentChatId);
+        }
+        try {
+            const response = await fetch('/api/chat/upload', { method: 'POST', body: formData });
+            const result = await response.json();
+            this.pendingFile = null;
+            const preview = document.getElementById('uploadPreview');
+            if (preview) preview.style.display = 'none';
+            return result;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            this.showError('Failed to upload file');
+            return null;
+        }
+    }
+
+    // Setup temporary chat cleanup on page unload
+    setupTemporaryChatCleanup() {
+        // Track temporary chats opened in this session
+        this.sessionTemporaryChats = new Set();
+        
+        // DISABLED: Too aggressive cleanup that deletes chats immediately
+        // Cleanup temporary chats when page is closed/refreshed
+        // window.addEventListener('beforeunload', () => {
+        //     this.cleanupTemporaryChats();
+        // });
+        
+        // DISABLED: This was deleting chats when tab loses focus
+        // Also cleanup on visibility change (when tab is hidden)
+        // document.addEventListener('visibilitychange', () => {
+        //     if (document.hidden) {
+        //         this.cleanupTemporaryChats();
+        //     }
+        // });
+    }
+
+    async cleanupTemporaryChats() {
+        // Delete temporary chats that were created/accessed in this session
+        for (const chatId of this.sessionTemporaryChats) {
+            try {
+                await fetch(`/api/chat/chats/${chatId}`, {
+                    method: 'DELETE',
+                    keepalive: true // Allows request to complete even if page is unloading
+                });
+            } catch (error) {
+                console.warn('Error cleaning up temporary chat:', chatId, error);
+            }
+        }
+        this.sessionTemporaryChats.clear();
+    }
+
+    // Provider Management
+    async loadProviders() {
+        try {
+            const response = await fetch('/api/providers');
+            this.providers = await response.json();
+            this.populateProviderSelects();
+        } catch (error) {
+            console.error('Error loading providers:', error);
+        }
+    }
+
+    populateProviderSelects() {
+        const selects = ['providerSelect', 'chatProviderSelect'];
+        
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            select.innerHTML = '<option value="">Auto (Best Available)</option>';
+            
+            Object.entries(this.providers).forEach(([name, config]) => {
+                if (config.enabled) {
+                    const option = document.createElement('option');
+                    option.value = name;
+                    option.textContent = name.toUpperCase();
+                    select.appendChild(option);
+                }
+            });
+        });
+
+        // Add event listeners for dynamic model loading
+        document.getElementById('providerSelect').addEventListener('change', (e) => {
+            this.loadModelsForProvider(e.target.value, 'modelSelect');
+            this.updateChatSettings();
+        });
+
+        document.getElementById('chatProviderSelect').addEventListener('change', (e) => {
+            this.loadModelsForProvider(e.target.value, 'chatModelSelect');
+        });
+    }
+
+    async loadModelsForProvider(providerName, modelSelectId) {
+        const modelSelect = document.getElementById(modelSelectId);
+        
+        if (!providerName) {
+            // Reset to auto when no provider selected
+            modelSelect.innerHTML = '<option value="">Auto (Provider Default)</option>';
+            return;
+        }
+
+        // Show loading state
+        modelSelect.innerHTML = '<option value="">Loading models...</option>';
+        modelSelect.disabled = true;
+
+        try {
+            // Call the main server's provider-specific models endpoint directly
+            const response = await fetch(`/api/providers/${providerName}/models`);
+            const data = await response.json();
+
+            modelSelect.innerHTML = '<option value="">Auto (Provider Default)</option>';
+
+            if (data.discovery_available && data.models && data.models.length > 0) {
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.id;
+                    option.textContent = `${model.id} (${model.owned_by})`;
+                    modelSelect.appendChild(option);
+                });
+                console.log(`✅ Loaded ${data.models.length} models for provider ${providerName}:`, data.models.map(m => m.id));
+            } else {
+                // Add some common models for manual selection as fallback
+                const commonModels = this.getCommonModelsForProvider(providerName);
+                if (commonModels.length > 0) {
+                    commonModels.forEach(modelId => {
+                        const option = document.createElement('option');
+                        option.value = modelId;
+                        option.textContent = modelId + ' (common)';
+                        modelSelect.appendChild(option);
+                    });
+                    console.log(`⚠️ No discovery available for ${providerName}, added common models:`, commonModels);
+                } else {
+                    console.log(`⚠️ No models available for provider ${providerName}`);
+                }
+                
+                // Add info about manual entry
+                const infoOption = document.createElement('option');
+                infoOption.disabled = true;
+                infoOption.textContent = '--- Manual entry available ---';
+                modelSelect.appendChild(infoOption);
+            }
+
+        } catch (error) {
+            console.error(`❌ Error loading models for provider ${providerName}:`, error);
+            modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        } finally {
+            modelSelect.disabled = false;
+        }
+    }
+
+    getCommonModelsForProvider(providerName) {
+        const commonModels = {
+            'openai': ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+            'anthropic': ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+            'google': ['gemini-pro', 'gemini-pro-vision'],
+            'cohere': ['command', 'command-light'],
+            'meta': ['llama-2-70b-chat', 'llama-2-13b-chat'],
+            'mistral': ['mistral-medium', 'mistral-small'],
+            'groq': ['llama3-70b-8192', 'mixtral-8x7b-32768'],
+            'together': ['meta-llama/Llama-2-70b-chat-hf', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
+            'replicate': ['meta/llama-2-70b-chat', 'mistralai/mixtral-8x7b-instruct-v0.1'],
+            'huggingface': ['microsoft/DialoGPT-large', 'facebook/blenderbot-400M-distill'],
+            'chi': ['gpt-4.1-mini']
+        };
+        
+        return commonModels[providerName.toLowerCase()] || [];
+    }
+
+    // Chat Management
+    async loadChats() {
+        try {
+            const response = await fetch('/api/chat/chats?include_temporary=true&limit=50');
+            const chats = await response.json();
+            this.renderChatList(chats);
+        } catch (error) {
+            console.error('Error loading chats:', error);
+            this.showError('Failed to load chats');
+        }
+    }
+
+    renderChatList(chats) {
+        const chatList = document.getElementById('chatList');
+        
+        if (!chatList) {
+            console.error('Chat list element not found!');
+            return;
+        }
+        
+        if (chats.length === 0) {
+            chatList.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-comments"></i>
+                    <p>No chats yet</p>
+                    <small>Create your first chat to get started</small>
+                </div>
+            `;
+            return;
+        }
+
+        // Sort chats by updated_at descending (most recent first)
+        const sortedChats = chats.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+        const html = sortedChats.map(chat => {
+            const badges = [];
+            
+            // Add type badge
+            badges.push(`<span class="badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'}">${chat.is_temporary ? 'TEMP' : 'PERM'}</span>`);
+            
+            // Add force provider badge if enabled
+            if (chat.force_provider) {
+                badges.push(`<span class="badge bg-force">FORCE</span>`);
+            }
+
+            const providerModel = chat.provider && chat.model ? 
+                `${chat.provider}/${chat.model}` : 
+                (chat.provider || 'auto');
+
+            return `
+                <div class="chat-item ${chat.id === this.currentChatId ? 'active' : ''}" 
+                     onclick="chatInterface.selectChat(${chat.id})"
+                     data-chat-id="${chat.id}"
+                     data-is-temporary="${chat.is_temporary}">
+                    <div class="chat-item-header">
+                        <div class="chat-item-title" title="${this.escapeHtml(chat.title)}">
+                            ${this.escapeHtml(chat.title)}
+                        </div>
+                        <div class="chat-item-badges">
+                            ${badges.join('')}
+                        </div>
+                    </div>
+                    <div class="chat-item-preview" title="${chat.last_message ? this.escapeHtml(chat.last_message) : 'No messages yet'}">
+                        ${chat.last_message ? this.escapeHtml(this.truncateText(chat.last_message, 60)) : 'No messages yet'}
+                    </div>
+                    <div class="chat-item-meta">
+                        <span class="chat-item-time">${this.formatRelativeTime(chat.updated_at)}</span>
+                        <span class="chat-item-provider" title="${providerModel}">
+                            ${this.truncateText(providerModel, 15)}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        chatList.innerHTML = html;
+    }
+
+    async selectChat(chatId) {
+        if (this.currentChatId === chatId) return;
+
+        try {
+            // Disconnect previous WebSocket
+            this.disconnectWebSocket();
+
+            // Load chat data
+            const response = await fetch(`/api/chat/chats/${chatId}`);
+            const data = await response.json();
+
+            this.currentChatId = chatId;
+            
+            // Track temporary chats for cleanup
+            if (data.chat.is_temporary) {
+                this.sessionTemporaryChats.add(chatId);
+            }
+            
+            this.renderChatHeader(data.chat);
+            this.renderMessages(data.messages);
+            this.showChatInterface();
+            
+            // Load models for the chat's provider if set
+            if (data.chat.provider) {
+                await this.loadModelsForProvider(data.chat.provider, 'modelSelect');
+                // Set the provider and model in the interface
+                const providerSelect = document.getElementById('providerSelect');
+                const modelSelect = document.getElementById('modelSelect');
+                if (providerSelect) providerSelect.value = data.chat.provider;
+                if (modelSelect && data.chat.model) modelSelect.value = data.chat.model;
+            }
+            
+            this.connectWebSocket();
+
+            // Update chat list selection
+            document.querySelectorAll('.chat-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+            if (chatElement) {
+                chatElement.classList.add('active');
+            }
+
+            // Auto-close mobile sidebar
+            if (window.innerWidth <= 768) {
+                const sidebar = document.querySelector('.chat-sidebar');
+                sidebar.classList.remove('show');
+            }
+
+        } catch (error) {
+            console.error('Error selecting chat:', error);
+            this.showError('Failed to load chat');
+        }
+    }
+
+    async loadCurrentChatMessages() {
+        if (!this.currentChatId) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`);
+            const data = await response.json();
+            this.renderMessages(data.messages);
+        } catch (error) {
+            console.error('Error loading current chat messages:', error);
+        }
+    }
+
+    renderChatHeader(chat) {
+        document.getElementById('chatTitle').textContent = chat.title;
+        document.getElementById('chatType').textContent = chat.is_temporary ? 'Temporary' : 'Permanent';
+        document.getElementById('chatType').className = `badge ${chat.is_temporary ? 'bg-temporary' : 'bg-permanent'}`;
+        
+        // Show/hide convert to permanent button
+        const convertBtn = document.getElementById('convertToPermanentBtn');
+        if (convertBtn) {
+            convertBtn.style.display = chat.is_temporary ? 'inline-block' : 'none';
+        }
+        
+        // Show/hide force provider badge
+        const forceProviderBadge = document.getElementById('forceProviderBadge');
+        if (chat.force_provider) {
+            forceProviderBadge.style.display = 'inline-block';
+        } else {
+            forceProviderBadge.style.display = 'none';
+        }
+        
+        // Set provider and model
+        if (chat.provider) {
+            document.getElementById('providerSelect').value = chat.provider;
+        }
+        if (chat.model) {
+            document.getElementById('modelSelect').value = chat.model;
+        }
+
+        // Populate system prompt
+        const systemPromptTextarea = document.getElementById('currentSystemPrompt');
+        systemPromptTextarea.value = chat.system_prompt || '';
+
+        // Initialize chat controls as hidden (user can toggle with button)
+        document.getElementById('chatControls').style.display = 'none';
+    }
+
+    renderMessages(messages) {
+        const container = document.getElementById('messagesList');
+        
+        if (messages.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-comment-dots"></i>
+                    <p>No messages yet</p>
+                    <small>Start the conversation below</small>
+                </div>
+            `;
+            return;
+        }
+
+        const html = messages.map(msg => this.renderMessage(msg)).join('');
+        container.innerHTML = html;
+        
+        // Highlight code blocks
+        this.highlightCodeBlocks();
+        this.scrollToBottom();
+    }
+
+    highlightCodeBlocks() {
+        // Apply syntax highlighting to code blocks
+        if (typeof Prism !== 'undefined') {
+            try {
+                Prism.highlightAll();
+            } catch (e) {
+                console.warn('Prism highlighting error:', e);
+            }
+        }
+    }
+
+    renderMessage(message) {
+        const timeStr = this.formatRelativeTime(message.created_at);
+        const isUser = message.role === 'user';
+        const isSystem = message.role === 'system';
+        
+        let messageInfo = '';
+        if (isUser) {
+            messageInfo = `<div class="message-timestamp">${timeStr}</div>`;
+        } else if (message.role === 'assistant' && message.metadata) {
+            const provider = message.metadata.provider || 'unknown';
+            const model = message.metadata.model || 'unknown';
+            const responseTime = message.metadata.response_time ? 
+                `${message.metadata.response_time.toFixed(2)}s` : '';
+            
+            // Status indicators
+            const indicators = [];
+            if (message.metadata.error) indicators.push('❌');
+            if (message.metadata.force_provider) indicators.push('🔒');
+            
+            messageInfo = `
+                <div class="message-info">
+                    <span class="message-timestamp">${timeStr}</span>
+                    <span class="message-provider-info">
+                        ${provider}/${model}${responseTime ? ` • ${responseTime}` : ''}${indicators.length ? ` ${indicators.join(' ')}` : ''}
+                    </span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="message ${message.role}" data-message-id="${message.id}">
+                <div class="message-bubble">
+                    <div class="message-content">
+                        ${this.formatMessageContent(message.content)}
+                    </div>
+                </div>
+                ${messageInfo}
+                ${!isSystem ? `
+                    <div class="message-actions">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="chatInterface.copyMessage(${message.id})" title="Copy">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        ${isUser ? `
+                            <button class="btn btn-sm btn-outline-primary" onclick="chatInterface.editMessage(${message.id})" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="chatInterface.regenerateResponse(${message.id})" title="Regenerate from here">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    formatMessageContent(content) {
+        if (typeof marked !== 'undefined') {
+            try {
+                const renderer = new marked.Renderer();
+                
+                renderer.code = function(code, language) {
+                    const validLanguage = language && Prism.languages[language] ? language : 'javascript';
+                    const highlightedCode = Prism.highlight(code, Prism.languages[validLanguage], validLanguage);
+                    const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                    return `
+                        <div class="code-block-wrapper">
+                            <div class="code-header">
+                                <span class="code-language">${language || 'code'}</span>
+                                <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                        onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                        title="Copy code">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <pre class="line-numbers" id="${codeId}"><code class="language-${validLanguage}">${highlightedCode}</code></pre>
+                        </div>
+                    `;
+                };
+                
+                // Custom image renderer to open images in new tab
+                renderer.image = function(href, title, text) {
+                    const src = typeof href === 'object' ? href.href : href;
+                    const alt = typeof href === 'object' ? href.text : text;
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    return `<img src="${src}" alt="${alt || ''}"${titleAttr} loading="lazy" onclick="window.open('${src}', '_blank')" style="cursor: pointer;">`;
+                };
+                
+                // Custom link renderer
+                renderer.link = function(href, title, text) {
+                    const url = typeof href === 'object' ? href.href : href;
+                    const linkText = typeof href === 'object' ? href.text : text;
+                    const titleAttr = title ? ` title="${title}"` : '';
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer"${titleAttr}>${linkText}</a>`;
+                };
+                
+                return marked.parse(content, { 
+                    renderer: renderer,
+                    breaks: true,
+                    gfm: true
+                });
+            } catch (e) {
+                console.warn('Marked.js error, falling back to basic formatting:', e);
+            }
+        }
+        
+        // Basic markdown formatting fallback
+        return this.escapeHtml(content)
+            // Images
+            .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" onclick="window.open(\'$2\', \'_blank\')" style="max-width:300px;max-height:300px;border-radius:8px;cursor:pointer;">')
+            // Headers
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Bold and italic
+            .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            // Code blocks with basic syntax highlighting and copy button
+            .replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                const language = lang || 'code';
+                const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-header">
+                            <span class="code-language">${language}</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                    onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                    title="Copy code">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <pre class="line-numbers" id="${codeId}"><code class="language-${language}">${this.escapeHtml(code)}</code></pre>
+                    </div>
+                `;
+            })
+            .replace(/```([\s\S]*?)```/g, (match, code) => {
+                const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-header">
+                            <span class="code-language">code</span>
+                            <button class="btn btn-sm btn-outline-secondary copy-code-btn" 
+                                    onclick="chatInterface.copyCodeBlock('${codeId}')" 
+                                    title="Copy code">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <pre class="line-numbers" id="${codeId}"><code>${this.escapeHtml(code)}</code></pre>
+                    </div>
+                `;
+            })
+            // Inline code
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            // Lists
+            .replace(/^[\s]*[-*+]\s+(.*)$/gm, '<li>$1</li>')
+            .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+            .replace(/^[\s]*\d+\.\s+(.*)$/gm, '<li>$1</li>')
+            // Blockquotes
+            .replace(/^> (.*)$/gm, '<blockquote>$1</blockquote>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
+    }
+
+    showChatInterface() {
+        document.getElementById('welcomeMessage').style.display = 'none';
+        document.getElementById('chatHeader').style.display = 'block';
+        document.getElementById('chatControls').style.display = 'block';
+        document.getElementById('messagesList').style.display = 'block';
+        document.getElementById('messageInput').style.display = 'block';
+    }
+
+    hideChatInterface() {
+        document.getElementById('welcomeMessage').style.display = 'block';
+        document.getElementById('chatHeader').style.display = 'none';
+        document.getElementById('chatControls').style.display = 'none';
+        document.getElementById('messagesList').style.display = 'none';
+        document.getElementById('messageInput').style.display = 'none';
+    }
+
+    // WebSocket Management
+    connectWebSocket() {
+        if (!this.currentChatId || this.websocket) return;
+
+        try {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/api/chat/chats/${this.currentChatId}/stream`;
+            
+            this.websocket = new WebSocket(wsUrl);
+            
+            this.websocket.onopen = () => {
+                this.isConnected = true;
+                this.updateConnectionStatus('connected');
+                console.log('WebSocket connected');
+            };
+
+            this.websocket.onmessage = async (event) => {
+                await this.handleWebSocketMessage(JSON.parse(event.data));
+            };
+
+            this.websocket.onclose = () => {
+                this.isConnected = false;
+                this.updateConnectionStatus('disconnected');
+                console.log('WebSocket disconnected');
+            };
+
+            this.websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.updateConnectionStatus('disconnected');
+            };
+
+        } catch (error) {
+            console.error('Error connecting WebSocket:', error);
+        }
+    }
+
+    disconnectWebSocket() {
+        if (this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+            this.isConnected = false;
+        }
+    }
+
+    async handleWebSocketMessage(data) {
+        switch (data.type) {
+            case 'message_saved':
+                console.log('Message saved:', data.message_id);
+                break;
+                
+            case 'ai_thinking':
+                this.showTypingIndicator();
+                break;
+                
+            case 'ai_chunk':
+                this.appendToResponse(data.content);
+                if (data.is_final) {
+                    this.finalizeResponse(data);
+                }
+                break;
+                
+            case 'ai_complete':
+                this.hideTypingIndicator();
+                // Update the streaming message with final metadata
+                if (data.provider && data.model) {
+                    this.updateStreamingMessageMetadata(data);
+                }
+                // Refresh both chat list and current messages
+                await this.loadChats(); 
+                if (this.currentChatId) {
+                    await this.loadCurrentChatMessages();
+                }
+                break;
+                
+            case 'chat_deleted':
+                // Handle chat deletion notification
+                await this.handleChatDeleted(data.chat_id);
+                break;
+                
+            case 'ai_error':
+                this.hideTypingIndicator();
+                this.messageBuffer = '';
+                const streamingErr = document.getElementById('streamingResponse');
+                if (streamingErr) streamingErr.remove();
+                this.showError('AI Error: ' + data.content);
+                break;
+
+            case 'vision_warning':
+                this.showAlert('warning', '⚠️ ' + data.message);
+                break;
+                
+            case 'pong':
+            case 'ai_typing_keepalive':
+                break;
+                
+            default:
+                console.log('Unknown WebSocket message:', data);
+        }
+    }
+
+    // Message Sending
+    async sendMessage() {
+        const textarea = document.getElementById('messageTextarea');
+        const content = textarea.value.trim();
+        
+        if (!content && !this.pendingFile) return;
+        if (!this.currentChatId) return;
+        if (this.isAIResponding) return;
+
+        // Upload file first if one is pending
+        let fileInfo = null;
+        if (this.pendingFile) {
+            fileInfo = await this.uploadFile();
+            if (!fileInfo) return;
+        }
+
+        // Check autodecide mode
+        const autodecideBtn = document.getElementById('autodecideBtn');
+        const isAutodecideOn = autodecideBtn.classList.contains('btn-success');
+        
+        let provider = null;
+        let model = null;
+        
+        if (!isAutodecideOn) {
+            provider = document.getElementById('providerSelect').value || null;
+            model = document.getElementById('modelSelect').value || null;
+        }
+
+        // Build message content
+        let messageContent = content;
+        if (fileInfo && fileInfo.success) {
+            const fileUrl = fileInfo.saved_as ? `/uploads/${fileInfo.saved_as}` : '';
+            const fileRef = fileInfo.type === 'image' 
+                ? `![${fileInfo.filename}](${fileUrl})`
+                : `[File: ${fileInfo.filename}](${fileUrl})`;
+            messageContent = fileRef + (content ? '\n' + content : '');
+        }
+
+        textarea.value = '';
+        this.resizeTextarea(textarea);
+
+        this.addUserMessageToUI(messageContent);
+
+        if (this.isConnected && this.websocket) {
+            this.websocket.send(JSON.stringify({
+                type: 'user_message',
+                content: messageContent,
+                provider: provider,
+                model: model,
+                metadata: { 
+                    autodecide: isAutodecideOn,
+                    ...(fileInfo && fileInfo.success ? { 
+                        file_upload: true, 
+                        filename: fileInfo.filename,
+                        file_type: fileInfo.type 
+                    } : {})
+                }
+            }));
+        } else {
+            try {
+                await fetch(`/api/chat/chats/${this.currentChatId}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        role: 'user',
+                        content: messageContent,
+                        metadata: { 
+                            provider, model, autodecide: isAutodecideOn,
+                            ...(fileInfo && fileInfo.success ? { 
+                                file_upload: true, 
+                                filename: fileInfo.filename,
+                                file_type: fileInfo.type 
+                            } : {})
+                        }
+                    })
+                });
+                
+                setTimeout(() => this.pollForNewMessages(), 1000);
+                
+            } catch (error) {
+                console.error('Error sending message:', error);
+                this.showError('Failed to send message');
+            }
+        }
+    }
+
+    addUserMessageToUI(content) {
+        const messagesList = document.getElementById('messagesList');
+        const userMessage = {
+            id: Date.now(), // Temporary ID
+            role: 'user',
+            content: content,
+            created_at: new Date().toISOString()
+        };
+        
+        messagesList.innerHTML += this.renderMessage(userMessage);
+        this.scrollToBottom();
+    }
+
+    showTypingIndicator() {
+        this.isAIResponding = true; // Track AI response state
+        document.getElementById('typingIndicator').style.display = 'block';
+        
+        // Add loading message bubble
+        const messagesList = document.getElementById('messagesList');
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'message assistant';
+        loadingDiv.id = 'loadingMessage';
+        loadingDiv.innerHTML = `
+            <div class="loading-message">
+                <div class="spinner-border text-primary" role="status"></div>
+                <span>AI is thinking...</span>
+            </div>
+        `;
+        messagesList.appendChild(loadingDiv);
+        this.scrollToBottom();
+    }
+
+    hideTypingIndicator() {
+        this.isAIResponding = false; // Clear AI response state
+        document.getElementById('typingIndicator').style.display = 'none';
+        const loadingMsg = document.getElementById('loadingMessage');
+        if (loadingMsg) {
+            loadingMsg.remove();
+        }
+    }
+
+    appendToResponse(chunk) {
+        this.messageBuffer += chunk;
+        
+        // Update or create response bubble
+        let responseMsg = document.getElementById('streamingResponse');
+        if (!responseMsg) {
+            const loadingMsg = document.getElementById('loadingMessage');
+            if (loadingMsg) {
+                loadingMsg.remove();
+            }
+            
+            responseMsg = document.createElement('div');
+            responseMsg.className = 'message assistant';
+            responseMsg.id = 'streamingResponse';
+            responseMsg.innerHTML = `
+                <div class="message-bubble">
+                    <div class="response-content"></div>
+                </div>
+            `;
+            
+            document.getElementById('messagesList').appendChild(responseMsg);
+        }
+        
+        const contentDiv = responseMsg.querySelector('.response-content');
+        contentDiv.innerHTML = this.formatMessageContent(this.messageBuffer);
+        this.scrollToBottom();
+    }
+
+    finalizeResponse(data) {
+        this.hideTypingIndicator();
+        const streamingMsg = document.getElementById('streamingResponse');
+        if (streamingMsg) {
+            // Add message actions for immediate interaction
+            const messageActions = `
+                <div class="message-actions">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="chatInterface.copyStreamingMessage()" title="Copy">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+            `;
+            streamingMsg.innerHTML += messageActions;
+            
+            streamingMsg.removeAttribute('id');
+            // Highlight any code blocks in the final response
+            this.highlightCodeBlocks();
+        }
+        this.messageBuffer = '';
+        
+        // Note: Don't reload messages here, wait for ai_complete event with proper metadata
+    }
+
+    updateStreamingMessageMetadata(data) {
+        const streamingMsg = document.querySelector('.message.assistant:last-child');
+        if (streamingMsg && data.provider && data.model) {
+            const provider = data.provider;
+            const model = data.model;
+            const responseTime = data.response_time ? `${data.response_time.toFixed(2)}s` : '';
+            const timestamp = new Date().toISOString();
+            
+            // Remove any existing message info
+            const existingInfo = streamingMsg.querySelector('.message-info');
+            if (existingInfo) existingInfo.remove();
+            
+            // Add new message info with provider and model
+            const messageInfo = document.createElement('div');
+            messageInfo.className = 'message-info';
+            messageInfo.innerHTML = `
+                <span class="message-timestamp">${this.formatRelativeTime(timestamp)}</span>
+                <span class="message-provider-info">
+                    ${provider}/${model}${responseTime ? ` • ${responseTime}` : ''}
+                </span>
+            `;
+            
+            streamingMsg.appendChild(messageInfo);
+        }
+    }
+
+    async pollForNewMessages() {
+        // Simple polling fallback when WebSocket is not available
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`);
+            const data = await response.json();
+            this.renderMessages(data.messages);
+        } catch (error) {
+            console.error('Error polling messages:', error);
+        }
+    }
+
+    // Chat Creation
+    async createNewChat(isTemporary = false, customTimer = 5) {
+        document.getElementById('isTemporaryCheck').checked = isTemporary;
+        document.getElementById('temporaryTimerInput').value = customTimer;
+        
+        // Show/hide timer container based on temporary status
+        this.toggleTemporaryTimer(isTemporary);
+        
+        const modal = new bootstrap.Modal(document.getElementById('createChatModal'));
+        modal.show();
+    }
+
+    async submitCreateChat() {
+        const form = document.getElementById('createChatForm');
+        const formData = new FormData(form);
+        
+        const title = document.getElementById('chatTitleInput').value.trim();
+        const systemPrompt = document.getElementById('systemPromptInput').value.trim();
+        const provider = document.getElementById('chatProviderSelect').value || null;
+        const model = document.getElementById('chatModelSelect').value || null;
+        const isTemporary = document.getElementById('isTemporaryCheck').checked;
+        const forceProvider = document.getElementById('forceProviderCheck').checked;
+        const temporaryTimer = parseInt(document.getElementById('temporaryTimerInput').value) || 5;
+
+        if (!title) {
+            alert('Please enter a chat title');
+            return;
+        }
+
+        // Validate force provider setting
+        if (forceProvider && !provider) {
+            alert('Force Provider requires selecting a specific provider');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/chat/chats', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: title,
+                    system_prompt: systemPrompt || null,
+                    provider: provider,
+                    model: model,
+                    is_temporary: isTemporary,
+                    force_provider: forceProvider,
+                    temporary_timer_minutes: temporaryTimer
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('createChatModal')).hide();
+                
+                // Clear form
+                form.reset();
+                
+                // Track temporary chats for cleanup
+                if (isTemporary) {
+                    this.sessionTemporaryChats.add(result.chat_id);
+                }
+                
+                // Refresh chat list and select new chat
+                await this.loadChats();
+                await this.selectChat(result.chat_id);
+                
+            } else {
+                throw new Error('Failed to create chat');
+            }
+
+        } catch (error) {
+            console.error('Error creating chat:', error);
+            this.showError('Failed to create chat');
+        }
+    }
+
+    // Chat Editing
+    async editChatTitle() {
+        if (!this.currentChatId) return;
+        
+        const currentTitle = document.getElementById('chatTitle').textContent;
+        document.getElementById('editTitleInput').value = currentTitle;
+        
+        const modal = new bootstrap.Modal(document.getElementById('editTitleModal'));
+        modal.show();
+    }
+
+    async submitEditTitle() {
+        const newTitle = document.getElementById('editTitleInput').value.trim();
+        
+        if (!newTitle || !this.currentChatId) {
+            alert('Please enter a valid title');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: newTitle
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('editTitleModal')).hide();
+                
+                // Update UI
+                document.getElementById('chatTitle').textContent = newTitle;
+                await this.loadChats();
+                
+            } else {
+                throw new Error('Failed to update title');
+            }
+
+        } catch (error) {
+            console.error('Error updating title:', error);
+            this.showError('Failed to update title');
+        }
+    }
+
+    async deleteCurrentChat() {
+        if (!this.currentChatId) return;
+        
+        const chatTitle = document.getElementById('chatTitle').textContent;
+        if (!confirm(`Are you sure you want to delete "${chatTitle}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.currentChatId = null;
+                this.disconnectWebSocket();
+                this.hideChatInterface();
+                await this.loadChats();
+            } else {
+                throw new Error('Failed to delete chat');
+            }
+
+        } catch (error) {
+            console.error('Error deleting chat:', error);
+            this.showError('Failed to delete chat');
+        }
+    }
+
+    // Statistics
+    async loadStats() {
+        try {
+            const response = await fetch('/api/chat/stats');
+            const data = await response.json();
+            
+            if (data.success) {
+                const stats = data.stats;
+                document.getElementById('chatStats').innerHTML = `
+                    ${stats.total_chats} chats • ${stats.total_messages} messages
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    // Chat Search
+    async searchChats(query) {
+        if (!query || query.length < 2) {
+            await this.loadChats();
+            return;
+        }
+        try {
+            const response = await fetch('/api/chat/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, limit: 20 })
+            });
+            const data = await response.json();
+            if (data.success && data.results.length > 0) {
+                const chatIds = [...new Set(data.results.map(r => r.chat_id))];
+                const chatPromises = chatIds.map(id => fetch(`/api/chat/chats/${id}`).then(r => r.json()));
+                const chats = (await chatPromises).map(d => d.chat).filter(Boolean);
+                this.renderChatList(chats);
+            } else {
+                document.getElementById('chatList').innerHTML = `
+                    <div class="text-center p-3 text-muted">
+                        <p class="mb-0">No results for "${this.escapeHtml(query)}"</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error searching chats:', error);
+        }
+    }
+
+    // Message Regeneration
+    async regenerateResponse(messageId) {
+        if (!this.currentChatId || this.isAIResponding) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/regenerate/${messageId}`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            if (result.success) {
+                if (this.isConnected && this.websocket) {
+                    this.loadCurrentChatMessages();
+                } else {
+                    setTimeout(() => this.loadCurrentChatMessages(), 2000);
+                }
+            } else {
+                this.showError('Failed to regenerate response');
+            }
+        } catch (error) {
+            console.error('Error regenerating response:', error);
+            this.showError('Failed to regenerate response');
+        }
+    }
+
+    // Message Export
+    async exportChat(format = 'markdown') {
+        if (!this.currentChatId) return;
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/export?format=${format}`);
+            const data = await response.json();
+            if (format === 'markdown' && data.export) {
+                const blob = new Blob([data.export], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chat-${this.currentChatId}.md`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } else if (format === 'json') {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `chat-${this.currentChatId}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            this.showSuccess(`Chat exported as ${format}`);
+        } catch (error) {
+            console.error('Error exporting chat:', error);
+            this.showError('Failed to export chat');
+        }
+    }
+
+    // Utility Methods
+    setupEventListeners() {
+        // Enter key to send message
+        document.getElementById('messageTextarea').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.sendMessage();
+            }
+        });
+
+        // Model change updates chat settings (provider change is handled in populateProviderSelects)
+        document.getElementById('modelSelect').addEventListener('change', (e) => {
+            this.updateChatSettings();
+        });
+    }
+
+    setupAutoResize() {
+        const textarea = document.getElementById('messageTextarea');
+        textarea.addEventListener('input', () => this.resizeTextarea(textarea));
+    }
+
+    resizeTextarea(textarea) {
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+    }
+
+    async updateChatSettings() {
+        if (!this.currentChatId) return;
+
+        const provider = document.getElementById('providerSelect').value || null;
+        const model = document.getElementById('modelSelect').value || null;
+
+        try {
+            await fetch(`/api/chat/chats/${this.currentChatId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    provider: provider,
+                    model: model
+                })
+            });
+        } catch (error) {
+            console.error('Error updating chat settings:', error);
+        }
+    }
+
+    updateConnectionStatus(status) {
+        // Remove existing status
+        const existing = document.querySelector('.connection-status');
+        if (existing) existing.remove();
+
+        // Add new status to bottom-right corner
+        const statusDiv = document.createElement('div');
+        statusDiv.className = `connection-status ${status}`;
+        
+        const icon = status === 'connected' ? 'wifi' : 
+                    status === 'connecting' ? 'spinner fa-spin' : 'wifi-slash';
+        const text = status === 'connected' ? 'Connected' :
+                    status === 'connecting' ? 'Connecting...' : 'Disconnected';
+        
+        statusDiv.innerHTML = `<i class="fas fa-${icon}"></i> ${text}`;
+        document.body.appendChild(statusDiv);
+
+        // Auto-hide after 3 seconds if connected
+        if (status === 'connected') {
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.style.opacity = '0';
+                    setTimeout(() => statusDiv.remove(), 300);
+                }
+            }, 3000);
+        }
+    }
+
+    // Enhanced time formatting - Fixed for SQLite UTC timestamp format
+    formatRelativeTime(dateString) {
+        try {
+            if (!dateString) {
+                return 'Just now';
+            }
+            
+            let date;
+            if (typeof dateString === 'string') {
+                // Handle SQLite timestamp format: "2025-09-08 18:42:10"
+                // Database stores UTC time, so we need to parse as UTC
+                if (dateString.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+                    // Parse as UTC time by adding 'Z' to make it ISO format
+                    const isoString = dateString.replace(' ', 'T') + 'Z';
+                    date = new Date(isoString);
+                } else {
+                    // Try other formats
+                    date = new Date(dateString);
+                }
+            } else {
+                date = new Date(dateString);
+            }
+            
+            if (isNaN(date.getTime())) {
+                console.warn('Could not parse date:', dateString);
+                return 'Unknown time';
+            }
+            
+            const now = new Date();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Start of today
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1); // Start of yesterday
+            
+            // Simple time format
+            const timeOptions = { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            };
+            
+            const timeString = date.toLocaleTimeString('en-US', timeOptions);
+            
+            // Check if date is today (compare with start of today)
+            if (date >= today) {
+                return timeString;
+            }
+            
+            // Check if date is yesterday (between start of yesterday and start of today)
+            if (date >= yesterday) {
+                return `Yesterday ${timeString}`;
+            }
+            
+            // Otherwise show date and time
+            const dateOptions = { 
+                month: 'short', 
+                day: 'numeric' 
+            };
+            
+            const formattedDateString = date.toLocaleDateString('en-US', dateOptions);
+            return `${formattedDateString}, ${timeString}`;
+            
+        } catch (error) {
+            console.error('Error formatting time:', error, 'Input:', dateString);
+            return 'Time error';
+        }
+    }
+
+    // Text truncation utility
+    truncateText(text, maxLength) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength - 3) + '...';
+    }
+
+    copyMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .message-bubble`);
+        const text = messageElement.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            this.showSuccess('Message copied to clipboard');
+        });
+    }
+
+    async editMessage(messageId) {
+        const messageElement = document.querySelector(`[data-message-id="${messageId}"] .message-content`);
+        if (!messageElement) return;
+        const currentContent = messageElement.textContent.trim();
+        const newContent = prompt('Edit message:', currentContent);
+        if (newContent === null || newContent === currentContent) return;
+        try {
+            const response = await fetch(`/api/chat/messages/${messageId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: newContent })
+            });
+            const result = await response.json();
+            if (result.success) {
+                await this.loadCurrentChatMessages();
+                this.showSuccess('Message edited');
+            } else {
+                this.showError('Failed to edit message');
+            }
+        } catch (error) {
+            console.error('Error editing message:', error);
+            this.showError('Failed to edit message');
+        }
+    }
+
+    copyStreamingMessage() {
+        const streamingElement = document.querySelector('.message.assistant:last-child .message-bubble');
+        if (streamingElement) {
+            const text = streamingElement.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                this.showSuccess('Message copied to clipboard');
+            });
+        }
+    }
+
+    copyCodeBlock(codeId) {
+        const codeElement = document.getElementById(codeId);
+        if (codeElement) {
+            const codeText = codeElement.textContent || codeElement.innerText;
+            navigator.clipboard.writeText(codeText).then(() => {
+                this.showSuccess('Code copied to clipboard');
+                
+                // Temporarily change button text to show success
+                const button = codeElement.parentElement.querySelector('.copy-code-btn i');
+                if (button) {
+                    const originalClass = button.className;
+                    button.className = 'fas fa-check';
+                    setTimeout(() => {
+                        button.className = originalClass;
+                    }, 1000);
+                }
+            }).catch(err => {
+                console.error('Failed to copy code:', err);
+                this.showError('Failed to copy code');
+            });
+        }
+    }
+
+    clearInput() {
+        const textarea = document.getElementById('messageTextarea');
+        textarea.value = '';
+        this.resizeTextarea(textarea);
+    }
+
+    scrollToBottom() {
+        const container = document.getElementById('messagesContainer');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    formatTime(dateString) {
+        // Legacy method - keeping for compatibility
+        return this.formatRelativeTime(dateString);
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    showError(message) {
+        this.showAlert('danger', message);
+    }
+
+    showSuccess(message) {
+        this.showAlert('success', message);
+    }
+
+    showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 70px; right: 20px; z-index: 1050; max-width: 300px;';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        document.body.appendChild(alertDiv);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+
+    async handleChatDeleted(chatId) {
+        // Remove chat from the sidebar without affecting current chat view
+        const chatElement = document.querySelector(`[data-chat-id="${chatId}"]`);
+        if (chatElement) {
+            chatElement.remove();
+            console.log(`Chat ${chatId} automatically deleted after 5 minutes`);
+        }
+        
+        // If the deleted chat is the current one, show a notification but don't navigate away
+        if (this.currentChatId == chatId) {
+            this.showAlert('info', 'This temporary chat has been automatically cleaned up after 5 minutes');
+            // Keep the interface as is - user can continue working
+        }
+        
+        // Update stats
+        await this.loadStats();
+    }
+
+    async getChat(chatId) {
+        try {
+            const response = await fetch(`/api/chat/chats/${chatId}`);
+            if (response.ok) {
+                const data = await response.json();
+                return data.chat || data;
+            }
+        } catch (error) {
+            console.error('Error fetching chat:', error);
+        }
+        return null;
+    }
+
+    toggleTemporaryTimer(show) {
+        const container = document.getElementById('temporaryTimerContainer');
+        if (container) {
+            container.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    async convertCurrentChatToPermanent() {
+        if (!this.currentChatId) {
+            this.showError('No chat selected');
+            return;
+        }
+
+        const chatElement = document.querySelector(`[data-chat-id="${this.currentChatId}"]`);
+        if (!chatElement || chatElement.getAttribute('data-is-temporary') !== 'true') {
+            this.showError('This chat is already permanent');
+            return;
+        }
+
+        try {
+            const title = prompt('Enter a title for this permanent chat:', 'Untitled Chat');
+            if (!title) return; // User cancelled
+
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}/convert-to-permanent?new_title=${encodeURIComponent(title)}`, {
+                method: 'POST'
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showSuccess('Chat converted to permanent!');
+                await this.loadChats(); // Refresh chat list
+                
+                // Refresh the current chat to update header
+                if (this.currentChatId) {
+                    const chat = await this.getChat(this.currentChatId);
+                    if (chat) {
+                        this.renderChatHeader(chat);
+                    }
+                }
+            } else {
+                this.showError('Failed to convert chat: ' + (result.message || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error converting chat:', error);
+            this.showError('Failed to convert chat');
+        }
+    }
+
+    // Quick temporary chat creation - bypasses modal
+    async createQuickTempChat() {
+        try {
+            const response = await fetch('/api/chat/chats', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    title: 'Untitled Temporary Chat',
+                    system_prompt: null,
+                    provider: null,
+                    model: null,
+                    is_temporary: true,
+                    force_provider: false
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                // Refresh chat list and select the new chat
+                await this.loadChats();
+                this.selectChat(result.chat_id);
+                this.showSuccess('Quick temporary chat created!');
+            } else {
+                this.showError('Failed to create chat: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error creating quick temp chat:', error);
+            this.showError('Failed to create chat');
+        }
+    }
+
+    // Update system prompt for current chat
+    async updateSystemPrompt() {
+        if (!this.currentChatId) {
+            this.showError('No chat selected');
+            return;
+        }
+
+        const systemPrompt = document.getElementById('currentSystemPrompt').value.trim();
+        
+        try {
+            const response = await fetch(`/api/chat/chats/${this.currentChatId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    system_prompt: systemPrompt || null
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showSuccess('System prompt updated!');
+            } else {
+                this.showError('Failed to update system prompt: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error('Error updating system prompt:', error);
+            this.showError('Failed to update system prompt');
+        }
+    }
+
+    // Clear system prompt
+    clearSystemPrompt() {
+        document.getElementById('currentSystemPrompt').value = '';
+        this.updateSystemPrompt();
+    }
+
+    // Toggle autodecide mode
+    toggleAutodecide() {
+        const autodecideBtn = document.getElementById('autodecideBtn');
+        const autodecideBtnText = document.getElementById('autodecideBtnText');
+        const modelControls = document.getElementById('modelControls');
+        
+        // Check current state
+        const isAutodecideOn = autodecideBtn.classList.contains('btn-success');
+        
+        if (isAutodecideOn) {
+            // Turn OFF autodecide
+            autodecideBtn.classList.remove('btn-success');
+            autodecideBtn.classList.add('btn-outline-secondary');
+            autodecideBtnText.textContent = 'Autodecide: OFF';
+            modelControls.style.display = 'flex';
+            this.showSuccess('Autodecide mode disabled - manual provider/model selection');
+        } else {
+            // Turn ON autodecide
+            autodecideBtn.classList.remove('btn-outline-secondary');
+            autodecideBtn.classList.add('btn-success');
+            autodecideBtnText.textContent = 'Autodecide: ON';
+            modelControls.style.display = 'none';
+            this.showSuccess('Autodecide mode enabled - AI will choose optimal provider/model');
+        }
+    }
+
+    // Toggle system prompt visibility
+    toggleSystemPrompt() {
+        const chatControls = document.getElementById('chatControls');
+        const isVisible = chatControls.style.display === 'block';
+        
+        if (isVisible) {
+            chatControls.style.display = 'none';
+        } else {
+            chatControls.style.display = 'block';
+        }
+    }
+}
+
+// Global functions for HTML onclick handlers
+function createNewChat(isTemporary) {
+    chatInterface.createNewChat(isTemporary);
+}
+
+function submitCreateChat() {
+    chatInterface.submitCreateChat();
+}
+
+function editChatTitle() {
+    chatInterface.editChatTitle();
+}
+
+function submitEditTitle() {
+    chatInterface.submitEditTitle();
+}
+
+function deleteCurrentChat() {
+    chatInterface.deleteCurrentChat();
+}
+
+function sendMessage() {
+    chatInterface.sendMessage();
+}
+
+function clearInput() {
+    chatInterface.clearInput();
+    clearUpload();
+}
+
+function clearUpload() {
+    chatInterface.pendingFile = null;
+    const preview = document.getElementById('uploadPreview');
+    if (preview) preview.style.display = 'none';
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.value = '';
+}
+
+function toggleSidebar() {
+    const sidebar = document.querySelector('.chat-sidebar');
+    sidebar.classList.toggle('show');
+}
+
+// New functions for enhanced chat features
+function createQuickTempChat() {
+    chatInterface.createQuickTempChat();
+}
+
+function updateSystemPrompt() {
+    chatInterface.updateSystemPrompt();
+}
+
+function clearSystemPrompt() {
+    chatInterface.clearSystemPrompt();
+}
+
+function toggleAutodecide() {
+    chatInterface.toggleAutodecide();
+}
+
+function toggleSystemPrompt() {
+    chatInterface.toggleSystemPrompt();
+}
+
+function convertCurrentChatToPermanent() {
+    if (chatInterface) {
+        chatInterface.convertCurrentChatToPermanent();
+    }
+}
+
+function createCustomTemporaryChat() {
+    if (chatInterface) {
+        chatInterface.createNewChat(true, 15);
+    }
+}
+
+function exportChat(format) {
+    chatInterface.exportChat(format);
+}
+
+// Initialize chat interface when page loads
+let chatInterface;
+document.addEventListener('DOMContentLoaded', function() {
+    chatInterface = new ChatInterface();
+    
+    // Add event listener for temporary checkbox
+    const isTemporaryCheck = document.getElementById('isTemporaryCheck');
+    if (isTemporaryCheck) {
+        isTemporaryCheck.addEventListener('change', function() {
+            if (chatInterface) {
+                chatInterface.toggleTemporaryTimer(this.checked);
+            }
+        });
+    }
+});
+
+// TEMPORARILY DISABLED - Auto-delete temporary chats when leaving the page
+/*
+window.addEventListener('beforeunload', function(event) {
+    if (chatInterface && chatInterface.currentChatId) {
+        // Check if current chat is temporary AND has no messages yet
+        const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
+        if (chatElement && chatElement.classList.contains('temp-chat')) {
+            // Only delete if the chat has no meaningful content
+            const messagesList = document.getElementById('messagesList');
+            const messages = messagesList ? messagesList.children.length : 0;
+            
+            // Don't delete if there are messages or if AI is currently responding
+            if (messages <= 1 && !chatInterface.isAIResponding) {
+                try {
+                    fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                        method: 'DELETE',
+                        keepalive: true
+                    }).catch(error => {
+                        console.warn('Could not delete temporary chat on page unload:', error);
+                    });
+                } catch (error) {
+                    console.warn('Could not delete temporary chat on page unload:', error);
+                }
+            }
+        }
+    }
+});
+
+// Handle navigation away from chat page - be more conservative
+window.addEventListener('pagehide', function(event) {
+    if (chatInterface && chatInterface.currentChatId) {
+        const chatElement = document.querySelector(`[data-chat-id="${chatInterface.currentChatId}"]`);
+        if (chatElement && chatElement.classList.contains('temp-chat')) {
+            // Only delete empty temporary chats when page is actually being closed
+            const messagesList = document.getElementById('messagesList');
+            const messages = messagesList ? messagesList.children.length : 0;
+            
+            if (messages <= 1 && !chatInterface.isAIResponding) {
+                try {
+                    fetch(`/api/chat/chats/${chatInterface.currentChatId}`, {
+                        method: 'DELETE',
+                        keepalive: true
+                    }).catch(error => {
+                        console.warn('Could not delete temporary chat on page hide:', error);
+                    });
+                } catch (error) {
+                    console.warn('Could not delete temporary chat on page hide:', error);
+                }
+            }
+        }
+    }
+});
+*/

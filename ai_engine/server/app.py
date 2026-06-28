@@ -37,10 +37,10 @@ ACTIVE_PROVIDERS = Gauge('ai_engine_active_providers', 'Number of active provide
 try:
     from core.ai_engine import AI_engine
     from core.statistics_manager import get_stats_manager
-    from config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
+    from core.config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
     from core.model_cache import shared_model_cache
     # Import chat module
-    from chat_module.router import router as chat_router
+    from .chat_module.router import router as chat_router
     # Import new modules
     from core.caching import lru_cache, request_deduplicator
     from core.middleware import metrics_collector, RequestTracker
@@ -78,7 +78,7 @@ def verify_admin_api_key(api_key: str = Header(None, alias="X-API-Key")) -> bool
 
 # Set the global engine in chat module to prevent duplicate initialization
 try:
-    from chat_module.router import set_global_engine
+    from .chat_module.router import set_global_engine
     set_global_engine(engine)
 except ImportError:
     verbose_print("⚠️ Could not set global engine in chat module")
@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
 
     # Start temporary chat cleanup task
     try:
-        from chat_module.router import start_cleanup_task
+        from .chat_module.router import start_cleanup_task
         start_cleanup_task()
         verbose_print("🧹 Temporary chat cleanup task started")
     except ImportError:
@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI):
     # Shutdown (cleanup if needed)
     shared_model_cache.stop_auto_refresh()
     try:
-        from chat_module.router import stop_cleanup_task
+        from .chat_module.router import stop_cleanup_task
         stop_cleanup_task()
     except Exception:
         pass
@@ -188,11 +188,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files and templates
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files and templates (resolve relative to this file's directory)
+_server_dir = os.path.dirname(os.path.abspath(__file__))
+app.mount("/static", StaticFiles(directory=os.path.join(_server_dir, "static")), name="static")
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=os.path.join(_server_dir, "templates"))
 
 # Include chat router
 app.include_router(chat_router)
@@ -1920,7 +1921,7 @@ async def reload_config():
             if mod_name == 'config' or mod_name.startswith('config.'):
                 del sys.modules[mod_name]
 
-        from config import AI_CONFIGS as new_configs, ENGINE_SETTINGS as new_settings
+        from core.config import AI_CONFIGS as new_configs, ENGINE_SETTINGS as new_settings
 
         global AI_CONFIGS, ENGINE_SETTINGS
         AI_CONFIGS = new_configs
@@ -1938,27 +1939,24 @@ async def reload_config():
         raise HTTPException(status_code=500, detail=f"Failed to reload config: {str(e)}")
 
 def create_directories():
-    """Create necessary directories for templates and static files"""
-    os.makedirs("templates", exist_ok=True)
-    os.makedirs("static/css", exist_ok=True)
-    os.makedirs("static/js", exist_ok=True)
-    os.makedirs("static/img", exist_ok=True)
+    """Create necessary directories for runtime data"""
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("data", exist_ok=True)
 
 def create_templates():
     """Create HTML templates for the dashboard (only if they don't exist)"""
     import os
 
-    # Check if templates already exist
+    server_dir = os.path.dirname(os.path.abspath(__file__))
     template_files = [
-        "templates/dashboard.html",
-        "templates/providers.html",
-        "templates/statistics.html",
-        "templates/models.html"
+        os.path.join(server_dir, "templates", "dashboard.html"),
+        os.path.join(server_dir, "templates", "providers.html"),
+        os.path.join(server_dir, "templates", "statistics.html"),
+        os.path.join(server_dir, "templates", "models.html")
     ]
 
-    # If any template files exist, skip template creation to preserve manual edits
     if any(os.path.exists(file) for file in template_files):
-        verbose_print("📄 Templates already exist - preserving manual edits")
+        verbose_print("Templates already exist")
         return
 
     verbose_print("📄 Creating default templates...")

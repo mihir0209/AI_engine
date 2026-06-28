@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Engine Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-robot"></i> AI Engine v3.0
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link active" href="/"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+                <a class="nav-link" href="/providers"><i class="fas fa-server"></i> Providers</a>
+                <a class="nav-link" href="/models"><i class="fas fa-cubes"></i> Models</a>
+                <a class="nav-link" href="/chat"><i class="fas fa-comments"></i> Chat</a>
+                <a class="nav-link" href="/statistics"><i class="fas fa-chart-bar"></i> Statistics</a>
+                <a class="nav-link" href="/docs"><i class="fas fa-book"></i> API Docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <h1><i class="fas fa-tachometer-alt"></i> Dashboard</h1>
+                <p class="text-muted">Monitor your AI Engine performance and providers</p>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-check-circle"></i> Active Providers</h5>
+                        <h2 id="activeProviders">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-server"></i> Total Providers</h5>
+                        <h2 id="totalProviders">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-exclamation-triangle"></i> Flagged</h5>
+                        <h2 id="flaggedProviders">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title"><i class="fas fa-clock"></i> Uptime</h5>
+                        <h2 id="uptime">-</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-pie"></i> Provider Status</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="providerStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-comments"></i> Chat Interface</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Interactive chat with context-aware AI conversations</p>
+                        <div id="chatStats" class="mb-3">
+                            <small class="text-muted">Loading chat statistics...</small>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <a href="/chat" class="btn btn-primary">
+                                <i class="fas fa-comments"></i> Open Chat Interface
+                            </a>
+                            <button class="btn btn-outline-primary btn-sm" onclick="createQuickChat()">
+                                <i class="fas fa-plus"></i> Quick Temporary Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-line"></i> System Performance Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">For detailed statistics, key usage, and activity monitoring, visit the <a href="/statistics" class="text-decoration-none"><strong>Statistics</strong></a> page.</p>
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                            <a href="/statistics" class="btn btn-outline-primary">
+                                <i class="fas fa-chart-bar"></i> View Detailed Statistics
+                            </a>
+                            <a href="/providers" class="btn btn-outline-secondary">
+                                <i class="fas fa-server"></i> Manage Providers
+                            </a>
+                            <a href="/models" class="btn btn-outline-info">
+                                <i class="fas fa-cubes"></i> Browse Models
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let startTime = Date.now();
+
+        async function updateDashboard() {
+            try {
+                const statusResponse = await fetch('/api/status');
+                const status = await statusResponse.json();
+
+                document.getElementById('activeProviders').textContent = status.available_providers;
+                document.getElementById('totalProviders').textContent = status.total_providers;
+                document.getElementById('flaggedProviders').textContent = status.flagged_providers;
+
+                const uptime = Math.floor((Date.now() - startTime) / 1000 / 60);
+                document.getElementById('uptime').textContent = uptime + 'm';
+
+                // Update provider status chart
+                updateProviderChart(status);
+
+                // Load chat statistics
+                loadChatStats();
+
+            } catch (error) {
+                console.error('Error updating dashboard:', error);
+            }
+        }
+
+        async function loadChatStats() {
+            try {
+                const response = await fetch('/api/chat/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('chatStats').innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <strong>${stats.total_chats}</strong><br>
+                                <small class="text-muted">Total Chats</small>
+                            </div>
+                            <div class="col-4">
+                                <strong>${stats.total_messages}</strong><br>
+                                <small class="text-muted">Messages</small>
+                            </div>
+                            <div class="col-4">
+                                <strong>${stats.temporary_chats}</strong><br>
+                                <small class="text-muted">Temporary</small>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading chat stats:', error);
+                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Error loading stats</small>';
+            }
+        }
+
+        async function createQuickChat() {
+            try {
+                const response = await fetch('/api/chat/chats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
+                        is_temporary: true
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Redirect to chat interface with the new chat
+                    window.location.href = `/chat#${result.chat_id}`;
+                } else {
+                    alert('Failed to create quick chat');
+                }
+
+            } catch (error) {
+                console.error('Error creating quick chat:', error);
+                alert('Error creating quick chat');
+            }
+        }
+
+        function updateProviderChart(status) {
+            const ctx = document.getElementById('providerStatusChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Active', 'Flagged'],
+                    datasets: [{
+                        data: [status.available_providers, status.flagged_providers],
+                        backgroundColor: ['#28a745', '#ffc107']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadChatStats() {
+            try {
+                const response = await fetch('/api/chat/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.stats;
+                    document.getElementById('chatStats').innerHTML = `
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.total_chats || 0}</div>
+                                <small class="text-muted">Chats</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.total_messages || 0}</div>
+                                <small class="text-muted">Messages</small>
+                            </div>
+                            <div class="col-4">
+                                <div class="h6 mb-0">${stats.temporary_chats || 0}</div>
+                                <small class="text-muted">Temp</small>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading chat stats:', error);
+                document.getElementById('chatStats').innerHTML = '<small class="text-muted">Stats unavailable</small>';
+            }
+        }
+
+        async function createQuickChat() {
+            try {
+                const response = await fetch('/api/chat/chats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: `Quick Chat ${new Date().toLocaleTimeString()}`,
+                        is_temporary: true
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    window.location.href = `/chat#${result.chat_id}`;
+                } else {
+                    alert('Failed to create quick chat');
+                }
+
+            } catch (error) {
+                console.error('Error creating quick chat:', error);
+                alert('Failed to create quick chat');
+            }
+        }
+
+        // Update dashboard every 30 seconds
+        setInterval(updateDashboard, 30000);
+        setInterval(loadChatStats, 30000);
+        updateDashboard(); // Initial load
+        loadChatStats(); // Initial load
+    </script>
+</body>
+</html>
