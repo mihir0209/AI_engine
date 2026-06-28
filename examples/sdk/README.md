@@ -1,11 +1,11 @@
-# AI Engine SDK Examples
+# AI Synapse SDK Examples
 
-Quick examples showing how to use the AI Engine SDK.
+Quick examples showing how to use the AI Synapse SDK.
 
 ## Prerequisites
 
 ```bash
-pip install ai-engine
+pip install ai-synapse
 ```
 
 No server required — the SDK routes through free providers directly.
@@ -150,4 +150,16 @@ ai_engine.use(
 )
 
 client = ai_engine.OpenAI()
+```
+
+## Start Web Server
+
+```python
+from ai_engine import OpenAI
+
+client = OpenAI()
+client.serve(port=8000)
+# Dashboard: http://localhost:8000
+# Chat UI: http://localhost:8000/chat
+# API Docs: http://localhost:8000/docs
 ```

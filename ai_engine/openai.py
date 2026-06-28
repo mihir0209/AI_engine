@@ -92,6 +92,33 @@ class OpenAI:
         from core.capabilities import capability_manager
         return capability_manager.check_image_compatibility(provider, model)
 
+    def serve(self, host: str = "0.0.0.0", port: int = 8000, **kwargs):
+        """Start the AI Engine web server with dashboard, chat UI, and REST API.
+
+        This starts a FastAPI server that provides:
+        - OpenAI-compatible REST API at /v1/
+        - Web dashboard at /
+        - Chat UI at /chat
+        - Swagger docs at /docs
+
+        Args:
+            host: Bind address (default: 0.0.0.0)
+            port: Port number (default: 8000)
+        """
+        import sys
+        import os
+        pkg_root = str(Path(__file__).parent.parent)
+        if pkg_root not in sys.path:
+            sys.path.insert(0, pkg_root)
+
+        # Set up the engine for the server
+        from core.config_sync import config_fetcher
+        config_fetcher.initialize()
+
+        from server import app
+        import uvicorn
+        uvicorn.run(app, host=host, port=port, **kwargs)
+
 
 class AsyncOpenAI:
     """Async drop-in replacement for openai.AsyncOpenAI.
