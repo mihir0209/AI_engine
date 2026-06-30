@@ -249,7 +249,7 @@ def stop_cleanup_task():
     cleanup_task = None
 
 # Create router
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 @router.get("/chats", response_model=List[ChatResponse])
 async def get_chats(include_temporary: bool = False, limit: int = 50):

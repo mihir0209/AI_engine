@@ -40,7 +40,7 @@ try:
     from core.config import verbose_print, ENGINE_SETTINGS, AI_CONFIGS
     from core.model_cache import shared_model_cache
     # Import chat module
-    from chat_module.router import router as chat_router
+    from .chat_module.router import router as chat_router
     # Import new modules
     from core.caching import lru_cache, request_deduplicator
     from core.middleware import metrics_collector, RequestTracker
@@ -78,7 +78,7 @@ def verify_admin_api_key(api_key: str = Header(None, alias="X-API-Key")) -> bool
 
 # Set the global engine in chat module to prevent duplicate initialization
 try:
-    from chat_module.router import set_global_engine
+    from .chat_module.router import set_global_engine
     set_global_engine(engine)
 except ImportError:
     verbose_print("⚠️ Could not set global engine in chat module")
@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI):
     verbose_print("🔄 Model cache auto-refresh started (30min interval)")
 
     try:
-        from chat_module.router import start_cleanup_task
+        from .chat_module.router import start_cleanup_task
         start_cleanup_task()
         verbose_print("🧹 Temporary chat cleanup task started")
     except ImportError:
@@ -145,7 +145,7 @@ async def lifespan(app: FastAPI):
     # Stop background tasks
     shared_model_cache.stop_auto_refresh()
     try:
-        from chat_module.router import stop_cleanup_task
+        from .chat_module.router import stop_cleanup_task
         stop_cleanup_task()
     except Exception:
         pass
@@ -161,13 +161,21 @@ async def lifespan(app: FastAPI):
     verbose_print("✅ Shutdown complete")
 
 # FastAPI app with lifespan handler
+OPENAPI_TAGS = [
+    {"name": "OpenAI Compatible", "description": "Drop-in compatible endpoints for OpenAI SDK"},
+    {"name": "Provider Management", "description": "Manage providers, models, health, and capabilities"},
+    {"name": "Platform", "description": "Analytics, billing, config, and system management"},
+    {"name": "Chat", "description": "Web chat interface and conversation management"},
+]
+
 app = FastAPI(
-    title="AI Engine v3.0",
-    description="Advanced AI Engine with Multi-Provider Support",
-    version="3.0.0",
+    title="AI Synapse — Free Multi-Provider AI Engine",
+    description="Free AI inference router with 27+ providers, OpenAI-compatible API, vision detection, and streaming. Use `from ai_engine import OpenAI` for SDK access.",
+    version="4.0.14",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan
 )
 
@@ -194,11 +202,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files and templates
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Mount static files and templates (resolve relative to this file's directory)
+_server_dir = os.path.dirname(os.path.abspath(__file__))
+app.mount("/static", StaticFiles(directory=os.path.join(_server_dir, "static")), name="static")
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=os.path.join(_server_dir, "templates"))
 
 # Include chat router
 app.include_router(chat_router)
@@ -396,7 +405,7 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
     )
 
 # API Routes
-@app.post("/v1/chat/completions")
+@app.post("/v1/chat/completions", tags=["OpenAI Compatible"])
 @limiter.limit("10/minute")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
     """OpenAI-compatible chat completions endpoint - handles both streaming and non-streaming"""
@@ -560,7 +569,7 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
     )
 
 
-@app.post("/v1/chat/completions/stream")
+@app.post("/v1/chat/completions/stream", tags=["OpenAI Compatible"])
 @limiter.limit("10/minute")
 async def chat_completions_stream_legacy(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
     """Legacy streaming endpoint - redirects to main endpoint with stream=true"""
@@ -573,8 +582,8 @@ async def chat_completions_stream_legacy(request: Request, background_tasks: Bac
         background_tasks
     )
 
-@app.get("/v1/models")
-@app.post("/v1/models")
+@app.get("/v1/models", tags=["OpenAI Compatible"])
+@app.post("/v1/models", tags=["OpenAI Compatible"])
 async def list_models(request: Request = None, provider: str = None, search: str = None):
     """List all available models across all providers in OpenAI-compatible format.
     
@@ -616,7 +625,7 @@ async def list_models(request: Request = None, provider: str = None, search: str
     
     return {"object": "list", "data": filtered_models}
 
-@app.get("/v1/models/{model_id}")
+@app.get("/v1/models/{model_id}", tags=["OpenAI Compatible"])
 async def retrieve_model(model_id: str):
     """Retrieve a single model by ID (OpenAI SDK calls this)"""
     return {
@@ -626,7 +635,7 @@ async def retrieve_model(model_id: str):
         "owned_by": model_id.split("/")[0] if "/" in model_id else "unknown"
     }
 
-@app.delete("/v1/models/{model_id}")
+@app.delete("/v1/models/{model_id}", tags=["OpenAI Compatible"])
 async def delete_model(model_id: str):
     """Delete a model stub (OpenAI SDK calls this for cleanup)"""
     return JSONResponse(
@@ -634,7 +643,7 @@ async def delete_model(model_id: str):
         content={"error": {"message": "Model deletion not supported", "type": "not_found_error", "param": "model", "code": "model_not_found"}}
     )
 
-@app.post("/v1/embeddings")
+@app.post("/v1/embeddings", tags=["OpenAI Compatible"])
 async def create_embeddings(request: Request):
     """Embeddings stub (OpenAI SDK may call this)"""
     return JSONResponse(
@@ -777,7 +786,7 @@ async def discover_and_cache_models():
             "data": api_models
         }
 
-@app.get("/api/statistics")
+@app.get("/api/statistics", tags=["Platform"])
 async def get_statistics():
     """Get comprehensive statistics"""
     try:
@@ -840,7 +849,7 @@ async def get_statistics():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/status")
+@app.get("/api/status", tags=["Platform"])
 async def get_status():
     """Get comprehensive engine status"""
     try:
@@ -895,13 +904,13 @@ async def get_status():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/cdn-config")
+@app.get("/api/cdn-config", tags=["Platform"])
 async def get_cdn_config_status():
     """Get CDN config sync status"""
     from core.config_sync import config_fetcher
     return config_fetcher.get_status()
 
-@app.post("/api/cdn-config/refresh")
+@app.post("/api/cdn-config/refresh", tags=["Platform"])
 async def refresh_cdn_config():
     """Force refresh CDN config (bypasses TTL cache)"""
     from core.config_sync import config_fetcher, CACHE_META, CACHE_FILE
@@ -915,7 +924,7 @@ async def refresh_cdn_config():
     except Exception as e:
         return {"success": False, "message": str(e)}
 
-@app.get("/api/providers")
+@app.get("/api/providers", tags=["Provider Management"])
 async def get_providers():
     """Get all providers with their configurations (sanitized)"""
     try:
@@ -946,7 +955,7 @@ async def get_providers():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/capabilities")
+@app.get("/api/capabilities", tags=["Provider Management"])
 async def get_capabilities():
     """Get provider and model capabilities"""
     return {
@@ -960,7 +969,7 @@ async def check_image_compatibility(provider: str, model: str = None):
     """Check if a provider/model supports image uploads"""
     return capability_manager.check_image_compatibility(provider, model)
 
-@app.post("/api/providers/{provider_name}/toggle")
+@app.post("/api/providers/{provider_name}/toggle", tags=["Provider Management"])
 async def toggle_provider(provider_name: str, request: Request, x_api_key: str = Header(None, alias="X-API-Key")):
     """Toggle a provider's enabled status (requires API key)"""
     verify_admin_api_key(x_api_key)
@@ -1373,7 +1382,7 @@ async def save_config_to_file(provider_name: str, field: str, new_value):
         # Don't raise the error to avoid breaking the API response
         # The in-memory config is already updated, file persistence is a bonus
 
-@app.post("/api/test-model")
+@app.post("/api/test-model", tags=["Provider Management"])
 @limiter.limit("5/minute")
 async def test_model(request: Request):
     """Test a specific model with a provider"""
@@ -1659,7 +1668,7 @@ async def get_provider_health():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/capabilities/vision")
+@app.get("/api/capabilities/vision", tags=["Provider Management"])
 async def get_vision_providers():
     """Get all providers that support vision"""
     return {"providers": capability_manager.get_vision_providers()}
@@ -1694,7 +1703,7 @@ async def get_sla_status():
     """Get SLA monitoring status"""
     return sla_monitor.get_status()
 
-@app.post("/api/health/{provider_name}/ping")
+@app.post("/api/health/{provider_name}/ping", tags=["Provider Management"])
 async def ping_provider(provider_name: str):
     """Actually ping a provider to check if it's alive (sends a minimal request)"""
     import time as _time
@@ -1738,19 +1747,19 @@ async def ping_provider(provider_name: str):
             "error": str(e)[:200],
         }
 
-@app.get("/api/health/providers")
+@app.get("/api/health/providers", tags=["Provider Management"])
 async def get_provider_health_status():
     """Get provider health monitoring status"""
     from core.health_monitor import health_monitor
     return health_monitor.get_all_health()
 
-@app.get("/api/health/summary")
+@app.get("/api/health/summary", tags=["Provider Management"])
 async def get_health_summary():
     """Get overall health summary"""
     from core.health_monitor import health_monitor
     return health_monitor.get_summary()
 
-@app.get("/api/health/checks")
+@app.get("/api/health/checks", tags=["Provider Management"])
 async def run_health_checks():
     """Run all health checks"""
     return health_checker.run_checks()
@@ -1766,7 +1775,7 @@ async def get_provider_health_detail(provider_name: str):
     from core.health_monitor import health_monitor
     return health_monitor.get_provider_health(provider_name)
 
-@app.get("/api/latency")
+@app.get("/api/latency", tags=["Platform"])
 async def get_latency_stats():
     """Get latency statistics for all providers"""
     from core.latency_tracker import latency_tracker
@@ -1778,7 +1787,7 @@ async def get_provider_latency(provider_name: str):
     from core.latency_tracker import latency_tracker
     return latency_tracker.get_stats(provider_name)
 
-@app.get("/api/rate-limits")
+@app.get("/api/rate-limits", tags=["Platform"])
 async def get_rate_limits():
     """Get rate limit status for all providers"""
     from core.rate_limit_manager import rate_limit_manager
@@ -1902,12 +1911,12 @@ async def get_execution(workflow_id: str, execution_id: str):
 # === API Versioning ===
 from core.api_versioning import get_version_info
 
-@app.get("/api/version")
+@app.get("/api/version", tags=["Platform"])
 async def get_version():
     """Get API version information"""
     return get_version_info()
 
-@app.post("/api/config/reload")
+@app.post("/api/config/reload", tags=["Platform"])
 async def reload_config():
     """Reload configuration from config.py or CDN"""
     try:
