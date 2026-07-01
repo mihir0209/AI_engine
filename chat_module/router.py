@@ -861,7 +861,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         start_time = time.time()
 
         force_provider_setting = chat.get('force_provider', False) if chat else False
-        use_autodecide = provider is None and not force_provider_setting
+        use_autodecide = not force_provider_setting  # Always on unless force_provider is explicitly set
 
         result = await asyncio.to_thread(ai.chat_completion,
             messages=formatted_messages,
@@ -949,10 +949,8 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         ai = get_global_engine()
         verbose_print(f"Starting AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
-        use_autodecide = provider is None and not force_provider_setting
+        use_autodecide = not force_provider_setting  # Always on unless force_provider is explicitly set
 
-        # Use non-streaming completion + simulated chunking (reliable across all providers)
-        start_time = time.time()
         try:
             result = await asyncio.to_thread(ai.chat_completion,
                 messages=formatted_messages,
