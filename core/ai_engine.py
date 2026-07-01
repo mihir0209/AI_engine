@@ -1491,6 +1491,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             )
 
         # Try each available provider
+        last_errors = []
         for provider_name, provider_config in available_providers:
             start_time = time.time()
 
@@ -1507,63 +1508,40 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     result.provider_used = provider_name
                     result.response_time = response_time
                     self.current_provider = provider_name
-
-                    # Handle successful response with advanced tracking
                     self._handle_provider_success(provider_name, response_time)
 
-                    # Cache successful response
                     if use_cache:
                         try:
                             from response_cache import response_cache
                             response_cache.set(
                                 messages,
                                 model or "auto",
-                                {
-                                    "content": result.content,
-                                    "provider": provider_name,
-                                    "model": result.model_used
-                                },
-                                provider=preferred_provider
+                                {"content": result.content, "provider": provider_name, "model": result.model_used}
                             )
-                        except ImportError:
+                        except Exception:
                             pass
-
-                    if self.verbose:
-                        verbose_print(f"✅ {provider_name} successful ({response_time:.2f}s, self.verbose)")
 
                     return result
                 else:
-                    # Handle failure with enhanced error detection and smart rotation
-                    self._handle_provider_failure(
-                        provider_name,
-                        result.error_message,
-                        result.status_code,
-                        result.raw_response
-                    )
-
                     if self.verbose:
                         verbose_print(f"❌ {provider_name} failed: {result.error_message}", self.verbose)
-
-                    # Continue to next provider (automatic provider rotation)
+                    last_errors.append(f"{provider_name}: {result.error_message}")
                     continue
 
             except Exception as e:
                 response_time = time.time() - start_time
                 self._update_stats(provider_name, False, response_time)
-
-                # Handle exception as failure with enhanced tracking
                 self._handle_provider_failure(provider_name, str(e), 0, None)
-
                 if self.verbose:
                     verbose_print(f"💥 {provider_name} exception: {str(e)}")
-
-                # Continue to next provider (automatic provider rotation)
+                last_errors.append(f"{provider_name}: {str(e)[:80]}")
                 continue
 
-        # All providers failed
+        # All providers failed — show why
+        error_summary = "; ".join(last_errors[-3:]) if last_errors else "Unknown error"
         return RequestResult(
             success=False,
-            error_message="All providers failed",
+            error_message=f"All {len(available_providers)} providers failed. Last errors: {error_summary}",
             error_type="all_failed"
         )
 

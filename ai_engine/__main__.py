@@ -55,6 +55,10 @@ def _cmd_serve(host, port, reload):
     if pkg_root not in sys.path:
         sys.path.insert(0, pkg_root)
 
+    # Set CDN config URL to default if not already set
+    if not os.environ.get("CDN_CONFIG_URL"):
+        os.environ["CDN_CONFIG_URL"] = "default"
+
     # Initialize CDN config
     from core.config_sync import config_fetcher
     config_fetcher.initialize()

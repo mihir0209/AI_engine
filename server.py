@@ -91,33 +91,28 @@ shared_model_cache.load_cache()
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     import threading
+    import asyncio
 
     def initialize_cache():
         """Initialize cache in background thread - ALWAYS refresh on startup"""
         try:
             verbose_print("🚀 Initializing fresh model cache on server startup...")
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                result = loop.run_until_complete(discover_and_cache_models())
-                verbose_print(f"✅ Fresh model cache initialized with {len(result['data'])} models")
+                result = asyncio.run(discover_and_cache_models())
+                verbose_print(f"✅ Fresh model cache initialized with {len(result.get('data', []))} models")
             except Exception as e:
                 verbose_print(f"❌ Error during cache initialization: {e}")
-            finally:
-                loop.close()
         except Exception as e:
             verbose_print(f"❌ Critical error in cache initialization: {e}")
 
     def refresh_cache():
         """Refresh cache function for auto-refresh"""
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
             try:
-                result = loop.run_until_complete(discover_and_cache_models())
-                verbose_print(f"🔄 Cache refreshed: {len(result['data'])} models")
-            finally:
-                loop.close()
+                result = asyncio.run(discover_and_cache_models())
+                verbose_print(f"🔄 Cache refreshed: {len(result.get('data', []))} models")
+            except Exception as e:
+                verbose_print(f"❌ Cache refresh error: {e}")
         except Exception as e:
             verbose_print(f"❌ Cache refresh error: {e}")
 
@@ -1335,52 +1330,30 @@ async def change_provider_model(provider_name: str, request: Request, x_api_key:
         raise HTTPException(status_code=500, detail=str(e))
 
 async def save_config_to_file(provider_name: str, field: str, new_value):
-    """Save a specific configuration change to config.py file"""
+    """Save a configuration change to data/config_overrides.json"""
     try:
-        # Read the current config file
-        with open('config.py', 'r', encoding='utf-8') as f:
-            config_content = f.read()
+        import json as _json
+        os.makedirs("data", exist_ok=True)
+        overrides_file = "data/config_overrides.json"
 
-        # Find the provider section and update the specific field
-        import re
+        # Load existing overrides
+        overrides = {}
+        if os.path.exists(overrides_file):
+            with open(overrides_file) as f:
+                overrides = _json.load(f)
 
-        # Pattern to find the provider section
-        provider_pattern = rf'"{provider_name}":\s*\{{([^}}]*)}}'
+        # Apply change
+        if provider_name not in overrides:
+            overrides[provider_name] = {}
+        overrides[provider_name][field] = new_value
 
-        # Create field pattern based on value type
-        if isinstance(new_value, bool):
-            # Boolean field pattern
-            field_pattern = rf'"{field}":\s*(True|False)'
-            replacement = f'"{field}": {new_value}'
-        else:
-            # String field pattern
-            field_pattern = rf'"{field}":\s*"[^"]*"'
-            replacement = f'"{field}": "{new_value}"'
+        # Save
+        with open(overrides_file, "w") as f:
+            _json.dump(overrides, f, indent=2)
 
-        # Find the provider section
-        provider_match = re.search(provider_pattern, config_content, re.DOTALL)
-        if provider_match:
-            provider_section = provider_match.group(1)
-
-            # Update the field in the provider section
-            if re.search(field_pattern, provider_section):
-                updated_section = re.sub(field_pattern, replacement, provider_section)
-                updated_config = config_content.replace(provider_section, updated_section)
-
-                # Write the updated config back to file
-                with open('config.py', 'w', encoding='utf-8') as f:
-                    f.write(updated_config)
-
-                verbose_print(f"✅ Config updated: {provider_name}.{field} = {new_value}")
-            else:
-                verbose_print(f"⚠️ Field '{field}' not found in provider '{provider_name}'")
-        else:
-            print(f"⚠️ Provider '{provider_name}' not found in config file")
-
+        verbose_print(f"✅ Config updated: {provider_name}.{field} = {new_value}")
     except Exception as e:
-        print(f"❌ Error saving config to file: {e}")
-        # Don't raise the error to avoid breaking the API response
-        # The in-memory config is already updated, file persistence is a bonus
+        print(f"❌ Error saving config: {e}")
 
 @app.post("/api/test-model", tags=["Provider Management"])
 @limiter.limit("5/minute")
@@ -1423,14 +1396,18 @@ async def test_model(request: Request):
         response_time = (end_time - start_time).total_seconds()
 
         if result.success:
-            return JSONResponse(status_code=200, content={
+            response_obj = {
                 'success': True,
                 'provider': result.provider_used,
                 'model': result.model_used or model_name,
                 'response': result.content[:200] + "..." if len(result.content) > 200 else result.content,
                 'response_time': round(response_time, 2),
                 'timestamp': start_time.isoformat()
-            })
+            }
+            # Note failover if a different provider handled the request
+            if result.provider_used and result.provider_used != provider_name:
+                response_obj['note'] = f'Requested provider {provider_name} was unavailable. Routed to {result.provider_used} instead.'
+            return JSONResponse(status_code=200, content=response_obj)
         else:
             return JSONResponse(status_code=502, content={
                 'success': False,

@@ -1,6 +1,10 @@
 """Shared test fixtures for AI Engine tests"""
-import pytest
+import sys
 import os
+import pytest
+
+# Add project root to sys.path so 'from core.X import' works in CI
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("CDN_CONFIG_URL", "")
 
