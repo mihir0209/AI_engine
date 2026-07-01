@@ -403,7 +403,12 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
 @app.post("/v1/chat/completions", tags=["OpenAI Compatible"])
 @limiter.limit("10/minute")
 async def chat_completions(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
-    """OpenAI-compatible chat completions endpoint - handles both streaming and non-streaming"""
+    """OpenAI-compatible chat completions endpoint.
+
+    Supports both streaming and non-streaming. Routes through 27+ free AI providers automatically.
+
+    **Optional header:** `X-Preferred-Provider` — Force a specific provider (e.g., `groq`, `gemini`).
+    """
     from fastapi.responses import StreamingResponse
     
     try:
@@ -598,6 +603,10 @@ async def list_models(request: Request = None, provider: str = None, search: str
     # Apply filters
     filtered_models = []
     for model_id in cached_models:
+        if isinstance(model_id, dict):
+            model_id = model_id.get("id", model_id.get("model", ""))
+        if not isinstance(model_id, str) or not model_id:
+            continue
         # Filter by provider
         if provider and not model_id.startswith(provider + "/"):
             continue
