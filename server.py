@@ -90,36 +90,32 @@ shared_model_cache.load_cache()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
-    import threading
     import asyncio
 
-    def initialize_cache():
-        """Initialize cache in background thread - ALWAYS refresh on startup"""
-        try:
-            verbose_print("🚀 Initializing fresh model cache on server startup...")
-            try:
-                result = asyncio.run(discover_and_cache_models())
-                verbose_print(f"✅ Fresh model cache initialized with {len(result.get('data', []))} models")
-            except Exception as e:
-                verbose_print(f"❌ Error during cache initialization: {e}")
-        except Exception as e:
-            verbose_print(f"❌ Critical error in cache initialization: {e}")
-
     def refresh_cache():
-        """Refresh cache function for auto-refresh"""
+        """Refresh cache function for auto-refresh (runs in background thread)"""
         try:
-            try:
-                result = asyncio.run(discover_and_cache_models())
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, discover_and_cache_models).result(timeout=30)
                 verbose_print(f"🔄 Cache refreshed: {len(result.get('data', []))} models")
-            except Exception as e:
-                verbose_print(f"❌ Cache refresh error: {e}")
         except Exception as e:
             verbose_print(f"❌ Cache refresh error: {e}")
 
-    # Startup
-    import time
+    # Startup — trigger background model discovery (don't block server start)
     verbose_print("🚀 Starting AI Engine...")
-    initialize_cache()
+    import concurrent.futures
+    def _background_discover():
+        try:
+            result = asyncio.run(discover_and_cache_models())
+            verbose_print(f"✅ Model cache populated: {len(result.get('data', []))} models")
+        except Exception as e:
+            verbose_print(f"❌ Background model discovery error: {e}")
+
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    pool.submit(_background_discover)
+    verbose_print("🔄 Model discovery running in background...")
+
     shared_model_cache.start_auto_refresh(refresh_cache)
     verbose_print("🔄 Model cache auto-refresh started (30min interval)")
 
@@ -402,20 +398,22 @@ def format_openai_response(result, messages, request, start_time) -> ChatComplet
 # API Routes
 @app.post("/v1/chat/completions", tags=["OpenAI Compatible"])
 @limiter.limit("10/minute")
-async def chat_completions(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
+async def chat_completions(request: Request, body: ChatCompletionRequest, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
     """OpenAI-compatible chat completions endpoint.
 
     Supports both streaming and non-streaming. Routes through 27+ free AI providers automatically.
 
     **Optional header:** `X-Preferred-Provider` — Force a specific provider (e.g., `groq`, `gemini`).
+
+    **Request body:** `model`, `messages`, `stream`, `temperature`, `max_tokens`, etc.
     """
     from fastapi.responses import StreamingResponse
-    
+
     try:
-        body = await request.json()
-        messages = body.get("messages", [])
-        model = body.get("model", "auto")
-        stream = body.get("stream", False)
+        messages = [{"role": m.role, "content": m.content} for m in body.messages]
+        model = body.model
+        stream = body.stream
+        tools = body.tools
         tools = body.get("tools")
         tool_choice = body.get("tool_choice")
         response_format = body.get("response_format")
@@ -1549,12 +1547,6 @@ async def providers_page(request: Request):
     """Providers management page"""
     return templates.TemplateResponse(request, "providers.html")
 
-@app.get("/statistics", response_class=HTMLResponse)
-async def statistics_page(request: Request):
-    """Statistics page"""
-    return templates.TemplateResponse(request, "statistics.html")
-
-@app.get("/models", response_class=HTMLResponse)
 async def models_page(request: Request):
     """Models page"""
     return templates.TemplateResponse(request, "models.html")
@@ -1953,7 +1945,6 @@ def create_templates():
     template_files = [
         "templates/dashboard.html",
         "templates/providers.html",
-        "templates/statistics.html",
         "templates/models.html"
     ]
 

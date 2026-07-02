@@ -31,7 +31,6 @@ ai_engine/server/templates/chat.html
 ai_engine/server/templates/dashboard.html
 ai_engine/server/templates/models.html
 ai_engine/server/templates/providers.html
-ai_engine/server/templates/statistics.html
 ai_engine/types/__init__.py
 ai_synapse.egg-info/PKG-INFO
 ai_synapse.egg-info/SOURCES.txt
