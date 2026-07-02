@@ -307,7 +307,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str = "auto"
-    messages: List[ChatMessage]
+    messages: List[ChatMessage] = [ChatMessage(role="user", content="Hello!")]
     max_tokens: Optional[int] = None
     max_completion_tokens: Optional[int] = None
     temperature: Optional[float] = None
@@ -414,11 +414,10 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
         model = body.model
         stream = body.stream
         tools = body.tools
-        tools = body.get("tools")
-        tool_choice = body.get("tool_choice")
-        response_format = body.get("response_format")
-        temperature = body.get("temperature")
-        max_tokens = body.get("max_tokens")
+        tool_choice = body.tool_choice
+        response_format = body.response_format
+        temperature = body.temperature
+        max_tokens = body.max_tokens
         
         # Validate messages
         if not messages:
@@ -566,19 +565,6 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
         }
     )
 
-
-@app.post("/v1/chat/completions/stream", tags=["OpenAI Compatible"])
-@limiter.limit("10/minute")
-async def chat_completions_stream_legacy(request: Request, background_tasks: BackgroundTasks, x_preferred_provider: str = Header(None, alias="X-Preferred-Provider")):
-    """Legacy streaming endpoint - redirects to main endpoint with stream=true"""
-    body = await request.json()
-    body["stream"] = True
-    return await handle_streaming_response(
-        body.get("messages", []),
-        body.get("model", "auto"),
-        x_preferred_provider,
-        background_tasks
-    )
 
 @app.get("/v1/models", tags=["OpenAI Compatible"])
 @app.post("/v1/models", tags=["OpenAI Compatible"])
