@@ -1547,6 +1547,7 @@ async def providers_page(request: Request):
     """Providers management page"""
     return templates.TemplateResponse(request, "providers.html")
 
+@app.get("/models", response_class=HTMLResponse)
 async def models_page(request: Request):
     """Models page"""
     return templates.TemplateResponse(request, "models.html")
