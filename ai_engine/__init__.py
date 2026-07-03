@@ -1,6 +1,6 @@
 """AI Synapse SDK — Drop-in OpenAI & Anthropic compatibility with free multi-provider routing."""
 
-__version__ = "4.2.4"
+__version__ = "4.2.5"
 
 from .openai import OpenAI, AsyncOpenAI
 from ._engine import AIEngine, get_engine, set_engine, _global_config

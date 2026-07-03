@@ -264,9 +264,13 @@ class CapabilityManager:
 
     def check_image_compatibility(self, provider: str, model: str = None) -> Dict:
         """Check if a provider/model can handle image uploads.
-        Uses fuzzy matching on model name for vision detection.
+        When model is None/default, always return compatible — autodecide handles vision routing.
         Returns: {compatible: bool, reason: str, suggestions: list}
         """
+        # If no specific model, always compatible (autodecide will route to vision provider)
+        if not model or model in ("auto", "default", ""):
+            return {"compatible": True, "reason": "Model is auto/default — autodecide will route to vision provider", "suggestions": []}
+
         vision_ok = self.supports_vision(provider, model)
 
         if vision_ok:
@@ -276,7 +280,6 @@ class CapabilityManager:
         suggestions = []
         for prov_name, prov_caps in self.provider_caps.items():
             if prov_caps.vision:
-                # Find a vision model from this provider
                 best_model = None
                 prov_models = self.model_caps.get(prov_name, {})
                 for model_name, caps in prov_models.items():
@@ -290,7 +293,7 @@ class CapabilityManager:
 
         return {
             "compatible": False,
-            "reason": f"'{provider}' with model '{model or 'default'}' does not support image input",
+            "reason": f"'{provider}' with model '{model}' does not support image input",
             "suggestions": suggestions[:5],
         }
 
