@@ -91,7 +91,7 @@ def _encode_image_base64(file_path: str) -> tuple:
 
 def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str = None) -> tuple:
     """Prepare messages for AI: handle file content injection, image encoding, and vision stripping.
-    Returns (messages, has_images, vision_warning)
+    Returns (messages, has_images, vision_warning, force_vision_routing)
     """
     from core.capabilities import capability_manager
     vision_ok = capability_manager.supports_vision(provider or '', model)
@@ -100,7 +100,7 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
     has_files = any(re.search(FILE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
 
     if not has_images and not has_files:
-        return formatted_messages, False, None
+        return formatted_messages, False, None, False
 
     processed = []
     for msg in formatted_messages:
@@ -130,19 +130,18 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
                         img_md = match.group(0)
                         replacement = f"![{alt_text}]({data_uri})"
                         content = content.replace(img_md, replacement)
-            else:
-                # Strip images for non-vision models
-                for match in reversed(image_matches):
-                    img_md = match.group(0)
-                    content = content.replace(img_md, '[Image attached - not supported by current model]')
-                vision_providers = capability_manager.get_vision_providers()
-                warning = f"Images removed: {provider or 'current provider'} does not support vision. Use: {', '.join(vision_providers[:3])}"
                 processed.append({**msg, 'content': content})
-                return processed, True, warning
+                return processed, True, None, False
+            else:
+                # Don't strip images — force autodecide to pick a vision provider
+                vision_providers = capability_manager.get_vision_providers()
+                warning = f"This provider may not support images. Routing to vision provider: {', '.join(vision_providers[:3])}"
+                processed.append({**msg, 'content': content})
+                return processed, True, warning, True  # force_vision_routing=True
 
         processed.append({**msg, 'content': content})
 
-    return processed, has_images, None
+    return processed, has_images, None, False
 
 # Pydantic models for API
 class CreateChatRequest(BaseModel):
@@ -854,14 +853,14 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
+        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         ai = get_global_engine()
         start_time = time.time()
 
         force_provider_setting = chat.get('force_provider', False) if chat else False
-        use_autodecide = not force_provider_setting  # Always on unless force_provider is explicitly set
+        use_autodecide = not force_provider_setting or force_vision_routing  # Force autodecide when images need vision routing
 
         result = await asyncio.to_thread(ai.chat_completion,
             messages=formatted_messages,
@@ -936,7 +935,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
+        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         force_provider_setting = chat.get('force_provider', False) if chat else False
@@ -949,7 +948,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         ai = get_global_engine()
         verbose_print(f"Starting AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
-        use_autodecide = not force_provider_setting  # Always on unless force_provider is explicitly set
+        use_autodecide = not force_provider_setting or force_vision_routing  # Force autodecide when images need vision routing
 
         try:
             result = await asyncio.to_thread(ai.chat_completion,
