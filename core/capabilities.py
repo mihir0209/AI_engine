@@ -52,7 +52,7 @@ MODEL_CAPABILITIES: Dict[str, Dict[str, ModelCapabilities]] = {
         "llama-3.1-8b-instant": ModelCapabilities(tool_calling=True, max_context_length=128000),
         "mixtral-8x7b-32768": ModelCapabilities(max_context_length=32768),
         "gemma2-9b-it": ModelCapabilities(max_context_length=8192),
-        "meta-llama/llama-4-scout-17b-16e-instruct": ModelCapabilities(vision=True, tool_calling=True, max_context_length=131072),
+        "meta-llama/llama-4-scout-17b-16e-instruct": ModelCapabilities(tool_calling=True, max_context_length=131072),
     },
     "nvidia": {
         "nvidia/nemotron-3-nano-30b-a3b": ModelCapabilities(tool_calling=True, max_context_length=4096),
@@ -191,11 +191,27 @@ class CapabilityManager:
         return self.custom_caps.get(provider) or self.provider_caps.get(provider)
 
     def supports_vision(self, provider: str, model: str = None) -> bool:
-        """Check if a provider/model supports vision/image input"""
+        """Check if a provider/model supports vision/image input.
+        
+        Uses fuzzy matching on model name: looks for vision-related keywords
+        like 'vl', 'vision', 'vlm', 'multimodal', etc.
+        """
         if model:
+            # 1. Check exact model database
             model_caps = self.get_model_capabilities(provider, model)
             if model_caps:
                 return model_caps.vision
+
+            # 2. Fuzzy match on model name keywords
+            vision_keywords = [
+                "vl", "vision", "vlm", "multimodal", "image", "visual",
+                "clip", "img", "pixtral", "fuyu",
+            ]
+            model_lower = model.lower()
+            for kw in vision_keywords:
+                if kw in model_lower:
+                    return True
+
         provider_caps = self.get_provider_capabilities(provider)
         return provider_caps.vision if provider_caps else False
 
@@ -248,6 +264,7 @@ class CapabilityManager:
 
     def check_image_compatibility(self, provider: str, model: str = None) -> Dict:
         """Check if a provider/model can handle image uploads.
+        Uses fuzzy matching on model name for vision detection.
         Returns: {compatible: bool, reason: str, suggestions: list}
         """
         vision_ok = self.supports_vision(provider, model)
@@ -255,10 +272,21 @@ class CapabilityManager:
         if vision_ok:
             return {"compatible": True, "reason": "Model supports vision", "suggestions": []}
 
+        # Find vision providers with their best models
         suggestions = []
         for prov_name, prov_caps in self.provider_caps.items():
             if prov_caps.vision:
-                suggestions.append(prov_name)
+                # Find a vision model from this provider
+                best_model = None
+                prov_models = self.model_caps.get(prov_name, {})
+                for model_name, caps in prov_models.items():
+                    if caps.vision:
+                        best_model = model_name
+                        break
+                if best_model:
+                    suggestions.append(f"{prov_name} ({best_model})")
+                else:
+                    suggestions.append(prov_name)
 
         return {
             "compatible": False,

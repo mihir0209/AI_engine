@@ -229,7 +229,7 @@ async def add_rate_limit_headers(request: Request, call_next):
         if "/chat/completions" in path:
             limit = 10
         elif "/test-model" in path:
-            limit = 5
+            limit = 50
         else:
             limit = 60
 
@@ -1349,7 +1349,7 @@ async def save_config_to_file(provider_name: str, field: str, new_value):
         print(f"❌ Error saving config: {e}")
 
 @app.post("/api/test-model", tags=["Provider Management"])
-@limiter.limit("5/minute")
+@limiter.limit("50/minute")
 async def test_model(request: Request):
     """Test a specific model with a provider"""
     try:

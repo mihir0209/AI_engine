@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-synapse"
-version = "4.2.3"
+version = "4.2.4"
 description = "Free multi-provider AI SDK — drop-in OpenAI & Anthropic compatibility with 27 free providers"
 readme = "README.md"
 license = {text = "MIT"}
