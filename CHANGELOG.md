@@ -2,6 +2,35 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [4.8.7] - 2026-07-07
+
+### Fixed (TUI Publication Release)
+- Full TUI overhaul published for isolated venv testing:
+  - All chat sending, commands, image attaching, new chat, and history viewing now work reliably.
+  - Proper Textual patterns for input (Ctrl+Enter handling), async workers, Markdown rendering, sidebar ListView switching.
+  - Generalized clean chat UI (inspired by Elia and official Textual examples).
+- Provider parameter forwarding fixed in SDK resources.
+- Rebuilt and published via twine for clean `pip install` testing.
+
+## [4.8.6] - 2026-07-07
+
+### Fixed
+- **TUI (Textual)**: Complete overhaul for functionality and UX
+  - Ctrl+Enter sending now reliable (key handler + action)
+  - Commands (/help, /clear, /image PATH [prompt], /model, /provider, /quit) functional
+  - Image attaching + vision message formatting works
+  - New chat, chat history sidebar with selection/switching
+  - Proper async/threaded AI calls with UI updates via mount/call_from_thread
+  - Provider= param correctly forwarded (resources + engine)
+  - Uses Markdown for rich AI responses, improved CSS for generalized chat look
+  - No more broken input handling or missing updates
+- Provider routing param alias support in SDK resources
+- Minor reactive/DOM safety in status watchers
+
+### Changed
+- TUI now generalized clean ChatGPT-style terminal interface (references: Elia patterns, official Textual LLM examples)
+- Version bump to 4.8.6
+
 ## [3.1.0] - 2026-06-27
 
 ### Verified

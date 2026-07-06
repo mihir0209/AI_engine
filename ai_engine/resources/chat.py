@@ -34,11 +34,13 @@ class Completions:
 
         from ..types import ChatCompletion, ChatCompletionChoice, ChatCompletionMessage, Usage
 
+        preferred = kwargs.get("preferred_provider") or kwargs.get("provider")
+        force = kwargs.get("force_provider", False)
         result = self._engine.chat_completion(
             messages=messages,
             model=model if model != "auto" else None,
-            preferred_provider=kwargs.get("preferred_provider"),
-            force_provider=kwargs.get("force_provider", False),
+            preferred_provider=preferred,
+            force_provider=force,
         )
 
         if not result or not getattr(result, "success", False):
@@ -77,11 +79,13 @@ class Completions:
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
 
+        preferred = kwargs.get("preferred_provider") or kwargs.get("provider")
+        force = kwargs.get("force_provider", False)
         result = self._engine.chat_completion(
             messages=messages,
             model=model if model != "auto" else None,
-            preferred_provider=kwargs.get("preferred_provider"),
-            force_provider=kwargs.get("force_provider", False),
+            preferred_provider=preferred,
+            force_provider=force,
         )
 
         if not result or not getattr(result, "success", False):
