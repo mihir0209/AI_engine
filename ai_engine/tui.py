@@ -198,6 +198,10 @@ class ChatTUI(App):
         overflow-y: auto;
     }
 
+    #chat-body {
+        height: 1fr;
+    }
+
     .chat-msg {
         margin: 0 0 1 0;
         padding: 1 2;
@@ -229,6 +233,7 @@ class ChatTUI(App):
 
     /* Input bar at the bottom of the chat area */
     #input-area {
+        dock: bottom;
         height: auto;
         padding: 0 2 1 2;
         background: $surface;
@@ -323,8 +328,9 @@ class ChatTUI(App):
 
         # Main
         with Vertical(id="main-area"):
-            with VerticalScroll(id="chat-scroll"):
-                yield WelcomeMessage(classes="welcome-msg")
+            with Container(id="chat-body"):
+                with VerticalScroll(id="chat-scroll"):
+                    yield WelcomeMessage(classes="welcome-msg")
 
             with Container(id="input-area"):
                 with Container(id="input-box"):

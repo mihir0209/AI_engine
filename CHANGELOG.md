@@ -2,6 +2,15 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [4.8.10] - 2026-07-14
+
+### Fixed (TUI Layout)
+- Reintroduced robust chat-body container with height 1fr + dock: bottom on input-area to ensure input is always at the very bottom and message scroll area fills the space above it.
+- This matches the desired ChatGPT-like layout from your reference image.
+- Big centered welcome prompt now properly occupies the tall message area when empty.
+- Messages will render in the area above the input.
+- Tested structure: header (none), chat-body (1fr with scroll), input at bottom.
+
 ## [4.8.9] - 2026-07-14
 
 ### Fixed (TUI Layout Overhaul)
