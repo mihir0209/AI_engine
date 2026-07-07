@@ -17,12 +17,16 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
-    Header, Footer, Static, Button, TextArea, Markdown, ListView, ListItem, Label
+    Header, Footer, Static, Button, TextArea, Markdown, ListView, ListItem, Label,
+    DirectoryTree,
 )
 from textual.binding import Binding
 from textual.reactive import reactive
+from textual.screen import Screen
 from textual import work, on, events
 from textual.css.query import NoMatches
+from textual.command import Provider, Hit
+from collections.abc import AsyncIterator
 
 pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if pkg_root not in sys.path:
@@ -75,26 +79,49 @@ class ImagePreview(Static):
         return f"[dim]📎 Attached image: {name} ({size} bytes)[/]\n[dim](preview requires chafa)[/]"
 
 
-class WelcomeMessage(Markdown):
-    """Welcome / help screen."""
+class WelcomeMessage(Static):
+    """Big centered welcome like ChatGPT empty state."""
     def __init__(self, **kwargs):
-        content = """# AI Synapse
+        super().__init__(**kwargs)
 
-Welcome! Powered by 27+ free providers.
+    def render(self):
+        return """[bold #e0e0e0]Where should we begin?[/]
 
-**Keyboard:**
-- **Ctrl+Enter** — Send message
-- **Ctrl+N** — New chat
-- **Ctrl+M** — Cycle model
-- **Ctrl+P** — Cycle provider
-- **Ctrl+Q** — Quit
+[dim]AI Synapse — free multi-provider chat[/]"""
 
-**Commands:**
-`/clear`  `/help`  `/image /path/to/img.png [prompt]`  `/model <name>`  `/provider <name>`  `/quit`
 
-Just type and press Ctrl+Enter.
-"""
-        super().__init__(content, **kwargs)
+class FilePickerScreen(Screen[str | None]):
+    """Cross-platform file picker using Textual's DirectoryTree (no OS dialogs needed)."""
+    def compose(self) -> ComposeResult:
+        yield Header("Select file to attach (click or Enter on file)")
+        yield DirectoryTree(".", id="dir-tree")
+        yield Static("[dim]Esc to cancel[/]", classes="help")
+        yield Footer()
+
+    @on(DirectoryTree.FileSelected)
+    def select_file(self, event: DirectoryTree.FileSelected) -> None:
+        self.dismiss(str(event.path))
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+class ChatCommandProvider(Provider):
+    """Register our TUI actions in the Command Palette (Ctrl+P)."""
+    async def search(self, query: str) -> AsyncIterator[Hit]:
+        q = query.lower().strip()
+        items = [
+            ("New Chat", "Start a new conversation", "new_chat"),
+            ("Change Model", "Cycle the current model", "change_model"),
+            ("Change Provider", "Cycle the current provider", "change_provider"),
+            ("Clear / New Chat", "Clear the current view and start fresh", "new_chat"),
+        ]
+        for title, help_text, action in items:
+            if not q or q in title.lower():
+                def _runner(act=action):
+                    return lambda: getattr(self.app, f"action_{act}")()
+                yield Hit(title, help_text, _runner())
 
 
 class StatusBar(Static):
@@ -158,18 +185,11 @@ class ChatTUI(App):
         text-style: bold;
     }
 
-    /* Main chat area */
+    /* Main chat area - vertical flow with scroll taking most space */
     #main-area {
         width: 1fr;
+        height: 1fr;
         layout: vertical;
-    }
-
-    #chat-header {
-        height: 3;
-        padding: 0 2;
-        background: $surface;
-        border-bottom: thick $surface-darken-2;
-        content-align: left middle;
     }
 
     #chat-scroll {
@@ -200,30 +220,31 @@ class ChatTUI(App):
     }
 
     .welcome-msg {
-        padding: 2 4;
-        margin: 1 2;
+        width: 100%;
+        height: 100%;
+        content-align: center middle;
+        text-align: center;
+        padding: 4 6;
     }
 
-    /* Input */
+    /* Input bar at the bottom of the chat area */
     #input-area {
-        dock: bottom;
         height: auto;
-        padding: 1 2;
+        padding: 0 2 1 2;
         background: $surface;
-        border-top: thick $surface-darken-2;
     }
 
     #input-box {
+        background: $surface-darken-1;
         border: round $surface-darken-2;
-        padding: 0;
-        background: $surface;
+        padding: 0 1;
     }
 
     #user-input {
         width: 1fr;
         height: auto;
         min-height: 3;
-        max-height: 10;
+        max-height: 8;
         padding: 1;
         border: none;
         background: transparent;
@@ -257,13 +278,19 @@ class ChatTUI(App):
         Binding("ctrl+enter", "send_message", "Send", priority=True, show=True),
         Binding("ctrl+n", "new_chat", "New Chat"),
         Binding("ctrl+m", "change_model", "Model"),
-        Binding("ctrl+p", "change_provider", "Provider"),
+        # ctrl+p is now for the built-in Command Palette (see ChatCommandProvider)
+        # Use ctrl+shift+p for direct provider cycle if needed
+        Binding("ctrl+shift+p", "change_provider", "Provider"),
         Binding("ctrl+q", "quit", "Quit", priority=True),
         Binding("ctrl+c", "quit", "Quit"),
     ]
 
     TITLE = "AI Synapse"
     SUB_TITLE = "Free multi-provider chat"
+
+    # Enable Command Palette on Ctrl+P and register our custom commands
+    COMMAND_PALETTE_BINDING = "ctrl+p"
+    COMMANDS = {ChatCommandProvider}
 
     current_model = reactive("default")
     current_provider = reactive(None)
@@ -296,10 +323,6 @@ class ChatTUI(App):
 
         # Main
         with Vertical(id="main-area"):
-            with Horizontal(id="chat-header"):
-                yield Static("Chat", id="chat-title")
-                yield Static("", id="header-info")
-
             with VerticalScroll(id="chat-scroll"):
                 yield WelcomeMessage(classes="welcome-msg")
 
@@ -322,15 +345,30 @@ class ChatTUI(App):
         self.query_one("#user-input", TextArea).focus()
         self._refresh_sidebar()
         self._update_status()
+        # If the current chat already has messages (e.g. switched or restored), show them
+        current = self.chats.get(self.current_chat_id, {})
+        if current.get("messages"):
+            self._load_current_chat_messages()
+        else:
+            # ensure welcome is there for empty
+            try:
+                scroll = self.query_one("#chat-scroll", VerticalScroll)
+                if not list(scroll.children):
+                    scroll.mount(WelcomeMessage(classes="welcome-msg"))
+            except Exception:
+                pass
 
-    # ===== Key handling for reliable Ctrl+Enter (TextArea consumes Enter) =====
+    # ===== Key handling for reliable Ctrl+Enter (TextArea consumes many keys) =====
     def on_key(self, event: events.Key) -> None:
-        if event.key == "ctrl+enter":
-            input_widget = self.query_one("#user-input", TextArea)
-            if input_widget.has_focus:
-                self.action_send_message()
-                event.prevent_default()
-                event.stop()
+        key = event.key
+        if key in ("ctrl+enter", "control+enter"):
+            self.action_send_message()
+            event.prevent_default()
+            event.stop()
+
+    def key_ctrl_enter(self) -> None:
+        """Fallback for some terminal emulators."""
+        self.action_send_message()
 
     # ===== Events =====
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -338,7 +376,7 @@ class ChatTUI(App):
         if bid == "send-btn":
             self.action_send_message()
         elif bid == "attach-btn":
-            self._prepare_image_attach()
+            self._open_file_picker()
         elif bid == "new-chat-btn":
             self.action_new_chat()
 
@@ -366,15 +404,28 @@ class ChatTUI(App):
 
         self._send_message(text)
 
-    def _prepare_image_attach(self) -> None:
-        """Prepare for image by seeding the input with command hint."""
-        input_widget = self.query_one("#user-input", TextArea)
-        current = input_widget.text or ""
-        if not current.startswith("/image "):
-            input_widget.text = "/image "
-            input_widget.cursor_location = (0, 7)
-        input_widget.focus()
-        # User can append path + prompt, then Ctrl+Enter
+    def _open_file_picker(self) -> None:
+        """Open cross-platform Textual file picker (using DirectoryTree in modal)."""
+        def on_file_chosen(path: str | None) -> None:
+            if not path:
+                return
+            if os.path.exists(path):
+                self._pending_image = path
+                try:
+                    container = self.query_one("#chat-scroll", VerticalScroll)
+                    container.mount(ImagePreview(path, classes="image-preview"))
+                    container.scroll_end(animate=False)
+                except Exception:
+                    pass
+            else:
+                try:
+                    container = self.query_one("#chat-scroll", VerticalScroll)
+                    container.mount(Static(f"[red]File not found: {path}[/]", classes="chat-msg"))
+                    container.scroll_end(animate=False)
+                except Exception:
+                    pass
+
+        self.push_screen(FilePickerScreen(), callback=on_file_chosen)
 
     def _handle_command(self, text: str) -> None:
         cmd = text.strip().lower()
@@ -506,6 +557,12 @@ class ChatTUI(App):
 
     def _display_response(self, content: str, model_used: str, provider_used: str) -> None:
         container = self.query_one("#chat-scroll", VerticalScroll)
+        # Ensure welcome is gone when response arrives
+        try:
+            w = container.query_one(WelcomeMessage)
+            w.remove()
+        except Exception:
+            pass
         container.mount(AssistantMessage(content, model=model_used, classes="chat-msg ai-msg"))
         container.scroll_end(animate=False)
 
@@ -517,6 +574,11 @@ class ChatTUI(App):
 
     def _display_error(self, error_msg: str) -> None:
         container = self.query_one("#chat-scroll", VerticalScroll)
+        try:
+            w = container.query_one(WelcomeMessage)
+            w.remove()
+        except Exception:
+            pass
         container.mount(Static(f"[bold red]Error:[/] {error_msg}", classes="chat-msg"))
         container.scroll_end(animate=False)
 
@@ -554,22 +616,13 @@ class ChatTUI(App):
         if chat_id not in self.chats:
             return
         self.current_chat_id = chat_id
-        container = self.query_one("#chat-scroll", VerticalScroll)
+        self._load_current_chat_messages()
+        self._refresh_sidebar()
         try:
-            for child in list(container.children):
-                child.remove()
+            self.query_one("#user-input", TextArea).focus()
+            self.query_one(StatusBar).status = "Switched chat"
         except Exception:
             pass
-
-        chat = self.chats[chat_id]
-        if not chat["messages"]:
-            container.mount(WelcomeMessage(classes="welcome-msg"))
-        else:
-            self._replay_messages(container, chat)
-
-        self._refresh_sidebar()
-        self.query_one("#user-input", TextArea).focus()
-        self.query_one(StatusBar).status = "Switched chat"
 
     def _replay_messages(self, container: VerticalScroll, chat: dict) -> None:
         for m in chat["messages"]:
@@ -580,6 +633,20 @@ class ChatTUI(App):
             else:
                 container.mount(AssistantMessage(m.get("content", ""), model="", classes="chat-msg ai-msg"))
         container.scroll_end(animate=False)
+
+    def _load_current_chat_messages(self) -> None:
+        """Clear scroll and replay messages for current chat (used on mount/switch)."""
+        try:
+            container = self.query_one("#chat-scroll", VerticalScroll)
+            for child in list(container.children):
+                child.remove()
+            chat = self.chats.get(self.current_chat_id, {})
+            if chat.get("messages"):
+                self._replay_messages(container, chat)
+            else:
+                container.mount(WelcomeMessage(classes="welcome-msg"))
+        except Exception:
+            pass
 
     def action_change_model(self) -> None:
         models = ["default", "gemini-2.5-flash", "gpt-4o", "claude-3.5-sonnet",

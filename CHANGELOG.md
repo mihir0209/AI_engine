@@ -2,6 +2,18 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [4.8.9] - 2026-07-14
+
+### Fixed (TUI Layout Overhaul)
+- Input area now properly pinned at the **bottom** of the chat pane (removed conflicting `dock` + extra wrapper; pure `1fr` VerticalScroll + auto input in vertical flow).
+- Large message area (`#chat-scroll` with `height: 1fr`) now sits **above** the input, matching ChatGPT-style UIs.
+- Empty state is a big, centered "Where should we begin?" prompt (styled with `height: 100%; content-align: center middle`).
+- Messages (user + AI) now render visibly in the tall scroll area above the input bar.
+- Removed unnecessary "Chat" header for cleaner, more spacious look.
+- Input bar styling improved (darker rounded bar, better padding).
+- Sidebar + New Chat button + history list preserved and functional.
+- All previous fixes (Ctrl+Enter, commands, file picker via DirectoryTree modal, Command Palette on Ctrl+P, etc.) retained.
+
 ## [4.8.7] - 2026-07-07
 
 ### Fixed (TUI Publication Release)
