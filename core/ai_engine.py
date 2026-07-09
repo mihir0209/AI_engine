@@ -58,6 +58,8 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 
+_CHAT_ROUTING_KWARGS = frozenset({"provider", "force_provider", "use_cache", "preferred_provider"})
+
 _ENGINE_MODE = os.getenv("AI_ENGINE_MODE", "all").lower()
 
 
@@ -1385,6 +1387,8 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             model: Model name (e.g., 'gpt-4', 'claude-3'). If None, uses provider default.
             autodecide: If True, automatically select best provider for the model
             **kwargs:
+                provider: Pin a specific provider (alias for preferred_provider with
+                    force_provider=True); used by integration tests and direct routing
                 preferred_provider: Force specific provider
                 force_provider: If True, only use the specified provider
                 use_cache: If True, check/use response cache (default: True)
@@ -1404,6 +1408,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         preferred_provider = kwargs.get('preferred_provider') or kwargs.get('provider')
         force_provider = kwargs.get('force_provider', False) or bool(kwargs.get('provider'))
         use_cache = kwargs.get('use_cache', True)  # Option to bypass cache
+        request_kwargs = {k: v for k, v in kwargs.items() if k not in _CHAT_ROUTING_KWARGS}
 
         # Check cache first (if enabled)
         if use_cache and not force_provider:
@@ -1466,7 +1471,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     verbose_print(f"🔒 Force using provider: {preferred_provider} with model: {model or 'default'}", self.verbose)
 
                 result = self._request_with_key_rotation(
-                    preferred_provider, provider_config, messages, model, **kwargs
+                    preferred_provider, provider_config, messages, model, **request_kwargs
                 )
                 self.current_provider = preferred_provider
 
@@ -1527,7 +1532,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     if self.verbose:
                         verbose_print(f"🎯 Using preferred provider: {preferred_provider}", self.verbose)
 
-                    result = self._make_request(preferred_provider, provider_config, messages, model, **kwargs)
+                    result = self._make_request(preferred_provider, provider_config, messages, model, **request_kwargs)
                     response_time = time.time() - start_time
 
                     self._update_stats(preferred_provider, result.success, response_time)
@@ -1572,7 +1577,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 if self.verbose:
                     verbose_print(f"🔄 Trying {provider_name}...", self.verbose)
 
-                result = self._make_request(provider_name, provider_config, messages, model, **kwargs)
+                result = self._make_request(provider_name, provider_config, messages, model, **request_kwargs)
                 response_time = time.time() - start_time
 
                 self._update_stats(provider_name, result.success, response_time)
