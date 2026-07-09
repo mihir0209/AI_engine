@@ -1,0 +1,21 @@
+"""Provider configuration constants for integration tests."""
+from tests.server import DEMO_KEYS, MOCK_PROVIDER_BASE, MOCK_PROVIDER_HOST, MOCK_PROVIDER_PORT
+
+TEST_HARNESS_NAME = "test_harness"
+TEST_HARNESS_KEYS = list(DEMO_KEYS.values())
+TEST_HARNESS_MODEL = "test-model"
+MOCK_PROVIDER_URL = MOCK_PROVIDER_BASE
+MOCK_CHAT_COMPLETIONS_URL = f"{MOCK_PROVIDER_BASE}/v1/chat/completions"
+MOCK_MODELS_URL = f"{MOCK_PROVIDER_BASE}/v1/models"
+
+__all__ = [
+    "DEMO_KEYS",
+    "MOCK_CHAT_COMPLETIONS_URL",
+    "MOCK_MODELS_URL",
+    "MOCK_PROVIDER_HOST",
+    "MOCK_PROVIDER_PORT",
+    "MOCK_PROVIDER_URL",
+    "TEST_HARNESS_KEYS",
+    "TEST_HARNESS_MODEL",
+    "TEST_HARNESS_NAME",
+]

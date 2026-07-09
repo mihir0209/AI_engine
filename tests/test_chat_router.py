@@ -10,8 +10,7 @@ def client(tmp_path):
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app) as client:
-        return client
+    return TestClient(app)
 
 
 @pytest.fixture

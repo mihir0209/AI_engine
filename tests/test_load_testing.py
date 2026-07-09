@@ -5,30 +5,22 @@ import time
 
 # === Integration Tests ===
 
-@pytest.fixture
-def client():
-    from fastapi.testclient import TestClient
-    from server import app
-    with TestClient(app) as client:
-        return client
-
-
-def test_health_check_integration(client):
-    resp = client.get("/health")
+def test_health_check_integration(server_client):
+    resp = server_client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "healthy"
 
 
-def test_models_endpoint_integration(client):
-    resp = client.get("/v1/models")
+def test_models_endpoint_integration(server_client):
+    resp = server_client.get("/v1/models")
     assert resp.status_code == 200
     data = resp.json()
     assert data["object"] == "list"
     assert "data" in data
 
 
-def test_providers_endpoint_integration(client):
-    resp = client.get("/api/providers")
+def test_providers_endpoint_integration(server_client):
+    resp = server_client.get("/api/providers")
     assert resp.status_code == 200
     providers = resp.json()
     assert len(providers) > 0
@@ -37,107 +29,107 @@ def test_providers_endpoint_integration(client):
         assert "api_keys" not in config
 
 
-def test_statistics_endpoint_integration(client):
-    resp = client.get("/api/statistics")
+def test_statistics_endpoint_integration(server_client):
+    resp = server_client.get("/api/statistics")
     assert resp.status_code == 200
     data = resp.json()
     assert "summary" in data
     assert "providers" in data
 
 
-def test_status_endpoint_integration(client):
-    resp = client.get("/api/status")
+def test_status_endpoint_integration(server_client):
+    resp = server_client.get("/api/status")
     assert resp.status_code == 200
     data = resp.json()
     assert "total_providers" in data
     assert "enabled_providers" in data
 
 
-def test_provider_health_integration(client):
-    resp = client.get("/api/providers/health")
+def test_provider_health_integration(server_client):
+    resp = server_client.get("/api/providers/health")
     assert resp.status_code == 200
     data = resp.json()
     assert "providers" in data
     assert "summary" in data
 
 
-def test_chat_lifecycle_integration(client):
+def test_chat_lifecycle_integration(server_client):
     """Full chat lifecycle test"""
     # Create
-    create_resp = client.post("/api/chat/chats", json={"title": "Integration Test"})
+    create_resp = server_client.post("/api/chat/chats", json={"title": "Integration Test"})
     assert create_resp.status_code == 200
     chat_id = create_resp.json()["chat_id"]
 
     # Get
-    get_resp = client.get(f"/api/chat/chats/{chat_id}")
+    get_resp = server_client.get(f"/api/chat/chats/{chat_id}")
     assert get_resp.status_code == 200
 
     # Add message
-    msg_resp = client.post(f"/api/chat/chats/{chat_id}/messages", json={
+    msg_resp = server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Hello integration test"
     })
     assert msg_resp.status_code == 200
 
     # Search
-    search_resp = client.post("/api/chat/search", json={"query": "integration"})
+    search_resp = server_client.post("/api/chat/search", json={"query": "integration"})
     assert search_resp.status_code == 200
 
     # Export
-    export_resp = client.get(f"/api/chat/chats/{chat_id}/export")
+    export_resp = server_client.get(f"/api/chat/chats/{chat_id}/export")
     assert export_resp.status_code == 200
 
     # Delete
-    delete_resp = client.delete(f"/api/chat/chats/{chat_id}")
+    delete_resp = server_client.delete(f"/api/chat/chats/{chat_id}")
     assert delete_resp.status_code == 200
 
     # Verify deleted
-    get_resp = client.get(f"/api/chat/chats/{chat_id}")
+    get_resp = server_client.get(f"/api/chat/chats/{chat_id}")
     assert get_resp.status_code == 404
 
 
-def test_search_integration(client):
+def test_search_integration(server_client):
     """Search functionality test"""
     # Create chat with messages
-    create_resp = client.post("/api/chat/chats", json={"title": "Search Test"})
+    create_resp = server_client.post("/api/chat/chats", json={"title": "Search Test"})
     chat_id = create_resp.json()["chat_id"]
 
     for word in ["apple", "banana", "cherry", "apple pie"]:
-        client.post(f"/api/chat/chats/{chat_id}/messages", json={
+        server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
             "role": "user", "content": f"I like {word}"
         })
 
     # Search
-    search_resp = client.post("/api/chat/search", json={"query": "apple"})
+    search_resp = server_client.post("/api/chat/search", json={"query": "apple"})
     assert search_resp.status_code == 200
     results = search_resp.json()
     assert results["total"] >= 2  # "apple" and "apple pie"
 
 
-def test_branching_integration(client):
+def test_branching_integration(server_client):
     """Branching functionality test"""
-    create_resp = client.post("/api/chat/chats", json={"title": "Branch Test"})
+    create_resp = server_client.post("/api/chat/chats", json={"title": "Branch Test"})
     chat_id = create_resp.json()["chat_id"]
 
     # Add messages
-    msg1 = client.post(f"/api/chat/chats/{chat_id}/messages", json={
+    msg1 = server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Start"
     }).json()["message_id"]
 
-    client.post(f"/api/chat/chats/{chat_id}/messages", json={
+    server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "system", "content": "Response 1"
     })
 
-    msg3 = client.post(f"/api/chat/chats/{chat_id}/messages", json={
+    msg3 = server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
         "role": "user", "content": "Continue"
     }).json()["message_id"]
 
     # Create branch from message 3
-    branch_resp = client.post(f"/api/chat/chats/{chat_id}/branch/{msg3}")
+    branch_resp = server_client.post(f"/api/chat/chats/{chat_id}/branch/{msg3}")
     assert branch_resp.status_code == 200
     branch_id = branch_resp.json()["branch_id"]
 
     # Get branches
-    branches_resp = client.get(f"/api/chat/chats/{chat_id}/branches")
+    branches_resp = server_client.get(f"/api/chat/chats/{chat_id}/branches")
     assert branches_resp.status_code == 200
     assert len(branches_resp.json()["branches"]) >= 1
 

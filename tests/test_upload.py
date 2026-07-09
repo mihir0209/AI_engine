@@ -10,8 +10,7 @@ def client():
     from chat_module.router import router
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app) as client:
-        return client
+    return TestClient(app)
 
 
 # === File Upload Tests ===
