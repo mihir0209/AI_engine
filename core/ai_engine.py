@@ -1311,6 +1311,69 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         
         return best_provider_name, best_model_name
 
+    def _request_with_key_rotation(
+        self,
+        provider_name: str,
+        provider_config: Dict,
+        messages: List[Dict[str, str]],
+        model: str = None,
+        max_attempts: int = None,
+        **kwargs,
+    ) -> RequestResult:
+        """Make a provider request, rotating API keys on auth/rate-limit failures."""
+        api_keys = provider_config.get("api_keys", [])
+        valid_keys = [key for key in api_keys if key is not None]
+        if max_attempts is None:
+            max_attempts = max(1, len(valid_keys))
+
+        last_result = None
+        for attempt in range(max_attempts):
+            start_time = time.time()
+            try:
+                result = self._make_request(provider_name, provider_config, messages, model, **kwargs)
+                response_time = time.time() - start_time
+                self._update_stats(provider_name, result.success, response_time)
+
+                if result.success:
+                    result.provider_used = provider_name
+                    result.response_time = response_time
+                    self._handle_provider_success(provider_name, response_time)
+                    return result
+
+                last_result = result
+                error_type = self._classify_error(result.error_message, result.status_code)
+                self._handle_provider_failure(
+                    provider_name,
+                    result.error_message,
+                    result.status_code,
+                )
+
+                if error_type not in ("rate_limit", "auth_error", "quota_exceeded"):
+                    break
+            except Exception as e:
+                response_time = time.time() - start_time
+                self._update_stats(provider_name, False, response_time)
+                self._handle_provider_failure(provider_name, str(e), 0, None)
+                last_result = RequestResult(
+                    success=False,
+                    error_message=str(e),
+                    error_type="provider_exception",
+                    provider_used=provider_name,
+                    response_time=response_time,
+                )
+                break
+
+        if last_result:
+            last_result.provider_used = provider_name
+            return last_result
+
+        return RequestResult(
+            success=False,
+            error_message="No request attempts made",
+            error_type="unknown",
+            provider_used=provider_name,
+        )
+
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
         Main chat completion method with smart provider rotation and autodecide feature.
@@ -1338,8 +1401,8 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             >>> print(result.content)
         """
         start_time = time.time()  # Track total request time
-        preferred_provider = kwargs.get('preferred_provider')
-        force_provider = kwargs.get('force_provider', False)  # New option to force specific provider only
+        preferred_provider = kwargs.get('preferred_provider') or kwargs.get('provider')
+        force_provider = kwargs.get('force_provider', False) or bool(kwargs.get('provider'))
         use_cache = kwargs.get('use_cache', True)  # Option to bypass cache
 
         # Check cache first (if enabled)
@@ -1397,28 +1460,26 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     verbose_print(f"⚠️ Forcing flagged provider: {preferred_provider}", self.verbose)
 
             provider_config = self.providers[preferred_provider]
-            start_time = time.time()
 
             try:
                 if self.verbose:
                     verbose_print(f"🔒 Force using provider: {preferred_provider} with model: {model or 'default'}", self.verbose)
 
-                result = self._make_request(preferred_provider, provider_config, messages, model, **kwargs)
-                response_time = time.time() - start_time
-
-                self._update_stats(preferred_provider, result.success, response_time)
-
-                result.provider_used = preferred_provider
-                result.response_time = response_time
+                result = self._request_with_key_rotation(
+                    preferred_provider, provider_config, messages, model, **kwargs
+                )
                 self.current_provider = preferred_provider
 
-                if result.success:
-                    self._handle_provider_success(preferred_provider, response_time)
-                    if self.verbose:
-                        verbose_print(f"✅ Forced provider {preferred_provider} successful ({response_time:.2f}s, self.verbose)")
-                else:
-                    if self.verbose:
-                        verbose_print(f"❌ Forced provider {preferred_provider} failed: {result.error_message}", self.verbose)
+                if result.success and self.verbose:
+                    verbose_print(
+                        f"✅ Forced provider {preferred_provider} successful ({result.response_time:.2f}s)",
+                        self.verbose,
+                    )
+                elif not result.success and self.verbose:
+                    verbose_print(
+                        f"❌ Forced provider {preferred_provider} failed: {result.error_message}",
+                        self.verbose,
+                    )
 
                 return result
 

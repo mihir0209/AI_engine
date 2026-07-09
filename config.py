@@ -777,6 +777,7 @@ AI_CONFIGS = {
         "id": 99,
         "priority": 1,
         "api_keys": ["test-key-alpha", "test-key-beta", "test-key-gamma"],
+        "auth_type": "bearer",
         "endpoint": "http://127.0.0.1:18765/v1/chat/completions",
         "model_endpoint": "http://127.0.0.1:18765/v1/models",
         "model_endpoint_auth": False,
