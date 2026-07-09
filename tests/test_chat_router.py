@@ -1,5 +1,6 @@
 """Tests for chat_module/router.py"""
 import pytest
+
 from fastapi.testclient import TestClient
 
 from chat_module.router import router

@@ -1,7 +1,8 @@
 """Tests for file upload functionality"""
 import pytest
-from fastapi.testclient import TestClient
 from io import BytesIO
+
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
