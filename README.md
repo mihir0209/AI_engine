@@ -4,23 +4,80 @@
 [![Python](https://img.shields.io/pypi/pyversions/ai-synapse)](https://pypi.org/project/ai-synapse/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Free multi-provider AI SDK** with a terminal chat UI, drop-in OpenAI client, and optional local server. Routes across 27+ providers with failover, model caching, and intent-aware routing.
+**Free multi-provider AI SDK** with drop-in OpenAI compatibility, intelligent routing across 27+ providers, and an optional local server. Use it as a Python library, run your own OpenAI-compatible API, or add the terminal chat UI on top.
 
 ```bash
-pip install ai-synapse[tui]    # recommended — SDK + terminal chat
-python -m ai_engine tui
+pip install ai-synapse              # SDK — routing, failover, OpenAI client
+pip install ai-synapse[server]      # SDK + local OpenAI-compatible server
+pip install ai-synapse[all]         # SDK + server + terminal chat (TUI)
 ```
 
-```bash
-pip install ai-synapse         # SDK only
-pip install ai-synapse[all]      # SDK + TUI + server extras
+---
+
+## Python SDK
+
+Drop-in `OpenAI` client that routes requests across free-tier and self-hosted providers with automatic failover, key rotation, and model caching.
+
+```python
+from ai_engine import OpenAI
+
+client = OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)
 ```
+
+**CLI** (included with the SDK):
+
+```bash
+ai-engine chat "Explain quantum tunneling"
+ai-engine providers
+ai-engine version
+```
+
+More examples: [`examples/sdk/`](examples/sdk/)
+
+---
+
+## Local server
+
+Run an OpenAI-compatible HTTP API on your machine — same routing engine as the SDK, plus a web dashboard, provider management, metrics, and chat persistence.
+
+```bash
+mkdir -p ~/.ai-engine && cp .env.example ~/.ai-engine/.env
+# edit ~/.ai-engine/.env — add provider API keys
+
+pip install ai-synapse[server]
+python -m ai_engine serve
+```
+
+| Endpoint | URL |
+|----------|-----|
+| OpenAI API | `http://localhost:8000/v1/` |
+| Swagger UI | `http://localhost:8000/docs` |
+| Health | `http://localhost:8000/health` |
+
+Point any OpenAI SDK or tool at `base_url="http://localhost:8000/v1"`:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="dummy")
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Routed through AI Synapse server"}],
+)
+```
+
+Server docs: [API reference](docs/API.md) · [Server guide](docs/SERVER_README.md) · [Deployment](docs/DEPLOYMENT.md)
 
 ---
 
 ## Configuration
 
-Provider API keys and settings are loaded in **layers**. When the same variable name appears in multiple places, the **higher layer wins**. Different names are **merged** (global baseline + project-specific extras).
+Provider API keys and settings load in **layers**. When the same variable appears in multiple places, the **higher layer wins**. Different names are **merged**.
 
 | Priority | Source | Typical use |
 |----------|--------|-------------|
@@ -31,94 +88,50 @@ Provider API keys and settings are loaded in **layers**. When the same variable 
 
 ### Global setup (pip install)
 
-Works from any directory — recommended default:
-
 ```bash
 mkdir -p ~/.ai-engine
 cp .env.example ~/.ai-engine/.env
-# edit ~/.ai-engine/.env — add GROQ_API_KEY, OPENROUTER_API_KEY, etc.
-python -m ai_engine tui
+# edit ~/.ai-engine/.env — GROQ_API_KEY, OPENROUTER_API_KEY, etc.
 ```
 
 ### Project overrides (venv / git clone)
 
-Keep shared keys in `~/.ai-engine/.env`. Put **only what differs** in the repo’s `./.env`:
-
 ```bash
-# ~/.ai-engine/.env     → GROQ_API_KEY, OPENROUTER_API_KEY (shared)
-# ./.env                → OPENROUTER_API_KEY=test-key  (overrides that one key here)
-pip install -e ".[tui]"
-python -m ai_engine tui
+# ~/.ai-engine/.env     → shared keys
+# ./.env                → overrides only what differs in this project
+pip install -e ".[server]"
+python -m ai_engine serve
 ```
 
-Running from a project directory loads both files; `./.env` overrides matching names.
-
-### Explicit profile file
-
-Point at an extra env file (all file layers still load; this one wins on **same-named** variables):
+### Explicit profile
 
 ```bash
-AI_SYNAPSE_ENV=~/configs/ai-work.env python -m ai_engine tui
+AI_SYNAPSE_ENV=~/configs/ai-work.env python -m ai_engine serve
 ```
-
-Merge order: `~/.ai-engine/.env` → `./.env` → `AI_SYNAPSE_ENV` file → shell exports (highest).
 
 ### Optional paths
 
 | File | Purpose |
 |------|---------|
-| `~/.ai-engine/config.json` | Provider priorities / enable flags (JSON) |
+| `~/.ai-engine/config.json` | Provider priorities / enable flags |
 | `~/.ai-engine/data/` | Model cache, CDN config cache |
 
-See [`.env.example`](.env.example) for all supported variables.
+See [`.env.example`](.env.example) and [provider keys guide](docs/collect_api.md).
 
 ---
 
-## Terminal chat
+## Terminal chat (optional)
+
+A Textual-based terminal UI for interactive chat — built on the same SDK routing layer. Install only if you want a local chat app in the terminal.
+
+```bash
+pip install ai-synapse[tui]    # or ai-synapse[all]
+python -m ai_engine tui
+```
 
 ![Main chat](docs/images/tui_1_main_chat.png)
 
-Sidebar history, model/provider routing, slash commands, `@` file attach, and collapsible sidebar. Full walkthrough, shortcuts, and all screenshots: **[docs/TUI.md](docs/TUI.md)**.
-
-### Vision (image attach → describe)
-
-![Image reply](docs/images/tui_4_image_reply.png)
-
-Attach an image above the composer, ask a question, and get a vision-capable reply. Sent messages keep a **path reference** only — the pixel preview stays in the attachment strip until you send.
-
----
-
-## Python SDK
-
-```python
-from ai_engine import OpenAI
-
-client = OpenAI()
-response = client.chat.completions.create(
-    model="default",
-    messages=[{"role": "user", "content": "Hello!"}],
-)
-print(response.choices[0].message.content)
-```
-
-```bash
-ai-engine chat "Explain quantum tunneling"
-ai-engine providers
-ai-engine version
-```
-
----
-
-## Local server (optional)
-
-```bash
-# Global keys (or use ./.env in the server directory instead)
-mkdir -p ~/.ai-engine && cp .env.example ~/.ai-engine/.env
-pip install ai-synapse[server]
-python -m ai_engine serve
-```
-
-OpenAI-compatible API at `http://localhost:8000/v1/` · Swagger at `/docs`.
+Sidebar history, model/provider routing, slash commands, `@` file attach, and vision support. Full walkthrough: **[docs/TUI.md](docs/TUI.md)**.
 
 ---
 
@@ -126,11 +139,13 @@ OpenAI-compatible API at `http://localhost:8000/v1/` · Swagger at `/docs`.
 
 | Doc | Contents |
 |-----|----------|
-| [TUI guide](docs/TUI.md) | Screenshots, shortcuts, attachments, defaults |
-| [API reference](docs/API.md) | HTTP endpoints |
+| [API reference](docs/API.md) | HTTP endpoints (server) |
+| [Server guide](docs/SERVER_README.md) | Dashboard, providers, metrics |
 | [User guide](docs/USER_GUIDE.md) | Web dashboard & chat UI |
+| [Architecture](docs/ARCHITECTURE.md) | Routing, failover, caching |
 | [Provider keys](docs/collect_api.md) | Free-tier signup |
 | [Deployment](docs/DEPLOYMENT.md) | Docker, production |
+| [TUI guide](docs/TUI.md) | Terminal chat (optional) |
 
 ---
 

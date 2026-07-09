@@ -4,6 +4,11 @@ All notable changes to AI Synapse are documented here.
 
 ## [1.0.2] - 2026-07-09
 
+### Documentation
+
+- README refactored: SDK and local server are primary; terminal TUI documented as optional add-on
+- `pyproject.toml` description aligned with SDK/server positioning
+
 ### Fixed
 
 - Integration tests no longer write to real `~/.ai-engine/chatdata/` (prevents accidental chat deletion)
