@@ -5,8 +5,9 @@
 ### Option 1: pip install (Recommended)
 
 ```bash
-pip install ai-engine
-python -m uvicorn server:app --host 0.0.0.0 --port 8000
+pip install ai-synapse[all]
+python -m ai_engine tui          # terminal chat
+python -m ai_engine serve        # or local API server
 ```
 
 ### Option 2: Clone & Run
@@ -14,11 +15,13 @@ python -m uvicorn server:app --host 0.0.0.0 --port 8000
 ```bash
 git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[all]"
 cp .env.example .env   # Add your API keys
-python server.py
+python -m ai_engine serve
 ```
+
+See [TUI.md](TUI.md) for the terminal chat UI.
 
 ### Option 3: Docker
 

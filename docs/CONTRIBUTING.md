@@ -26,7 +26,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt -r requirements_server.txt
+pip install -e ".[dev,all]"
 
 # Install dev dependencies
 pip install pytest pytest-cov ruff mypy

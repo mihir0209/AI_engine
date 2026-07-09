@@ -1098,17 +1098,21 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
 
                 # Collect results with timeout handling
                 try:
-                    for future in concurrent.futures.as_completed(future_to_provider, timeout=30):
+                    for future in concurrent.futures.as_completed(future_to_provider, timeout=60):
                         provider_name, config = future_to_provider[future]
                         try:
-                            models_response = future.result(timeout=10)
+                            models_response = future.result(timeout=20)
 
                             if models_response and 'models' in models_response:
                                 provider_models = models_response['models']
 
                                 # Add models to the response
+                                from core.model_cache import format_cache_entry
+
                                 for model in provider_models:
-                                    all_models.append(f"{provider_name}|{model}")
+                                    entry = format_cache_entry(provider_name, model)
+                                    if entry:
+                                        all_models.append(entry)
                                 verbose_print(f"✅ {provider_name}: discovered {len(provider_models)} models", self.verbose)
                             else:
                                 # Fallback to current configured model if discovery fails
@@ -1158,8 +1162,11 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         if not model_endpoint:
             return None
 
-        headers = {}
+        headers = {
+            "Accept-Encoding": "gzip, deflate",
+        }
         auth_header = config.get('auth_header', 'Authorization')
+        request_url = model_endpoint
 
         # Get API key (supporting multiple key formats)
         api_key = None
@@ -1169,49 +1176,40 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         else:
             api_key = config.get('api_key')
 
-        if api_key:
+        model_endpoint_auth = config.get('model_endpoint_auth', True)
+        if provider_name == "gemini" and api_key:
+            # Google model listing uses ?key=, not Bearer auth.
+            sep = "&" if "?" in request_url else "?"
+            request_url = f"{request_url}{sep}key={api_key}"
+        elif model_endpoint_auth and api_key:
             if auth_header == 'Authorization':
                 headers[auth_header] = f"Bearer {api_key}"
             else:
                 headers[auth_header] = api_key
 
         try:
-            timeout = aiohttp.ClientTimeout(total=10)
+            timeout = aiohttp.ClientTimeout(total=min(config.get('timeout', 60), 20))
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(model_endpoint, headers=headers) as response:
+                async with session.get(request_url, headers=headers) as response:
                     if response.status == 200:
                         data = await response.json()
 
-                        # Handle different response formats
+                        raw_models: list = []
                         if isinstance(data, dict):
                             if 'data' in data and isinstance(data['data'], list):
-                                # OpenAI format
-                                models = [model.get('id', '') for model in data['data'] if model.get('id')]
-                            elif 'models' in data:
-                                # Direct models array
-                                models = data['models'] if isinstance(data['models'], list) else []
-                            elif isinstance(data, list):
-                                # Direct array
-                                models = [str(item) for item in data]
+                                raw_models = data['data']
+                            elif 'models' in data and isinstance(data['models'], list):
+                                raw_models = data['models']
                             else:
-                                models = []
+                                raw_models = []
                         elif isinstance(data, list):
-                            models = [str(item) for item in data]
-                        else:
-                            models = []
+                            raw_models = data
 
-                        # Clean up model names (remove provider prefix if present)
-                        clean_models = []
-                        for model in models:
-                            if isinstance(model, dict):
-                                model_id = model.get('id', str(model))
-                            else:
-                                model_id = str(model)
+                        from core.model_cache import normalize_discovered_model_id
 
-                            # Remove provider prefix if present
-                            if '/' in model_id:
-                                model_id = model_id.split('/', 1)[1]
-
+                        clean_models: list[str] = []
+                        for model in raw_models:
+                            model_id = normalize_discovered_model_id(model)
                             if model_id and model_id not in clean_models:
                                 clean_models.append(model_id)
 
@@ -1774,7 +1772,7 @@ def main():
             except ImportError as e:
                 print(f"❌ Server module not found: {e}")
                 print("Make sure server.py is in the same directory and requirements are installed:")
-                print("pip install -r requirements_server.txt")
+                print("pip install ai-synapse[server]")
             return
         elif provider_name == "list":
             engine = AI_engine(verbose=False)

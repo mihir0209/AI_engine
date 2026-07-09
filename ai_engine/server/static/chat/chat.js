@@ -85,6 +85,7 @@ class ChatInterface {
         if (!this.pendingFile || !this.pendingFile.type.startsWith('image/')) return true;
         const provider = document.getElementById('providerSelect')?.value || '';
         const model = document.getElementById('modelSelect')?.value || '';
+        if (!provider) return true; // No provider selected, skip check
         try {
             const params = new URLSearchParams();
             if (model) params.set('model', model);

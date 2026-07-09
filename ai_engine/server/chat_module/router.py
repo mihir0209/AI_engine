@@ -91,22 +91,41 @@ def _encode_image_base64(file_path: str) -> tuple:
 
 def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str = None) -> tuple:
     """Prepare messages for AI: handle file content injection, image encoding, and vision stripping.
-    Returns (messages, has_images, vision_warning)
+    Returns (messages, has_images, has_files, vision_warning, force_vision_routing)
     """
     from core.capabilities import capability_manager
     vision_ok = capability_manager.supports_vision(provider or '', model)
 
-    has_images = any(re.search(IMAGE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
-    has_files = any(re.search(FILE_REF_PATTERN, msg.get('content', '')) for msg in formatted_messages)
+    has_images = False
+    has_files = False
+    for msg in formatted_messages:
+        content = msg.get('content', '')
+        if isinstance(content, list):
+            if any(isinstance(part, dict) and part.get('type') == 'image_url' for part in content):
+                has_images = True
+        elif isinstance(content, str):
+            if re.search(IMAGE_REF_PATTERN, content):
+                has_images = True
+            if re.search(FILE_REF_PATTERN, content):
+                has_files = True
 
     if not has_images and not has_files:
-        return formatted_messages, False, None
+        return formatted_messages, False, None, False
 
     processed = []
     for msg in formatted_messages:
         content = msg.get('content', '')
 
-        # Inject file contents for text files
+        # Multipart content (list of dicts — from API with vision content parts)
+        if isinstance(content, list):
+            processed.append(msg)
+            if has_images and not vision_ok:
+                vision_providers = capability_manager.get_vision_providers()
+                warning = f"This provider may not support images. Routing to vision provider: {', '.join(vision_providers[:3])}"
+                return processed, True, warning, True
+            continue
+
+        # String content — handle markdown image refs and file refs
         file_matches = list(re.finditer(FILE_REF_PATTERN, content))
         if file_matches:
             for match in reversed(file_matches):
@@ -116,11 +135,9 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
                 placeholder = match.group(0)
                 content = content.replace(placeholder, f"{placeholder}\n\n```\n{text_content}\n```")
 
-        # Handle images
         image_matches = list(re.finditer(IMAGE_REF_PATTERN, content))
         if image_matches:
             if vision_ok:
-                # Encode images as base64 for vision models
                 for match in reversed(image_matches):
                     file_url = match.group(2)
                     file_path = file_url.lstrip('/')
@@ -130,19 +147,17 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
                         img_md = match.group(0)
                         replacement = f"![{alt_text}]({data_uri})"
                         content = content.replace(img_md, replacement)
-            else:
-                # Strip images for non-vision models
-                for match in reversed(image_matches):
-                    img_md = match.group(0)
-                    content = content.replace(img_md, '[Image attached - not supported by current model]')
-                vision_providers = capability_manager.get_vision_providers()
-                warning = f"Images removed: {provider or 'current provider'} does not support vision. Use: {', '.join(vision_providers[:3])}"
                 processed.append({**msg, 'content': content})
-                return processed, True, warning
+                return processed, True, None, False
+            else:
+                vision_providers = capability_manager.get_vision_providers()
+                warning = f"This provider may not support images. Routing to vision provider: {', '.join(vision_providers[:3])}"
+                processed.append({**msg, 'content': content})
+                return processed, True, warning, True
 
         processed.append({**msg, 'content': content})
 
-    return processed, has_images, None
+    return processed, has_images, None, False
 
 # Pydantic models for API
 class CreateChatRequest(BaseModel):
@@ -248,8 +263,61 @@ def stop_cleanup_task():
         cleanup_task.cancel()
     cleanup_task = None
 
+
+def _apply_intent_routing(intent_result: dict, has_images: bool, has_files: bool,
+                          current_provider: str = None, current_model: str = None) -> tuple:
+    """Given an intent classification result, determine the best provider/model to use.
+
+    Returns (effective_provider, effective_model, force_provider_flag).
+    Only modifies routing when intent requires a specific modality that the current provider can't handle.
+    """
+    from core.capabilities import capability_manager
+
+    intent = intent_result.get("intent", "text_chat")
+    requires_vision = intent_result.get("requires_vision", False)
+    requires_image_gen = intent_result.get("requires_image_gen", False)
+    requires_audio = intent_result.get("requires_audio", False)
+
+    if intent == "text_chat" or (not requires_vision and not requires_image_gen and not requires_audio):
+        return current_provider, current_model, current_provider is not None
+
+    # Vision needed — find a provider with vision model
+    if requires_vision and has_images:
+        vision_providers = capability_manager.get_vision_providers()
+        engine = get_global_engine()
+        for vp in vision_providers:
+            if vp not in engine.providers:
+                continue
+            vm = capability_manager.get_vision_model_for_provider(vp)
+            if vm:
+                return vp, vm, True
+        return current_provider, current_model, current_provider is not None
+
+    # Image generation needed — route to OpenRouter image-gen model
+    if requires_image_gen:
+        capability_manager.fetch_openrouter_capabilities()
+        image_gen_models = capability_manager.get_models_for_modality("image_gen")
+        if image_gen_models:
+            engine = get_global_engine()
+            if "openrouter" in engine.providers:
+                return "openrouter", image_gen_models[0], True
+        return current_provider, current_model, current_provider is not None
+
+    # Audio generation needed — route to OpenRouter audio model
+    if requires_audio:
+        capability_manager.fetch_openrouter_capabilities()
+        audio_models = capability_manager.get_models_for_modality("audio_out")
+        if audio_models:
+            engine = get_global_engine()
+            if "openrouter" in engine.providers:
+                return "openrouter", audio_models[0], True
+        return current_provider, current_model, current_provider is not None
+
+    return current_provider, current_model, current_provider is not None
+
+
 # Create router
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 @router.get("/chats", response_model=List[ChatResponse])
 async def get_chats(include_temporary: bool = False, limit: int = 50):
@@ -854,21 +922,68 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
+        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         ai = get_global_engine()
         start_time = time.time()
 
         force_provider_setting = chat.get('force_provider', False) if chat else False
-        use_autodecide = provider is None and not force_provider_setting
+        use_autodecide = not force_provider_setting or force_vision_routing
+
+        # When images need vision routing and model is default, route to a vision provider with a vision model
+        effective_model = model
+        effective_provider = provider
+        force_provider_flag = force_provider_setting and provider is not None
+
+        # Intent-based routing (always active for chat — routes like /v1/uni)
+        from core.intent_classifier import intent_classifier
+        intent_info = None
+        if not force_vision_routing:
+            user_text = ""
+            for msg in reversed(formatted_messages):
+                if msg.get('role') == 'user':
+                    c = msg.get('content', '')
+                    user_text = c if isinstance(c, str) else str(c)[:500]
+                    break
+            if user_text:
+                intent_info = intent_classifier.classify(user_text, has_images=has_images, has_files=has_files)
+                intent = intent_info.get("intent", "text_chat")
+                if intent != "text_chat":
+                    eff_p, eff_m, eff_f = _apply_intent_routing(intent_info, has_images, has_files, provider, model)
+                    effective_provider = eff_p
+                    effective_model = eff_m
+                    force_provider_flag = eff_f
+                    use_autodecide = not eff_f
+
+        if force_vision_routing and (not model or model in ("auto", "default")):
+            from core.capabilities import capability_manager
+            ai_engine = get_global_engine()
+            vision_providers = capability_manager.get_vision_providers()
+            for vp in vision_providers:
+                if vp not in ai_engine.providers:
+                    continue
+                vm = capability_manager.get_vision_model_for_provider(vp)
+                if vm:
+                    effective_provider = vp
+                    effective_model = vm
+                    force_provider_flag = True
+                    use_autodecide = False
+                    break
+            else:
+                vision_model = capability_manager.get_any_vision_model()
+                if vision_model:
+                    effective_model = vision_model
+                    effective_provider = None
+                    force_provider_flag = False
+                    use_autodecide = True
 
         result = await asyncio.to_thread(ai.chat_completion,
             messages=formatted_messages,
-            model=model,
+            model=effective_model,
             autodecide=use_autodecide,
-            preferred_provider=provider,
-            force_provider=force_provider_setting and provider is not None
+            preferred_provider=effective_provider,
+            force_provider=force_provider_flag
         )
         response_time = time.time() - start_time
 
@@ -876,7 +991,12 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
             metadata = {
                 "provider": result.provider_used,
                 "model": result.model_used,
-                "response_time": response_time,
+                "requested_model": model,
+                "effective_model": effective_model if effective_model != model else None,
+                "requested_provider": provider,
+                "has_images": has_images,
+                "force_vision_routing": force_vision_routing,
+                "response_time": round(response_time, 3),
                 "timestamp": datetime.now().isoformat()
             }
             if vision_warning:
@@ -897,9 +1017,13 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
                 content=f"Error: {result.error_message or 'Unknown error occurred'}",
                 metadata={
                     "error": True,
-                    "provider": provider,
-                    "model": model,
-                    "response_time": response_time
+                    "error_message": (result.error_message or "")[:200],
+                    "error_type": getattr(result, 'error_type', None),
+                    "requested_provider": provider,
+                    "requested_model": model,
+                    "effective_model": effective_model,
+                    "has_images": has_images,
+                    "response_time": round(response_time, 3)
                 },
                 response_to=user_message_id
             )
@@ -936,12 +1060,12 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning = _prepare_messages_for_ai(
+        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         force_provider_setting = chat.get('force_provider', False) if chat else False
 
-        if vision_warning:
+        if vision_warning and not force_vision_routing:
             await websocket.send_text(json.dumps({"type": "vision_warning", "message": vision_warning}))
 
         await websocket.send_text(json.dumps({"type": "ai_thinking", "provider": provider, "model": model}))
@@ -949,17 +1073,63 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         ai = get_global_engine()
         verbose_print(f"Starting AI call for chat={chat_id} user_msg={user_message_id} provider={provider} model={model} force={force_provider_setting}")
 
-        use_autodecide = provider is None and not force_provider_setting
-
-        # Use non-streaming completion + simulated chunking (reliable across all providers)
         start_time = time.time()
+        use_autodecide = not force_provider_setting or force_vision_routing
+
+        # When images need vision routing and model is default, route to a vision provider with a vision model
+        effective_model = model
+        effective_provider = provider
+        force_provider_flag = force_provider_setting and provider is not None
+
+        # Intent-based routing (always active — routes like /v1/uni)
+        from core.intent_classifier import intent_classifier
+        intent_info = None
+        if not force_vision_routing:
+            user_text = ""
+            for msg in reversed(formatted_messages):
+                if msg.get('role') == 'user':
+                    c = msg.get('content', '')
+                    user_text = c if isinstance(c, str) else str(c)[:500]
+                    break
+            if user_text:
+                intent_info = intent_classifier.classify(user_text, has_images=has_images)
+                intent = intent_info.get("intent", "text_chat")
+                if intent != "text_chat":
+                    eff_p, eff_m, eff_f = _apply_intent_routing(intent_info, has_images, has_files, provider, model)
+                    effective_provider = eff_p
+                    effective_model = eff_m
+                    force_provider_flag = eff_f
+                    use_autodecide = not eff_f
+
+        if force_vision_routing and (not model or model in ("auto", "default")):
+            from core.capabilities import capability_manager
+            ai_engine = get_global_engine()
+            vision_providers = capability_manager.get_vision_providers()
+            for vp in vision_providers:
+                if vp not in ai_engine.providers:
+                    continue
+                vm = capability_manager.get_vision_model_for_provider(vp)
+                if vm:
+                    effective_provider = vp
+                    effective_model = vm
+                    force_provider_flag = True
+                    use_autodecide = False
+                    break
+            else:
+                vision_model = capability_manager.get_any_vision_model()
+                if vision_model:
+                    effective_model = vision_model
+                    effective_provider = None
+                    force_provider_flag = False
+                    use_autodecide = True
+
         try:
             result = await asyncio.to_thread(ai.chat_completion,
                 messages=formatted_messages,
-                model=model,
+                model=effective_model,
                 autodecide=use_autodecide,
-                preferred_provider=provider,
-                force_provider=force_provider_setting and provider is not None
+                preferred_provider=effective_provider,
+                force_provider=force_provider_flag
             )
         except Exception as e:
             logger.exception(f"AI call exception for chat {chat_id}: {e}")
@@ -995,7 +1165,17 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                     chat_id=chat_id,
                     role="assistant",
                     content=response_content,
-                    metadata={"provider": provider_used, "model": model_used, "response_time": response_time, "timestamp": datetime.now().isoformat()},
+                    metadata={
+                        "provider": provider_used,
+                        "model": model_used,
+                        "requested_model": model,
+                        "effective_model": effective_model if effective_model != model else None,
+                        "requested_provider": provider,
+                        "has_images": has_images,
+                        "force_vision_routing": force_vision_routing,
+                        "response_time": round(response_time, 3),
+                        "timestamp": datetime.now().isoformat()
+                    },
                     tokens=(len(response_content) // 4) if response_content else 0,
                     response_to=user_message_id
                 )

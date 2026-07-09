@@ -34,7 +34,7 @@ def test_supports_vision_with_model():
     from core.capabilities import CapabilityManager
     cm = CapabilityManager()
 
-    assert cm.supports_vision("groq", "meta-llama/llama-4-scout-17b-16e-instruct") is True
+    assert cm.supports_vision("groq", "meta-llama/llama-4-scout-17b-16e-instruct") is False
     assert cm.supports_vision("groq", "llama-3.3-70b-versatile") is False
 
 

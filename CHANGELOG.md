@@ -2,7 +2,22 @@
 
 All notable changes to AI Synapse are documented here.
 
-## [4.8.10] - 2026-07-14
+## [1.0.0] - 2026-07-08
+
+### PyPI reset (important)
+
+- **Version line reset:** `1.0.0` is the first canonical public release after the 4.x era.
+- **Legacy 4.x yanked:** All `4.0.0`–`4.8.10` PyPI uploads were incremental test publishes and are **yanked** (hidden from default `pip install`, not deleted — PyPI policy).
+- **Install:** `pip install "ai-synapse>=1.0.0"`
+
+### Included in 1.0.0
+
+- Multi-provider SDK (`from ai_engine import OpenAI`) with 27+ free providers
+- Terminal TUI (`python -m ai_engine tui`) — model picker, `@` file attach, `/defaults`, collapsible sidebar
+- Optional server extra (`pip install ai-synapse[server]`)
+- Model cache, intent routing, per-chat personas, preferences
+
+## [4.8.10] - 2026-07-14 (yanked on PyPI)
 
 ### Fixed (TUI Layout)
 - Reintroduced robust chat-body container with height 1fr + dock: bottom on input-area to ensure input is always at the very bottom and message scroll area fills the space above it.

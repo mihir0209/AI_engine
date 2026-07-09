@@ -48,9 +48,21 @@ class Completions:
             error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
             raise InternalServerError(message=error_msg)
 
+        def _message_text(message: Dict[str, Any]) -> str:
+            content = message.get("content", "")
+            if isinstance(content, list):
+                parts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        parts.append(str(part.get("text") or ""))
+                return " ".join(parts)
+            return str(content or "")
+
+        response_content = getattr(result, "content", None) or ""
+
         # Build OpenAI-compatible response
-        prompt_tokens = sum(len(m.get("content", "").split()) for m in messages)
-        completion_tokens = len(result.content.split())
+        prompt_tokens = sum(len(_message_text(m).split()) for m in messages)
+        completion_tokens = len(response_content.split())
 
         return ChatCompletion(
             id=f"chatcmpl-{uuid.uuid4().hex[:24]}",
@@ -61,7 +73,7 @@ class Completions:
                 index=0,
                 message=ChatCompletionMessage(
                     role="assistant",
-                    content=result.content,
+                    content=response_content,
                 ),
                 finish_reason="stop",
             )],
@@ -94,7 +106,7 @@ class Completions:
             raise InternalServerError(message=error_msg)
 
         actual_model = result.model_used or model
-        content = getattr(result, "content", "")
+        content = getattr(result, "content", None) or ""
 
         # First chunk: role
         yield ChatCompletionChunk(

@@ -1,213 +1,94 @@
-# AI Synapse — Free Multi-Provider AI SDK
+# AI Synapse
 
-[![Tests](https://img.shields.io/badge/tests-573%20passing-brightgreen)]()
-[![Providers](https://img.shields.io/badge/providers-27%20enabled-blue)]()
-[![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)]()
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)]()
-[![OpenAI Compatible](https://img.shields.io/badge/OpenAI-Compatible-412991)]()
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED)]()
+[![PyPI](https://img.shields.io/pypi/v/ai-synapse)](https://pypi.org/project/ai-synapse/)
+[![Python](https://img.shields.io/pypi/pyversions/ai-synapse)](https://pypi.org/project/ai-synapse/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **Stop paying for AI inference.** Drop-in `from ai_engine import OpenAI` — routes through 27+ free providers with automatic failover and intelligent routing.
-
----
-
-## Free Providers
-
-### No API Key Required (Truly Free)
-
-| Provider | Model | Endpoint |
-|----------|-------|----------|
-| **Pollinations** | openai | `text.pollinations.ai/openai` |
-| **Hermes** | Hermes-3-Llama | `hermes.ai.unturf.com/v1` |
-| **G4F Groq** | llama-3.3-70b | `g4f.space/api/groq` |
-| **G4F Gemini** | gemini-2.5-flash | `g4f.space/api/gemini` |
-| **G4F NVIDIA** | nemotron-3 | `g4f.space/api/nvidia` |
-| **OpenCode Zen** | north-mini-code | `opencode.ai/zen/v1` |
-
-### Free Tier APIs (Signup Required)
-
-| Provider | Free Tier | Signup |
-|----------|-----------|--------|
-| **Groq** | 30 RPM, 14,400 RPD | [console.groq.com](https://console.groq.com) |
-| **OpenRouter** | 23 free models | [openrouter.ai](https://openrouter.ai) |
-| **Gemini** | 5-30 RPM | [aistudio.google.com](https://aistudio.google.com) |
-| **NVIDIA** | 40 RPM | [build.nvidia.com](https://build.nvidia.com) |
-| **Cerebras** | 30 RPM | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
-| **Cloudflare** | 10K neurons/day | [dash.cloudflare.com](https://dash.cloudflare.com) |
-| **GitHub** | Varies | [github.com/marketplace](https://github.com/marketplace/models) |
-| **Vercel** | $5/month free | [vercel.com](https://vercel.com) |
-| **Cohere** | 20 RPM, 1K/month | [cohere.com](https://cohere.com) |
-| **Mistral** | 1 RPS, 500K tokens/min | [console.mistral.ai](https://console.mistral.ai) |
-| **HuggingFace** | $0.10/month | [huggingface.co](https://huggingface.co) |
-| **Kilo** | Auto free routing | [app.kilo.ai](https://app.kilo.ai) |
-
-### Custom Providers (Your Keys)
-
-| Provider | Models | Signup |
-|----------|--------|--------|
-| **hcnsec** | [Various](https://api.hcnsec.cn/pricing) | [api.hcnsec.cn](https://api.hcnsec.cn) |
-| **LLM7** | [Various](https://docs.llm7.io/guides/models) | [llm7.io](https://llm7.io) |
-| **PaxSenix** | [Various](https://api.paxsenix.org/v1/models) | [api.paxsenix.org](https://api.paxsenix.org) |
-
-### Self-Hosted Options
-
-| Provider | Setup | Models |
-|----------|-------|--------|
-| **GPT4Free** | `docker run -p 8080:8080 hlohaus789/g4f` | GPT-4o, Claude, Gemini |
-| **Ollama** | `curl -fsSL https://ollama.com/install.sh \| sh` | Llama, Mistral, etc. |
-
----
-
-## Quick Start
-
-### Option 1: Free Tier APIs (Recommended)
+**Free multi-provider AI SDK** with a terminal chat UI, drop-in OpenAI client, and optional local server. Routes across 27+ providers with failover, model caching, and intent-aware routing.
 
 ```bash
-# 1. Copy environment template
-cp .env.example .env
-
-# 2. Get free API keys (see guide below)
-# 3. Add keys to .env file
-# 4. Start server
-python server.py
+pip install ai-synapse[tui]    # recommended — SDK + terminal chat
+python -m ai_engine tui
 ```
 
-### Option 2: Self-Hosted (No API Keys Needed)
-
 ```bash
-# Start g4f server
-docker run -d -p 8080:8080 hlohaus789/g4f
-
-# Start AI Engine
-python server.py
+pip install ai-synapse         # SDK only
+pip install ai-synapse[all]      # SDK + TUI + server extras
 ```
 
 ---
 
-## For Developers
+## Terminal chat
 
-### OpenAI SDK Compatible
+![Main chat](docs/images/tui_1_main_chat.png)
+
+Sidebar history, model/provider routing, slash commands, `@` file attach, and collapsible sidebar. Full walkthrough, shortcuts, and all screenshots: **[docs/TUI.md](docs/TUI.md)**.
+
+### Vision (image attach → describe)
+
+![Image reply](docs/images/tui_4_image_reply.png)
+
+Attach an image above the composer, ask a question, and get a vision-capable reply. Sent messages keep a **path reference** only — the pixel preview stays in the attachment strip until you send.
+
+---
+
+## Python SDK
 
 ```python
-from openai import OpenAI
+from ai_engine import OpenAI
 
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="dummy"  # Not needed for free providers
-)
-
-# Chat completion
+client = OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Hello!"}]
+    model="default",
+    messages=[{"role": "user", "content": "Hello!"}],
 )
 print(response.choices[0].message.content)
-
-# Streaming
-stream = client.chat.completions.create(
-    model="gpt-4",
-    messages=[{"role": "user", "content": "Tell me a story"}],
-    stream=True
-)
-for chunk in stream:
-    if chunk.choices[0].delta.content:
-        print(chunk.choices[0].delta.content, end="")
 ```
-
-### cURL
 
 ```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello!"}]}'
-```
-
-### JavaScript
-
-```javascript
-import OpenAI from 'openai';
-
-const client = new OpenAI({
-    baseURL: 'http://localhost:8000/v1',
-    apiKey: 'dummy'
-});
-
-const response = await client.chat.completions.create({
-    model: 'gpt-4',
-    messages: [{ role: 'user', content: 'Hello!' }]
-});
+ai-engine chat "Explain quantum tunneling"
+ai-engine providers
+ai-engine version
 ```
 
 ---
 
-## Features
+## Local server (optional)
 
-### Core
-- OpenAI-compatible API with streaming
-- Automatic provider failover
-- Intelligent key rotation
-- Response caching with TTL
+```bash
+cp .env.example .env
+pip install ai-synapse[server]
+python -m ai_engine serve
+```
 
-### Intelligence
-- Task-based model selection
-- Cost optimization
-- Latency tracking
-- A/B testing
-
-### Enterprise
-- Multi-tenancy with quotas
-- RBAC (Admin/User/Viewer)
-- Audit logging
-- Billing tracking
-
-### Platform
-- Plugin system
-- Workflow engine
-- CLI tool
-- Docker deployment
-
----
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v1/chat/completions` | POST | Chat completions (OpenAI-compatible, supports `stream: true`) |
-| `/v1/models` | GET/POST | List all models |
-| `/api/providers` | GET | List providers |
-| `/api/health/{name}/ping` | POST | Live health ping for a provider |
-| `/api/capabilities` | GET | Provider/model capabilities (vision, etc.) |
-| `/api/status` | GET | Engine status |
-| `/api/statistics` | GET | Usage statistics |
-| `/health` | GET | Health check |
-| `/metrics` | GET | Prometheus metrics |
-| `/docs` | GET | Swagger UI (interactive API explorer) |
-| `/redoc` | GET | ReDoc API documentation |
-
-### Rate Limit Headers
-
-All API responses include:
-- `X-RateLimit-Limit` — Max requests per minute
-- `X-RateLimit-Remaining` — Remaining requests in current window
+OpenAI-compatible API at `http://localhost:8000/v1/` · Swagger at `/docs`.
 
 ---
 
 ## Documentation
 
-- [API Reference](docs/API.md)
-- [User Guide](docs/USER_GUIDE.md)
-- [Deployment Guide](docs/DEPLOYMENT.md)
-- [Security Guide](docs/SECURITY.md)
-- [Provider Setup](docs/collect_api.md)
+| Doc | Contents |
+|-----|----------|
+| [TUI guide](docs/TUI.md) | Screenshots, shortcuts, attachments, defaults |
+| [API reference](docs/API.md) | HTTP endpoints |
+| [User guide](docs/USER_GUIDE.md) | Web dashboard & chat UI |
+| [Provider keys](docs/collect_api.md) | Free-tier signup |
+| [Deployment](docs/DEPLOYMENT.md) | Docker, production |
 
 ---
 
-## Contributing
+## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+```bash
+git clone https://github.com/mihir0209/AI_engine.git
+cd AI_engine
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,all]"
+pytest tests/
+```
 
 ---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE).

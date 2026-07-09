@@ -16,7 +16,7 @@ source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate  # Windows
 
 # Install dependencies
-pip install -r requirements.txt -r requirements_server.txt
+pip install ai-synapse[server]
 
 # Create .env file with your API keys
 cp .env.example .env

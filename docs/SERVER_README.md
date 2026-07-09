@@ -70,7 +70,7 @@ python server.py
 
 ```bash
 # Install server dependencies
-pip install -r requirements_core.txt -r requirements_server.txt
+pip install ai-synapse[server]
 
 # Remove development files
 rm test_*.py PROVIDER_TESTING_REPORT.py
@@ -162,7 +162,7 @@ result = engine.chat_completion([{"role": "user", "content": "Hello"}])
 #### Option 2: Full Server Installation
 ```bash
 # Complete installation - Web interface included
-pip install -r requirements_core.txt -r requirements_server.txt
+pip install ai-synapse[server]
 # Adds: fastapi, uvicorn, pydantic, jinja2, python-multipart, aiofiles
 
 # Usage: Full web server with dashboard
@@ -172,7 +172,7 @@ python server.py
 #### Option 3: Production Server Setup
 ```bash
 # Install all dependencies
-pip install -r requirements_core.txt -r requirements_server.txt
+pip install ai-synapse[server]
 
 # Remove development files (20% size reduction)
 rm test_*.py PROVIDER_TESTING_REPORT.py
@@ -377,9 +377,10 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY requirements.txt requirements_server.txt ./
-RUN pip install -r requirements.txt && \
-    pip install -r requirements_server.txt
+COPY pyproject.toml README.md ./
+COPY ai_engine/ ai_engine/
+COPY core/ core/
+RUN pip install .
 
 # Copy application code
 COPY . .

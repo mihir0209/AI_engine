@@ -572,8 +572,10 @@ python server.py --host 0.0.0.0 --port 8080 --workers 4
 FROM python:3.11-slim
 
 WORKDIR /app
-COPY requirements_server.txt .
-RUN pip install -r requirements_server.txt
+COPY pyproject.toml README.md ./
+COPY ai_engine/ ai_engine/
+COPY core/ core/
+RUN pip install .
 
 COPY . .
 

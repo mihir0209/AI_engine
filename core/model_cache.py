@@ -4,14 +4,82 @@ Provides centralized model caching for both server and autodecide features
 """
 
 import json
+import re
 import time
 import os
 import threading
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 try:
     from core.config import verbose_print
 except ImportError:
     from config import verbose_print
+
+_MAX_MODEL_ID_LEN = 128
+_VALID_MODEL_ID = re.compile(r"^[\w\.\-/:+]+$")
+
+
+def normalize_discovered_model_id(raw: Any) -> str | None:
+    """Extract a clean model id from provider discovery payloads."""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        model_id = raw.get("id") or raw.get("name") or raw.get("model") or ""
+    else:
+        model_id = str(raw).strip()
+    if not model_id:
+        return None
+    # Reject stringified metadata blobs (common when dicts were f-stringed into cache).
+    if (
+        model_id.startswith("{")
+        or model_id.startswith("[")
+        or "'" in model_id
+        or "summary" in model_id
+        or "features" in model_id
+    ):
+        return None
+    if model_id.startswith("models/"):
+        model_id = model_id.split("/", 1)[1]
+    model_id = model_id.strip()
+    if len(model_id) > _MAX_MODEL_ID_LEN:
+        return None
+    if not _VALID_MODEL_ID.match(model_id):
+        return None
+    return model_id
+
+
+def format_cache_entry(provider: str, model_id: Any) -> str | None:
+    """Build a normalized ``provider|model`` cache entry."""
+    clean = normalize_discovered_model_id(model_id)
+    provider_name = (provider or "").strip()
+    if not clean or not provider_name:
+        return None
+    return f"{provider_name}|{clean}"
+
+
+def sanitize_model_cache_entry(entry: str) -> str | None:
+    """Validate and normalize one cached model entry."""
+    if not entry or not isinstance(entry, str):
+        return None
+    text = entry.strip()
+    if "|" in text:
+        provider, model = text.split("|", 1)
+        return format_cache_entry(provider, model)
+    if "/" in text:
+        provider, model = text.split("/", 1)
+        return format_cache_entry(provider, model)
+    return format_cache_entry("unknown", text)
+
+
+def sanitize_model_list(models: List[str]) -> List[str]:
+    """Drop malformed cache rows and deduplicate."""
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for entry in models:
+        normalized = sanitize_model_cache_entry(entry)
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            cleaned.append(normalized)
+    return cleaned
 
 class ModelCache:
     """Centralized model cache with auto-refresh capability"""
@@ -93,10 +161,11 @@ class ModelCache:
             cache_age = time.time() - self.cache_data["cached_at"]
             return cache_age <= self.cache_duration
 
-    def get_models(self) -> List[str]:
-        """Get all cached models (now returns list of model ID strings)"""
+    def get_models(self, *, sanitize: bool = True) -> List[str]:
+        """Get all cached models (list of ``provider|model`` strings)."""
         with self._lock:
-            return self.cache_data.get("models", [])
+            models = list(self.cache_data.get("models", []))
+        return sanitize_model_list(models) if sanitize else models
 
     def get_providers_data(self) -> Dict:
         """Get providers data from cache"""
