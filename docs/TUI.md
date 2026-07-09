@@ -19,12 +19,6 @@ Sidebar history, model/provider header, persona empty-state, and composer with `
 
 ![Main chat](images/tui_1_main_chat.png)
 
-### Image preview (while attaching)
-
-Full pixel preview appears **only** in the attachment strip above the composer — not in sent messages.
-
-![Image preview](images/tui_2_image_preview.png)
-
 ### Image selection
 
 Use **Attach**, `@filename` fuzzy search, or paste a file path. The preview updates before you send.
