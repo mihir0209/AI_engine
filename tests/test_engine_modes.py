@@ -31,7 +31,7 @@ def _reload_engine_with_mode(monkeypatch, mode: str):
     [
         ("live", False),
         ("testing", True),
-        ("all", True),
+        ("all", False),
     ],
 )
 def test_load_enabled_providers_filters_test_harness_by_engine_mode(
@@ -47,7 +47,7 @@ def test_load_enabled_providers_filters_test_harness_by_engine_mode(
 @pytest.mark.parametrize(
     "engine_mode,provider_modes,expected",
     [
-        ("all", ["testing"], True),
+        ("all", ["testing"], False),
         ("all", ["live"], True),
         ("live", ["live"], True),
         ("live", ["testing"], False),

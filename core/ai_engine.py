@@ -201,7 +201,8 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def _provider_matches_mode(self, config: dict) -> bool:
         modes = config.get("modes", ["live"])
         if _ENGINE_MODE == "all":
-            return True
+            # Default/production "all" loads live-capable providers only.
+            return "live" in modes
         if _ENGINE_MODE == "testing":
             return "testing" in modes
         if _ENGINE_MODE == "live":
