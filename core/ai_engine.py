@@ -1527,20 +1527,16 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         if preferred_provider:
             if preferred_provider in self.providers and not self._is_key_flagged(preferred_provider):
                 provider_config = self.providers[preferred_provider]
-                start_time = time.time()
 
                 try:
                     if self.verbose:
                         verbose_print(f"🎯 Using preferred provider: {preferred_provider}", self.verbose)
 
-                    result = self._make_request(preferred_provider, provider_config, messages, model, **request_kwargs)
-                    response_time = time.time() - start_time
-
-                    self._update_stats(preferred_provider, result.success, response_time)
+                    result = self._request_with_key_rotation(
+                        preferred_provider, provider_config, messages, model, **request_kwargs
+                    )
 
                     if result.success:
-                        result.provider_used = preferred_provider
-                        result.response_time = response_time
                         self.current_provider = preferred_provider
                         return result
                     else:
@@ -1572,22 +1568,16 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         # Try each available provider
         last_errors = []
         for provider_name, provider_config in available_providers:
-            start_time = time.time()
-
             try:
                 if self.verbose:
                     verbose_print(f"🔄 Trying {provider_name}...", self.verbose)
 
-                result = self._make_request(provider_name, provider_config, messages, model, **request_kwargs)
-                response_time = time.time() - start_time
-
-                self._update_stats(provider_name, result.success, response_time)
+                result = self._request_with_key_rotation(
+                    provider_name, provider_config, messages, model, **request_kwargs
+                )
 
                 if result.success:
-                    result.provider_used = provider_name
-                    result.response_time = response_time
                     self.current_provider = provider_name
-                    self._handle_provider_success(provider_name, response_time)
 
                     if use_cache:
                         try:
@@ -1608,8 +1598,6 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     continue
 
             except Exception as e:
-                response_time = time.time() - start_time
-                self._update_stats(provider_name, False, response_time)
                 self._handle_provider_failure(provider_name, str(e), 0, None)
                 if self.verbose:
                     verbose_print(f"💥 {provider_name} exception: {str(e)}")

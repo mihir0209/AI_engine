@@ -16,16 +16,13 @@ git clone https://github.com/mihir0209/AI_engine.git
 cd AI_engine
 
 # Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
 # or
-venv\Scripts\activate  # Windows
+.venv\Scripts\activate  # Windows
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests
-pytest tests/
+# Install package with dev and server extras (required for tests)
+pip install -e ".[dev,server]"
 ```
 
 ## Development Workflow
@@ -41,9 +38,14 @@ git checkout -b feature/your-feature-name
 - Update documentation if needed
 
 ### 3. Run Tests
+
+Default test runs use the mock provider harness and never hit live APIs:
+
 ```bash
-pytest tests/
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q
 ```
+
+The mock OpenAI-compatible server starts automatically on `127.0.0.1:18765` via pytest fixtures.
 
 ### 4. Commit
 ```bash
@@ -75,19 +77,52 @@ test: add integration tests
 - Use type hints
 - Add docstrings to public functions
 - Keep functions focused and small
+- Run `ruff check . --select=E,F,W --ignore=E501` before submitting
 
 ## Testing
 
+### Non-live suite (default)
+
 ```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=.
-
-# Run specific test
-pytest tests/test_ai_engine.py -v
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -v
 ```
+
+### Coverage
+
+```bash
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --cov=core --cov=ai_engine
+```
+
+### Specific test file
+
+```bash
+AI_ENGINE_MODE=testing pytest tests/features/test_key_rotation.py -v
+```
+
+### Live provider tests (optional)
+
+Live tests are skipped by default. They require real API keys and may incur provider costs:
+
+```bash
+AI_ENGINE_RUN_LIVE_TESTS=1 AI_ENGINE_MODE=live pytest tests/ -m live -v
+```
+
+You can also trigger live tests manually via the **Live Tests** GitHub Actions workflow (`workflow_dispatch`).
+
+### Mutation testing (key rotation)
+
+```bash
+pip install -e ".[dev,server]"
+mutmut run --max-children 4
+mutmut results
+```
+
+## Environment Variables
+
+| Variable | Values | Purpose |
+|----------|--------|---------|
+| `AI_ENGINE_MODE` | `testing`, `live`, `all` | Filter which providers load at runtime |
+| `AI_ENGINE_RUN_LIVE_TESTS` | `1` | Opt in to `@pytest.mark.live` tests |
 
 ## Pull Requests
 
@@ -96,6 +131,8 @@ pytest tests/test_ai_engine.py -v
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+CI runs the non-live suite on Python 3.10, 3.11, and 3.12 for every push and PR.
 
 ## Questions?
 

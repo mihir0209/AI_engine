@@ -25,6 +25,46 @@ def test_auto_rotation_on_rate_limit(testing_engine, mock_provider_server):
 
 
 @pytest.mark.integration
+def test_auto_rotation_on_rate_limit_preferred_provider(testing_engine, mock_provider_server):
+    """preferred_provider= should rotate keys on 401/429, not only provider= forced pin."""
+    engine = testing_engine
+    engine.engine_settings["key_rotation_enabled"] = True
+    engine.providers["test_harness"]["api_keys"] = [
+        "test-key-beta",
+        "test-key-alpha",
+        "test-key-gamma",
+    ]
+    engine.provider_key_rotation["test_harness"] = 0
+    result = engine.chat_completion(
+        [{"role": "user", "content": "rotate via preferred"}],
+        preferred_provider="test_harness",
+    )
+    assert result.success is True
+    assert "alpha-ok" in result.content
+    assert engine.provider_key_rotation["test_harness"] != 0
+
+
+@pytest.mark.integration
+def test_auto_rotation_on_rate_limit_default_path(testing_engine, mock_provider_server):
+    """Default provider rotation should retry with rotated keys before giving up."""
+    engine = testing_engine
+    engine.engine_settings["key_rotation_enabled"] = True
+    engine.providers["test_harness"]["api_keys"] = [
+        "test-key-beta",
+        "test-key-alpha",
+        "test-key-gamma",
+    ]
+    engine.provider_key_rotation["test_harness"] = 0
+    result = engine.chat_completion(
+        [{"role": "user", "content": "rotate via default"}],
+        autodecide=False,
+    )
+    assert result.success is True
+    assert "alpha-ok" in result.content
+    assert engine.provider_key_rotation["test_harness"] != 0
+
+
+@pytest.mark.integration
 def test_auto_rotation_on_auth_error(testing_engine, mock_provider_server):
     engine = testing_engine
     engine.providers["test_harness"]["api_keys"] = [
