@@ -9,8 +9,7 @@ from unittest.mock import patch
 
 # === Chat Completions (mocked engine) ===
 
-@patch('ai_engine.server.app.engine')
-def test_chat_completions_success(mock_engine, server_client):
+def test_chat_completions_success(server_client):
     from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
@@ -19,36 +18,34 @@ def test_chat_completions_success(mock_engine, server_client):
         model_used="gpt-4",
         response_time=0.5
     )
-    mock_engine.chat_completion.return_value = mock_result
-
-    response = server_client.post("/v1/chat/completions", json={
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.chat_completion.return_value = mock_result
+        response = server_client.post("/v1/chat/completions", json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}]
+        })
     assert response.status_code == 200
     data = response.json()
     assert data["object"] == "chat.completion"
     assert data["choices"][0]["message"]["content"] == "Hello! How can I help?"
 
 
-@patch('ai_engine.server.app.engine')
-def test_chat_completions_failure(mock_engine, server_client):
+def test_chat_completions_failure(server_client):
     from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=False,
         error_message="Provider failed"
     )
-    mock_engine.chat_completion.return_value = mock_result
-
-    response = server_client.post("/v1/chat/completions", json={
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.chat_completion.return_value = mock_result
+        response = server_client.post("/v1/chat/completions", json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}]
+        })
     assert response.status_code == 500
 
 
-@patch('ai_engine.server.app.engine')
-def test_chat_completions_with_preferred_provider(mock_engine, server_client):
+def test_chat_completions_with_preferred_provider(server_client):
     from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
@@ -56,19 +53,18 @@ def test_chat_completions_with_preferred_provider(mock_engine, server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    mock_engine.chat_completion.return_value = mock_result
-
-    response = server_client.post("/v1/chat/completions", json={
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Hello"}]
-    }, headers={"X-Preferred-Provider": "openai"})
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.chat_completion.return_value = mock_result
+        response = server_client.post("/v1/chat/completions", json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}]
+        }, headers={"X-Preferred-Provider": "openai"})
     assert response.status_code == 200
 
 
 # === Test Model Endpoint (mocked engine) ===
 
-@patch('ai_engine.server.app.engine')
-def test_test_model_success(mock_engine, server_client):
+def test_test_model_success(server_client):
     from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
@@ -76,13 +72,13 @@ def test_test_model_success(mock_engine, server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    mock_engine.chat_completion.return_value = mock_result
-
-    response = server_client.post("/api/test-model", json={
-        "provider": "openai",
-        "model": "gpt-4",
-        "message": "Test message"
-    })
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.chat_completion.return_value = mock_result
+        response = server_client.post("/api/test-model", json={
+            "provider": "openai",
+            "model": "gpt-4",
+            "message": "Test message"
+        })
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -100,20 +96,19 @@ def test_test_model_missing_params(server_client):
 
 # === Autodecide Endpoint ===
 
-@patch('ai_engine.server.app.engine')
-def test_autodecide_discover(mock_engine, server_client):
-    mock_engine.autodecide_config = {"enabled": True}
-    mock_engine._discover_model_providers.return_value = [
-        ("openai", "gpt-4"),
-        ("azure", "gpt-4")
-    ]
-    mock_engine.providers = {
-        "openai": {"priority": 1, "enabled": True},
-        "azure": {"priority": 2, "enabled": True}
-    }
-    mock_engine._is_key_flagged.return_value = False
-
-    response = server_client.get("/api/autodecide/gpt-4")
+def test_autodecide_discover(server_client):
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.autodecide_config = {"enabled": True}
+        mock_engine._discover_model_providers.return_value = [
+            ("openai", "gpt-4"),
+            ("azure", "gpt-4")
+        ]
+        mock_engine.providers = {
+            "openai": {"priority": 1, "enabled": True},
+            "azure": {"priority": 2, "enabled": True}
+        }
+        mock_engine._is_key_flagged.return_value = False
+        response = server_client.get("/api/autodecide/gpt-4")
     assert response.status_code == 200
     data = response.json()
     assert data["autodecide_enabled"] is True
@@ -153,8 +148,7 @@ def test_chat_page(server_client):
 
 # === Streaming Endpoint ===
 
-@patch('ai_engine.server.app.engine')
-def test_chat_completions_stream(mock_engine, server_client):
+def test_chat_completions_stream(server_client):
     from core.ai_engine import RequestResult
     mock_result = RequestResult(
         success=True,
@@ -162,13 +156,13 @@ def test_chat_completions_stream(mock_engine, server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    mock_engine.chat_completion.return_value = mock_result
-
-    response = server_client.post("/v1/chat/completions", json={
-        "model": "gpt-4",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "stream": True,
-    })
+    with patch("ai_engine.server.app.engine") as mock_engine:
+        mock_engine.chat_completion.return_value = mock_result
+        response = server_client.post("/v1/chat/completions", json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "stream": True,
+        })
     assert response.status_code == 200
     assert "text/event-stream" in response.headers.get("content-type", "")
     assert "data:" in response.text

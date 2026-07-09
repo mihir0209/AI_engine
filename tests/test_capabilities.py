@@ -51,8 +51,12 @@ def test_get_vision_providers():
     cm = CapabilityManager()
 
     providers = cm.get_vision_providers()
-    assert "gemini" in providers
-    assert "openrouter" in providers
+    assert isinstance(providers, list)
+    assert len(providers) >= 1
+    # Self-hosted vision provider is always configured (no API key required)
+    assert "g4f_gemini" in providers
+    for name in providers:
+        assert cm.supports_vision(name)
 
 
 def test_get_max_context():
