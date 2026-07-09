@@ -1,5 +1,8 @@
 """Tests for config.py module"""
 
+import pytest
+from pydantic import ValidationError
+
 
 def test_import_config():
     from config import AI_CONFIGS, ENGINE_SETTINGS, AUTODECIDE_CONFIG, verbose_print
@@ -95,8 +98,40 @@ def test_provider_config_modes_accepts_both():
     assert "testing" in cfg.modes
 
 
+def test_provider_config_modes_rejects_empty_list():
+    from core.config import ProviderConfig
+
+    with pytest.raises(ValidationError, match="modes must be non-empty"):
+        ProviderConfig(id=1, priority=1, endpoint="http://x", model="m", modes=[])
+
+
+def test_provider_config_modes_rejects_invalid_value():
+    from core.config import ProviderConfig
+
+    with pytest.raises(ValidationError, match="modes must be non-empty"):
+        ProviderConfig(id=1, priority=1, endpoint="http://x", model="m", modes=["production"])
+
+
+def test_provider_config_modes_dedupes_preserving_order():
+    from core.config import ProviderConfig
+
+    cfg = ProviderConfig(
+        id=1,
+        priority=1,
+        endpoint="http://x",
+        model="m",
+        modes=["live", "testing", "live", "testing"],
+    )
+    assert cfg.modes == ["live", "testing"]
+
+
 def test_test_harness_provider_exists():
     from core.config import AI_CONFIGS
+
     assert "test_harness" in AI_CONFIGS
-    assert AI_CONFIGS["test_harness"]["modes"] == ["testing"]
-    assert len(AI_CONFIGS["test_harness"]["api_keys"]) == 3
+    harness = AI_CONFIGS["test_harness"]
+    assert harness["id"] == 99
+    assert harness["modes"] == ["testing"]
+    assert harness["api_keys"] == ["test-key-alpha", "test-key-beta", "test-key-gamma"]
+    assert "127.0.0.1:18765" in harness["endpoint"]
+    assert "127.0.0.1:18765" in harness["model_endpoint"]
