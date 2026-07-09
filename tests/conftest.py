@@ -1,5 +1,7 @@
 """Pytest configuration for AI Synapse tests."""
+import importlib
 import os
+from unittest.mock import patch
 
 import pytest
 
@@ -62,12 +64,21 @@ def testing_engine(mock_provider_server):
     return engine
 
 
+def server_app_module():
+    """Return the server app.py module (not the FastAPI instance)."""
+    return importlib.import_module("ai_engine.server.app")
+
+
+def patch_server_engine():
+    """Patch engine on the real app module (avoids Py3.10 import shadowing)."""
+    return patch.object(server_app_module(), "engine")
+
+
 @pytest.fixture(scope="session")
 def server_client():
     from fastapi.testclient import TestClient
 
-    from ai_engine.server.app import app
-
+    app = server_app_module().app
     return TestClient(app)
 
 

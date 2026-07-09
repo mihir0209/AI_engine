@@ -4,7 +4,8 @@ Endpoint matrix coverage lives under tests/features/. This module keeps mocked-e
 unit tests, dashboard skips, workflows, and edge-case handlers.
 """
 import pytest
-from unittest.mock import patch
+
+from tests.conftest import patch_server_engine
 
 
 # === Chat Completions (mocked engine) ===
@@ -18,7 +19,7 @@ def test_chat_completions_success(server_client):
         model_used="gpt-4",
         response_time=0.5
     )
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.chat_completion.return_value = mock_result
         response = server_client.post("/v1/chat/completions", json={
             "model": "gpt-4",
@@ -36,7 +37,7 @@ def test_chat_completions_failure(server_client):
         success=False,
         error_message="Provider failed"
     )
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.chat_completion.return_value = mock_result
         response = server_client.post("/v1/chat/completions", json={
             "model": "gpt-4",
@@ -53,7 +54,7 @@ def test_chat_completions_with_preferred_provider(server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.chat_completion.return_value = mock_result
         response = server_client.post("/v1/chat/completions", json={
             "model": "gpt-4",
@@ -72,7 +73,7 @@ def test_test_model_success(server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.chat_completion.return_value = mock_result
         response = server_client.post("/api/test-model", json={
             "provider": "openai",
@@ -97,7 +98,7 @@ def test_test_model_missing_params(server_client):
 # === Autodecide Endpoint ===
 
 def test_autodecide_discover(server_client):
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.autodecide_config = {"enabled": True}
         mock_engine._discover_model_providers.return_value = [
             ("openai", "gpt-4"),
@@ -156,7 +157,7 @@ def test_chat_completions_stream(server_client):
         provider_used="openai",
         model_used="gpt-4"
     )
-    with patch("ai_engine.server.app.engine") as mock_engine:
+    with patch_server_engine() as mock_engine:
         mock_engine.chat_completion.return_value = mock_result
         response = server_client.post("/v1/chat/completions", json={
             "model": "gpt-4",
