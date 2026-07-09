@@ -1,14 +1,57 @@
 """Tests for ai_engine.py module"""
 import time
+from datetime import datetime, timedelta
+
 import pytest
 from unittest.mock import patch
 
 from core.ai_engine import AI_engine, RequestResult
 
 
+def _setup_rotation_provider(engine, name="rotation_test", keys=None):
+    """Attach a synthetic multi-key provider for rotation unit tests."""
+    keys = keys or ["key-alpha", "key-beta", "key-gamma"]
+    engine.providers[name] = {
+        "enabled": True,
+        "api_keys": keys,
+        "format": "openai",
+    }
+    engine.provider_key_rotation[name] = 0
+    engine.usage_stats[name] = {
+        "requests": 0,
+        "successes": 0,
+        "failures": 0,
+        "total_response_time": 0.0,
+        "last_used": None,
+        "consecutive_failures": 0,
+        "flagged": False,
+        "enabled": True,
+    }
+    engine.key_usage_stats[name] = {}
+    engine.key_last_used[name] = {}
+    engine.key_request_count[name] = {}
+    for i in range(len(keys)):
+        key_id = f"key_{i}"
+        engine.key_usage_stats[name][key_id] = {
+            "requests": 0,
+            "successes": 0,
+            "failures": 0,
+            "last_used": None,
+            "rate_limited": False,
+            "weight": 1.0,
+            "requests_this_minute": 0,
+        }
+        engine.key_last_used[name][key_id] = None
+        engine.key_request_count[name][key_id] = []
+    return name
+
+
 @pytest.fixture
 def engine():
-    return AI_engine(verbose=False)
+    eng = AI_engine(verbose=False)
+    eng.engine_settings["key_rotation_enabled"] = True
+    yield eng
+    eng.engine_settings["key_rotation_enabled"] = True
 
 
 @pytest.fixture
@@ -101,7 +144,6 @@ def test_is_key_flagged_with_flag(engine):
 
 
 def test_is_key_flagged_expired(engine):
-    from datetime import datetime, timedelta
     engine.flagged_keys["test_provider"] = {
         "flagged_at": datetime.now() - timedelta(hours=2),
         "flag_until": datetime.now() - timedelta(hours=1),
@@ -109,6 +151,170 @@ def test_is_key_flagged_expired(engine):
     }
     assert engine._is_key_flagged("test_provider") is False
     assert "test_provider" not in engine.flagged_keys
+
+
+def test_select_optimal_key_returns_none_without_keys(engine):
+    engine.providers["empty_keys"] = {"enabled": True, "api_keys": []}
+    assert engine._select_optimal_key("empty_keys") is None
+    assert engine._select_optimal_key("missing_provider") is None
+
+
+def test_select_optimal_key_single_key_returns_index(engine):
+    provider = _setup_rotation_provider(engine, keys=["only-key"])
+    assert engine._select_optimal_key(provider) == 0
+
+
+def test_select_optimal_key_prefers_lower_load_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.key_request_count[provider]["key_0"] = [datetime.now(), datetime.now()]
+    engine.key_usage_stats[provider]["key_0"]["weight"] = 2.0
+    selected = engine._select_optimal_key(provider)
+    assert selected in (1, 2)
+    assert selected != 0
+
+
+def test_select_optimal_key_skips_recently_rate_limited_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.key_usage_stats[provider]["key_0"]["rate_limited"] = True
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    selected = engine._select_optimal_key(provider)
+    assert selected in (1, 2)
+
+
+def test_rotate_api_key_disabled_returns_current_key(engine):
+    provider = _setup_rotation_provider(engine, keys=["first", "second"])
+    engine.engine_settings["key_rotation_enabled"] = False
+    engine.provider_key_rotation[provider] = 1
+    with patch.object(engine, "_get_current_api_key", return_value="second") as get_key:
+        rotated = engine._rotate_api_key(provider)
+    get_key.assert_called_once_with(provider)
+    assert rotated == "second"
+    assert engine.key_usage_stats[provider]["key_0"]["rate_limited"] is False
+
+
+def test_rotate_api_key_single_key_returns_current(engine):
+    provider = _setup_rotation_provider(engine, keys=["solo-key"])
+    rotated = engine._rotate_api_key(provider)
+    assert rotated == "solo-key"
+    assert engine.provider_key_rotation[provider] == 0
+
+
+def test_rotate_api_key_changes_provider_index(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    rotated = engine._rotate_api_key(provider)
+    assert rotated in ("key-beta", "key-gamma")
+    assert engine.provider_key_rotation[provider] != 0
+    assert engine.key_usage_stats[provider]["key_0"]["rate_limited"] is True
+
+
+def test_handle_provider_failure_rate_limit_rotates_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    engine._handle_provider_failure(provider, "rate limit exceeded", 429)
+    assert engine.provider_key_rotation[provider] != 0
+    assert provider in engine.flagged_keys
+    assert engine.flagged_keys[provider]["error_type"] == "rate_limit"
+
+
+def test_handle_provider_failure_auth_error_rotates_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    engine._handle_provider_failure(provider, "invalid api key", 401)
+    assert engine.provider_key_rotation[provider] != 0
+    assert engine.flagged_keys[provider]["error_type"] == "auth_error"
+
+
+def test_handle_provider_failure_quota_exceeded_rotates_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    engine._handle_provider_failure(provider, "daily limit exceeded", 200)
+    assert engine.provider_key_rotation[provider] != 0
+    assert engine.flagged_keys[provider]["error_type"] == "quota_exceeded"
+
+
+def test_handle_provider_failure_server_error_does_not_rotate_key(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine._handle_provider_failure(provider, "internal server error", 500)
+    assert engine.provider_key_rotation[provider] == 0
+    assert provider in engine.flagged_keys
+
+
+def test_handle_provider_failure_unknown_rotates_after_two_failures(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    engine._handle_provider_failure(provider, "something weird", 418)
+    assert engine.provider_key_rotation[provider] == 0
+    engine._handle_provider_failure(provider, "something weird again", 418)
+    assert engine.provider_key_rotation[provider] != 0
+
+
+def test_handle_provider_failure_rate_limit_disabled_flags_provider(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.engine_settings["key_rotation_enabled"] = False
+    engine.provider_key_rotation[provider] = 0
+    engine._handle_provider_failure(provider, "rate limit exceeded", 429)
+    assert engine.provider_key_rotation[provider] == 0
+    assert provider in engine.flagged_keys
+
+
+def test_roll_api_key_multi_key_rotates(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.engine_settings["key_rotation_enabled"] = True
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    result = engine.roll_api_key(provider)
+    assert "Rolled" in result or "rolled" in result.lower()
+    assert engine.provider_key_rotation[provider] != 0
+
+
+def test_roll_api_key_disabled_reports_settings_message(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.engine_settings["key_rotation_enabled"] = False
+    with patch.object(engine, "_rotate_api_key", return_value="key-alpha"):
+        result = engine.roll_api_key(provider)
+    assert "disabled in engine settings" in result.lower()
+
+
+def test_roll_api_key_missing_api_keys_treated_as_empty(engine):
+    engine.providers["no_keys_provider"] = {"enabled": True, "format": "openai"}
+    result = engine.roll_api_key("no_keys_provider")
+    assert "0 key" in result.lower()
+
+
+def test_roll_api_key_message_truncates_long_key_preview(engine):
+    provider = _setup_rotation_provider(
+        engine,
+        keys=["abcdefghijklmnop", "key-beta", "key-gamma"],
+    )
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    result = engine.roll_api_key(provider)
+    assert "abcdefgh..." in result
+    assert "key #0" in result
+
+
+def test_roll_api_key_no_change_reports_staying_message(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    with patch.object(engine, "_rotate_api_key", return_value="key-alpha"):
+        result = engine.roll_api_key(provider)
+    assert "staying at key #0" in result.lower()
+
+
+def test_handle_provider_failure_flags_after_consecutive_limit(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.engine_settings["consecutive_failure_limit"] = 3
+    for _ in range(3):
+        engine._handle_provider_failure(provider, "internal server error", 500)
+    assert provider in engine.flagged_keys
+    assert engine.consecutive_failures[provider] == 3
 
 
 # === Error Classification Tests ===
