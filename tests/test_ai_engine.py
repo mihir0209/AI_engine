@@ -308,6 +308,70 @@ def test_roll_api_key_no_change_reports_staying_message(engine):
     assert "staying at key #0" in result.lower()
 
 
+def test_roll_api_key_provider_not_found_exact_message(engine):
+    result = engine.roll_api_key("missing_provider_xyz")
+    assert result == "Provider missing_provider_xyz not found"
+
+
+def test_roll_api_key_single_key_exact_no_op_message(engine):
+    provider = _setup_rotation_provider(engine, keys=["solo-key"])
+    result = engine.roll_api_key(provider)
+    assert result == f"Provider {provider} has only 1 key(s), no rolling needed"
+
+
+def test_roll_api_key_disabled_exact_message(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.engine_settings["key_rotation_enabled"] = False
+    with patch.object(engine, "_rotate_api_key", return_value="key-alpha"):
+        result = engine.roll_api_key(provider)
+    assert result == "⚠️ Key rotation is disabled in engine settings"
+
+
+def test_roll_api_key_successful_roll_message_format(engine):
+    provider = _setup_rotation_provider(
+        engine,
+        keys=["key-alpha", "key-beta", "key-gamma"],
+    )
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    result = engine.roll_api_key(provider)
+    new_index = engine.provider_key_rotation[provider]
+    assert result.startswith("✅ Rolled from key #0 (key-alph...) to key #")
+    assert f"to key #{new_index}" in result
+    new_key = engine.providers[provider]["api_keys"][new_index]
+    expected_preview = new_key if len(new_key) <= 8 else new_key[:8] + "..."
+    assert f"({expected_preview})" in result
+
+
+def test_roll_api_key_short_key_preview_no_truncation(engine):
+    provider = _setup_rotation_provider(
+        engine,
+        keys=["short01", "short02", "short03"],
+    )
+    engine.provider_key_rotation[provider] = 0
+    engine.key_usage_stats[provider]["key_0"]["last_used"] = datetime.now()
+    result = engine.roll_api_key(provider)
+    assert "..." not in result
+    assert "short01" in result
+
+
+def test_handle_provider_failure_service_unavailable_flags_no_rotation(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine._handle_provider_failure(provider, "service temporarily unavailable", 503)
+    assert provider in engine.flagged_keys
+    assert engine.provider_key_rotation[provider] == 0
+    assert engine.consecutive_failures[provider] == 1
+
+
+def test_handle_provider_failure_unknown_first_failure_no_rotation(engine):
+    provider = _setup_rotation_provider(engine)
+    engine.provider_key_rotation[provider] = 0
+    engine._handle_provider_failure(provider, "something weird", 418)
+    assert engine.provider_key_rotation[provider] == 0
+    assert engine.consecutive_failures[provider] == 1
+
+
 def test_handle_provider_failure_flags_after_consecutive_limit(engine):
     provider = _setup_rotation_provider(engine)
     engine.engine_settings["consecutive_failure_limit"] = 3

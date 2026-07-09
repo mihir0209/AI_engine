@@ -11,7 +11,8 @@ Added `mutmut>=2.6.0` to dev dependencies, configured `[tool.mutmut]` to target 
 
 | Hash | Message |
 |------|---------|
-| `e948ba4` | `chore: add mutmut mutation testing for key rotation` |
+| `0cbedfb` | `chore: add mutmut mutation testing for key rotation` |
+| `391728f` | `test: improve key rotation mutation kill coverage` |
 
 ## Configuration
 
@@ -38,6 +39,18 @@ Extended `tests/test_ai_engine.py` with targeted rotation-path unit tests:
 | `test_handle_provider_failure_*` (7) | rate_limit, auth_error, quota_exceeded, server_error, unknown×2, disabled rotation |
 | `test_roll_api_key_*` (6) | multi-key roll, disabled message, missing keys, preview truncation, no-change message |
 | `test_handle_provider_failure_flags_after_consecutive_limit` | consecutive-failure provider flagging |
+
+### Second pass (exact-message assertions)
+
+| Test | Targets |
+|------|---------|
+| `test_roll_api_key_provider_not_found_exact_message` | `roll_api_key` provider-not-found return string |
+| `test_roll_api_key_single_key_exact_no_op_message` | single-key `no rolling needed` substring |
+| `test_roll_api_key_disabled_exact_message` | disabled-settings message (exact) |
+| `test_roll_api_key_successful_roll_message_format` | success message with key indices/previews |
+| `test_roll_api_key_short_key_preview_no_truncation` | preview when `len(key) <= 8` (no `...`) |
+| `test_handle_provider_failure_service_unavailable_flags_no_rotation` | 503/service_unavailable flags provider, no rotation |
+| `test_handle_provider_failure_unknown_first_failure_no_rotation` | unknown error: no rotation until 2nd failure |
 
 Helper: `_setup_rotation_provider()` builds an isolated multi-key provider without touching live config.
 
@@ -66,7 +79,7 @@ mutmut run --max-children 2
 mutmut results --all true | grep -c killed
 ```
 
-## Initial Scan Results (full run, 1254 mutants)
+## Initial Scan Results (full run, 1254 mutants — before second-pass tests)
 
 | Metric | Count |
 |--------|------:|
@@ -94,9 +107,33 @@ After adding `roll_api_key` message/preview tests, spot retests confirmed kills:
 - `roll_api_key__mutmut_7` → **killed**
 - `roll_api_key__mutmut_10` → still survived (string/format mutant)
 
+## Second Scan Results (after exact-message tests, 1254 mutants)
+
+| Metric | Count |
+|--------|------:|
+| Total mutants | 1254 |
+| Killed 🎉 | 584 |
+| Survived 🙁 | 667 |
+| No tests / other | 3 |
+| **Overall kill rate** | **46.7%** |
+
+### Key-rotation function kill rates (second pass)
+
+| Function | Killed | Checked | Kill rate | Δ from initial |
+|----------|-------:|--------:|----------:|---------------:|
+| `_select_optimal_key` | 44 | 59 | **74.6%** | −1.7pp |
+| `_rotate_api_key` | 30 | 40 | **75.0%** | +2.5pp |
+| `_handle_provider_failure` | 65 | 120 | **54.2%** | +1.7pp |
+| `roll_api_key` | 30 | 43 | **69.8%** | **+37.2pp** |
+| **Rotation paths combined** | **169** | **262** | **64.5%** | **+6.9pp** |
+
+**>90% achieved on any function?** No — best is `_rotate_api_key` at 75.0%.
+
+Biggest gain: `roll_api_key` (+37.2pp) from exact substring assertions on return messages, key-index formatting, and short-key preview branches.
+
 ## Concerns / Follow-ups
 
-1. **Below 90% rotation-path goal:** `roll_api_key` (32.6%) and `_handle_provider_failure` (52.5%) remain below the plan's >90% aspiration. Many survivors are string-format mutants, default-argument tweaks, and non-rotation branches inside `_handle_provider_failure` (provider flagging, verbose logging, health-monitor side effects).
+1. **Below 90% rotation-path goal:** `roll_api_key` (69.8%) and `_handle_provider_failure` (54.2%) remain below the plan's >90% aspiration. Remaining survivors are mostly string-format mutants, default-argument tweaks, and non-rotation branches inside `_handle_provider_failure` (provider flagging, verbose logging, health-monitor side effects).
 
 2. **`last_used` required for rotation assertions:** `_select_optimal_key` clears `rate_limited` when `last_used` is `None`, so rotation tests must set `last_used` on the current key to observe index changes. This matches production behavior after keys have been used but is easy to miss in unit tests.
 
