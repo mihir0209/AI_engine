@@ -2,6 +2,20 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [1.0.1] - 2026-07-09
+
+### Documentation
+
+- README revamp: main chat + vision reply screenshots; link to full TUI guide
+- New [docs/TUI.md](docs/TUI.md) with all four terminal screenshots, shortcuts, and attachments
+- Docs updated to use `pip install ai-synapse[server]` (removed obsolete `requirements_server.txt`)
+
+### Repository cleanup
+
+- Stop tracking build artifacts (`*.egg-info/`, `dist/`, `__pycache__/`)
+- Remove committed runtime data (`data/workflows/workflows.json`); directory is gitignored and recreated locally
+- `.agent/` kept local only; added to `.gitignore`
+
 ## [1.0.0] - 2026-07-08
 
 ### PyPI reset (important)

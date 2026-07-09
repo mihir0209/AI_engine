@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-synapse"
-version = "1.0.0"
+version = "1.0.1"
 description = "Free multi-provider AI SDK with terminal TUI, OpenAI-compatible API, and 27+ provider routing"
 readme = "README.md"
 license = {text = "MIT"}
