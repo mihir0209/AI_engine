@@ -58,6 +58,8 @@ except ImportError as e:
 # Load environment variables
 load_dotenv()
 
+_ENGINE_MODE = os.getenv("AI_ENGINE_MODE", "all").lower()
+
 
 class AI_engine(ProviderRequestMixin, StressTestMixin):
     """
@@ -194,11 +196,23 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             verbose_print(f"⚠️  Failure limit: {self.engine_settings.get('consecutive_failure_limit', 5)} consecutive failures", self.verbose)
             verbose_print(f"💾 Persistent statistics: {'Loaded' if self.stats_manager.get_stats_summary()['total_providers'] > 0 else 'None found'}", self.verbose)
 
+    def _provider_matches_mode(self, config: dict) -> bool:
+        modes = config.get("modes", ["live"])
+        if _ENGINE_MODE == "all":
+            return True
+        if _ENGINE_MODE == "testing":
+            return "testing" in modes
+        if _ENGINE_MODE == "live":
+            return "live" in modes
+        return True
+
     def _load_enabled_providers(self) -> Dict[str, Dict[str, Any]]:
         """Load only enabled providers with valid API keys from external config"""
         enabled_providers = {}
 
         for name, config in AI_CONFIGS.items():
+            if not self._provider_matches_mode(config):
+                continue
             if config.get("enabled", True):
                 # Check if provider needs API keys
                 if config.get("auth_type") and config.get("api_keys"):

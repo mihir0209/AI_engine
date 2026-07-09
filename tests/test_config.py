@@ -81,3 +81,22 @@ def test_autodecide_config():
     assert "cache_duration" in AUTODECIDE_CONFIG
     assert isinstance(AUTODECIDE_CONFIG["cache_duration"], int)
     assert AUTODECIDE_CONFIG["cache_duration"] > 0
+
+
+def test_provider_config_modes_default():
+    from core.config import ProviderConfig
+    cfg = ProviderConfig(id=1, priority=1, endpoint="http://x", model="m")
+    assert cfg.modes == ["live"]
+
+
+def test_provider_config_modes_accepts_both():
+    from core.config import ProviderConfig
+    cfg = ProviderConfig(id=1, priority=1, endpoint="http://x", model="m", modes=["live", "testing"])
+    assert "testing" in cfg.modes
+
+
+def test_test_harness_provider_exists():
+    from core.config import AI_CONFIGS
+    assert "test_harness" in AI_CONFIGS
+    assert AI_CONFIGS["test_harness"]["modes"] == ["testing"]
+    assert len(AI_CONFIGS["test_harness"]["api_keys"]) == 3

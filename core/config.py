@@ -29,6 +29,7 @@ class ProviderConfig(BaseModel):
     backoff: int = Field(5, ge=0, le=60)
     format: str = "openai"
     enabled: bool = True
+    modes: List[str] = Field(default_factory=lambda: ["live"])
     rpm_limit: Optional[int] = None
     daily_limit: Optional[int] = None
     current_key_index: int = 0
@@ -49,6 +50,14 @@ class ProviderConfig(BaseModel):
         if v not in valid_formats:
             raise ValueError(f"format must be one of {valid_formats}")
         return v
+
+    @field_validator("modes")
+    @classmethod
+    def validate_modes(cls, v):
+        allowed = {"live", "testing"}
+        if not v or not all(m in allowed for m in v):
+            raise ValueError(f"modes must be non-empty subset of {allowed}")
+        return list(dict.fromkeys(v))
 
 
 class EngineSettings(BaseModel):
@@ -94,6 +103,7 @@ AI_CONFIGS = {
         "enabled": True,  # Enable only when g4f Docker is running
         "rpm_limit": None,
         "daily_limit": None,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -116,6 +126,7 @@ AI_CONFIGS = {
         "enabled": False,
         "rpm_limit": None,
         "daily_limit": None,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -139,6 +150,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("GROQ_API_KEY")),
         "rpm_limit": 30,
         "daily_limit": 14400,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -161,6 +173,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("OPENROUTER_API_KEY")),
         "rpm_limit": 20,
         "daily_limit": 200,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -183,6 +196,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("GEMINI_API_KEY")),
         "rpm_limit": 15,
         "daily_limit": 1500,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -205,6 +219,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("NVIDIA_API_KEY")),
         "rpm_limit": 30,
         "daily_limit": 500,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -227,6 +242,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("CEREBRAS_API_KEY")),
         "rpm_limit": 30,
         "daily_limit": 1000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -252,6 +268,7 @@ AI_CONFIGS = {
         ),
         "rpm_limit": 100,
         "daily_limit": 10000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -274,6 +291,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("GITHUB_API_KEY")),
         "rpm_limit": 15,
         "daily_limit": 150,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -296,6 +314,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("VERCEL_API_KEY")),
         "rpm_limit": 15,
         "daily_limit": 150,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -319,6 +338,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("COHERE_API_KEY")),
         "rpm_limit": 20,
         "daily_limit": 1000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -342,6 +362,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("MISTRAL_API_KEY")),
         "rpm_limit": 60,
         "daily_limit": 50000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -365,6 +386,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("HUGGINGFACE_API_KEY")),
         "rpm_limit": 30,
         "daily_limit": 1000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -388,6 +410,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -411,6 +434,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("KILO_API_KEY")),
         "rpm_limit": 200,
         "daily_limit": 1000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -434,6 +458,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("HCNSEC_API_KEY")),
         "rpm_limit": None,
         "daily_limit": None,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -456,6 +481,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("MIMO_API_KEY")),
         "rpm_limit": None,
         "daily_limit": None,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -482,6 +508,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 25,
         "daily_limit": 1000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -504,6 +531,7 @@ AI_CONFIGS = {
         "enabled": False,  # Requires daily Discord check-in
         "rpm_limit": 10,
         "daily_limit": 250,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -526,6 +554,7 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("LLM7_API_KEY")),
         "rpm_limit": 40,
         "daily_limit": 2400,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -548,6 +577,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -571,6 +601,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -594,6 +625,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -617,6 +649,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -640,6 +673,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 60,
         "daily_limit": 50000,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -663,6 +697,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -686,6 +721,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -708,6 +744,7 @@ AI_CONFIGS = {
         "enabled": True,
         "rpm_limit": 10,
         "daily_limit": 100,
+        "modes": ["live"],
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
@@ -731,6 +768,30 @@ AI_CONFIGS = {
         "enabled": bool(os.getenv("ZAI_API_KEY")),
         "rpm_limit": 30,
         "daily_limit": 1000,
+        "modes": ["live"],
+        "current_key_index": 0,
+        "consecutive_failures": 0,
+    },
+    # === TEST HARNESS (local mock server) ===
+    "test_harness": {
+        "id": 99,
+        "priority": 1,
+        "api_keys": ["test-key-alpha", "test-key-beta", "test-key-gamma"],
+        "endpoint": "http://127.0.0.1:18765/v1/chat/completions",
+        "model_endpoint": "http://127.0.0.1:18765/v1/models",
+        "model_endpoint_auth": False,
+        "model": "test-model",
+        "method": "POST",
+        "max_tokens": 4096,
+        "temperature": 0.7,
+        "timeout": 30,
+        "retries": 3,
+        "backoff": 5,
+        "format": "openai",
+        "enabled": True,
+        "modes": ["testing"],
+        "rpm_limit": None,
+        "daily_limit": None,
         "current_key_index": 0,
         "consecutive_failures": 0,
     },
