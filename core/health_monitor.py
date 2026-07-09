@@ -130,31 +130,37 @@ class HealthMonitor:
             
             return True
     
+    def _provider_health_dict(self, health: ProviderHealth) -> Dict:
+        """Build provider health response (caller must hold _lock)."""
+        return {
+            "provider": health.provider,
+            "status": health.status,
+            "uptime_percent": round(health.uptime_percent, 2),
+            "total_checks": health.total_checks,
+            "successful": health.successful_checks,
+            "failed": health.failed_checks,
+            "consecutive_failures": health.consecutive_failures,
+            "avg_response_time": round(health.avg_response_time, 3),
+            "last_check": datetime.fromtimestamp(health.last_check).isoformat() if health.last_check else None,
+            "last_success": datetime.fromtimestamp(health.last_success).isoformat() if health.last_success else None,
+            "last_failure": datetime.fromtimestamp(health.last_failure).isoformat() if health.last_failure else None,
+        }
+
     def get_provider_health(self, provider_name: str) -> Dict:
         """Get health status for a provider"""
         with self._lock:
             if provider_name not in self.providers:
                 return {"status": "unknown", "uptime_percent": 0}
-            
-            health = self.providers[provider_name]
-            return {
-                "provider": health.provider,
-                "status": health.status,
-                "uptime_percent": round(health.uptime_percent, 2),
-                "total_checks": health.total_checks,
-                "successful": health.successful_checks,
-                "failed": health.failed_checks,
-                "consecutive_failures": health.consecutive_failures,
-                "avg_response_time": round(health.avg_response_time, 3),
-                "last_check": datetime.fromtimestamp(health.last_check).isoformat() if health.last_check else None,
-                "last_success": datetime.fromtimestamp(health.last_success).isoformat() if health.last_success else None,
-                "last_failure": datetime.fromtimestamp(health.last_failure).isoformat() if health.last_failure else None
-            }
-    
+
+            return self._provider_health_dict(self.providers[provider_name])
+
     def get_all_health(self) -> Dict[str, Dict]:
         """Get health status for all providers"""
         with self._lock:
-            return {name: self.get_provider_health(name) for name in self.providers}
+            return {
+                name: self._provider_health_dict(health)
+                for name, health in self.providers.items()
+            }
     
     def get_healthy_providers(self) -> List[str]:
         """Get list of healthy provider names"""

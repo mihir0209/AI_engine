@@ -145,38 +145,7 @@ class TestRouterIntegration:
         assert switch_resp.status_code == 200
 
 
-class TestServerIntegration:
-    """Integration tests for server endpoints"""
-
-    def test_health_check(self, server_client):
-        resp = server_client.get("/health")
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "healthy"
-
-    def test_models_endpoint(self, server_client):
-        resp = server_client.get("/v1/models")
-        assert resp.status_code == 200
-        assert resp.json()["object"] == "list"
-
-    def test_providers_endpoint(self, server_client):
-        resp = server_client.get("/api/providers")
-        assert resp.status_code == 200
-        assert len(resp.json()) > 0
-
-    def test_statistics_endpoint(self, server_client):
-        resp = server_client.get("/api/statistics")
-        assert resp.status_code == 200
-        assert "summary" in resp.json()
-
-    def test_status_endpoint(self, server_client):
-        resp = server_client.get("/api/status")
-        assert resp.status_code == 200
-        assert "total_providers" in resp.json()
-
-    def test_provider_health_endpoint(self, server_client):
-        resp = server_client.get("/api/providers/health")
-        assert resp.status_code == 200
-        assert "providers" in resp.json()
+# Server endpoint coverage moved to tests/features/test_server_*.py
 
 
 
