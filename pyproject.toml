@@ -93,9 +93,6 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 timeout = 15
-env = [
-    "AI_ENGINE_MODE=testing",
-]
 markers = [
     "asyncio: async Textual integration tests",
     "live: hits real provider APIs (skipped by default)",

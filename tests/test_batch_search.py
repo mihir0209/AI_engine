@@ -182,7 +182,7 @@ def test_model_search_filter_provider():
     ])
     
     # Filter by provider
-    groq_models = [m for m in cache.get_models() if m.startswith("groq/")]
+    groq_models = [m for m in cache.get_models() if m.startswith("groq|")]
     assert len(groq_models) == 2
 
 
@@ -212,10 +212,10 @@ def test_model_search_combined():
     ])
     
     # Combined filter
-    results = [m for m in cache.get_models() 
-               if m.startswith("groq/") and "llama" in m.lower()]
+    results = [m for m in cache.get_models()
+               if m.startswith("groq|") and "llama" in m.lower()]
     assert len(results) == 1
-    assert results[0] == "groq/llama-3.3-70b"
+    assert results[0] == "groq|llama-3.3-70b"
 
 
 def test_model_search_no_match():
