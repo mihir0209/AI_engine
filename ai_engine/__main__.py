@@ -87,15 +87,15 @@ def _cmd_tui(args):
     if pkg_root not in sys.path:
         sys.path.insert(0, pkg_root)
 
+    from core.env_bootstrap import bootstrap_user_environment
+
+    bootstrap_user_environment()
     if not os.environ.get("CDN_CONFIG_URL"):
         os.environ["CDN_CONFIG_URL"] = "default"
 
-    from core.config_sync import config_fetcher
-    config_fetcher.initialize()
-    from ai_engine.tui import ChatTUI
+    from ai_engine.tui import run_tui
 
-    app = ChatTUI(model=args.model, provider=args.provider)
-    app.run()
+    run_tui(model=args.model, provider=args.provider)
 
 
 def _cmd_chat(args):

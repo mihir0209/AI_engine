@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ai_engine.tui_storage import (
+from ai_engine.tui.storage import (
     ChatStorage,
     _normalize_cwd,
     export_chat_json,
@@ -80,6 +80,23 @@ def test_system_prompt_persisted(storage):
     )
     loaded = storage.load()
     assert loaded["chats"][1]["system_prompt"] == "You are concise."
+
+
+def test_export_json_redacts_home_image_paths(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    chat = {
+        "title": "Img",
+        "messages": [
+            {
+                "role": "user",
+                "content": "look",
+                "_image_path": str(home / ".ai-engine" / "attachments" / "shot.png"),
+            },
+        ],
+    }
+    payload = export_chat_json(chat, chat_id=1)
+    assert payload["messages"][0]["image_path"].startswith("~/")
 
 
 def test_export_markdown_and_json(tmp_path):
@@ -171,3 +188,30 @@ def test_stale_chat_files_removed(storage):
         last_cwd=os.getcwd(),
     )
     assert not stale.exists()
+
+
+def test_load_tolerates_corrupt_meta_ids(storage):
+    chats = {
+        1: {"title": "A", "messages": [{"role": "user", "content": "Hi"}]},
+        2: {"title": "B", "messages": []},
+    }
+    storage.save_session(
+        chats=chats,
+        chat_counter=2,
+        current_chat_id=1,
+        chat_order=[1, 2],
+        last_cwd="/tmp/project",
+    )
+    with open(storage.meta_file, encoding="utf-8") as f:
+        meta = json.load(f)
+    meta["current_chat_id"] = "oops"
+    meta["chat_counter"] = "bad"
+    meta["chat_order"] = ["1", "nope", 2, "2"]
+    with open(storage.meta_file, "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+    loaded = storage.load()
+    assert loaded is not None
+    assert loaded["current_chat_id"] == 2
+    assert loaded["chat_counter"] == 2
+    assert loaded["chat_order"] == [1, 2]

@@ -2,12 +2,47 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [1.0.2] - 2026-07-09
+
+### Fixed
+
+- Integration tests no longer write to real `~/.ai-engine/chatdata/` (prevents accidental chat deletion)
+- Env layering: `~/.ai-engine/.env` → `./.env` → `AI_SYNAPSE_ENV` → shell exports (documented in README)
+- Per-user config: `~/.ai-engine/.env`, `~/.ai-engine/config.json`, `~/.ai-engine/data/` for pip installs
+
+### Fixed (TUI)
+
+- File picker routes non-image files through text inject (not vision attach)
+- Generation binds to the chat that started it; block chat switch while streaming
+- Persist partial assistant text when generation is stopped
+- Surface session save failures instead of swallowing errors
+- Remove `os.chdir` from worker threads; use absolute model cache path
+- Cap attached image size at 20 MB; drop empty-stream auto-retry
+- Harden `ChatStorage.load()` against corrupt `meta.json` IDs
+- `python -m ai_engine tui` delegates to `run_tui()` for consistent init
+- Slash fuzzy suggestions include provider, image, rename, delete, favorite
+
+### Architecture (P2 review)
+
+- TUI package moved to `ai_engine/tui/` (`app`, `widgets`, `screens`, `common`, `storage`, etc.)
+- Split TUI into focused modules under `ai_engine/tui/`
+- Shared routing deduped between `tui.py` and `tui_media.py`
+- SSRF guard + download size cap for model image URLs in `tui_media`
+- JSON export redacts home-directory prefixes from attachment paths
+- Model cache discovery logs via `verbose_print` only (no stdout spam in TUI)
+- PyPI classifier set to Beta until integration coverage matures
+
+### Tests
+
+- `tests/test_tui_media.py` — routing, URL allowlist, data-URI persistence
+- `tests/test_tui_integration.py` — Textual Pilot mount, new chat, processing guard
+
 ## [1.0.1] - 2026-07-09
 
 ### Documentation
 
 - README revamp: main chat + vision reply screenshots; link to full TUI guide
-- New [docs/TUI.md](docs/TUI.md) with all four terminal screenshots, shortcuts, and attachments
+- New [docs/TUI.md](docs/TUI.md) with three terminal screenshots, shortcuts, and attachments
 - Docs updated to use `pip install ai-synapse[server]` (removed obsolete `requirements_server.txt`)
 
 ### Repository cleanup

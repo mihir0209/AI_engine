@@ -147,7 +147,9 @@ class ModelCache:
             with self._lock:
                 self.cache_data = cache_data
 
-            print(f"✅ Model discovery completed. Found {len(optimized_models)} models total.")
+            verbose_print(
+                f"✅ Model discovery completed. Found {len(optimized_models)} models total."
+            )
             verbose_print(f"💾 Saved {len(optimized_models)} models to optimized cache")
         except Exception as e:
             verbose_print(f"❌ Error saving model cache: {e}")

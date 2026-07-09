@@ -21,7 +21,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_CDN_TEMPLATE = "https://cdn.jsdelivr.net/gh/{repo}@{branch}/config.py"
 DEFAULT_REPO = "mihir0209/AI_engine"
 DEFAULT_TTL = 86400
-CACHE_DIR = Path("data")
+
+try:
+    from core.user_paths import USER_DATA_DIR
+
+    CACHE_DIR = USER_DATA_DIR
+except ImportError:
+    CACHE_DIR = Path("data")
+
 CACHE_FILE = CACHE_DIR / "cdn_config_cache.py"
 CACHE_META = CACHE_DIR / "cdn_config_meta.json"
 LOCK_FILE = CACHE_DIR / "cdn_config.lock"

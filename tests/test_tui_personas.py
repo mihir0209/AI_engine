@@ -1,7 +1,7 @@
 """Tests for TUI persona loading."""
 import json
 
-from ai_engine.tui_personas import find_persona, load_personas
+from ai_engine.tui.personas import find_persona, load_personas
 
 
 def test_load_builtin_personas():

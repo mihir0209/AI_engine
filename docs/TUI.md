@@ -9,6 +9,24 @@ python -m ai_engine tui
 
 Data is stored under `~/.ai-engine/` (chats, preferences, personas, clipboard image attachments).
 
+### Configuration
+
+API keys load in layers (same variable name — **higher layer wins**; different names are merged):
+
+| Priority | Source |
+|----------|--------|
+| 1 (highest) | Shell exports (`export GROQ_API_KEY=…`) |
+| 2 | `AI_SYNAPSE_ENV=/path/to/profile.env` |
+| 3 | `./.env` in current working directory |
+| 4 (lowest) | `~/.ai-engine/.env` global file |
+
+```bash
+mkdir -p ~/.ai-engine
+cp .env.example ~/.ai-engine/.env   # edit with your keys
+```
+
+Optional JSON overrides: `~/.ai-engine/config.json`. Cache: `~/.ai-engine/data/`.
+
 ---
 
 ## Screenshots
@@ -46,9 +64,11 @@ Send with an attached image; the model describes it. User messages show a **path
 | `Ctrl+N` | New chat |
 | `Ctrl+F` | Favorite chat |
 | `Ctrl+Shift+F` | Search chats |
-| `Ctrl+C` / `y` | Copy (selection first, else last reply) |
+| `Ctrl+C` / `y` | Copy when composer focused (not terminal interrupt) |
 | `Ctrl+P` | Command palette |
-| `Ctrl+Q` | Quit |
+| `Ctrl+Q` | Quit (or stop generation with `■` / `Esc` while streaming) |
+
+While a reply is streaming, chat switching is blocked until you stop generation (`■` or `Esc`).
 
 ---
 
@@ -70,7 +90,12 @@ Type `/` for slash-command suggestions.
 
 - **File path** — stored as `_image_path` in chat JSON; shown as `📎 filename` + path in the user bubble.
 - **Clipboard paste** — copied into `~/.ai-engine/attachments/` so the path survives the session.
-- **Vision** — image bytes are sent to vision-capable models on the next request.
+- **Vision** — image bytes are sent to vision-capable models on the next request (20 MB max per image).
+- **Text files** — `@file` or the file picker injects `.py`, `.md`, and other non-image files as code blocks in the composer.
+
+### Security note
+
+`@attach`, `/read`, and the file picker can read **any file your user account can open** on disk (including `~/.ssh`, env files, etc.). Content you load is sent to remote LLM providers on the next message. Use only in trusted environments; avoid attaching secrets.
 
 ---
 

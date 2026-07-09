@@ -16,8 +16,16 @@ def _load_config_json(config_path: str = None) -> Dict[str, Any]:
     if config_path:
         path = Path(config_path)
     else:
-        # Default: config.json next to this package
-        path = Path(__file__).parent / "config.json"
+        try:
+            from core.user_paths import USER_CONFIG_FILE, ensure_user_dirs
+
+            ensure_user_dirs()
+            if USER_CONFIG_FILE.is_file():
+                path = USER_CONFIG_FILE
+            else:
+                path = Path(__file__).parent / "config.json"
+        except ImportError:
+            path = Path(__file__).parent / "config.json"
 
     if path.exists():
         with open(path) as f:
@@ -72,6 +80,13 @@ def _init_engine(config: Dict[str, Any]):
     """Initialize AI_engine from merged config."""
     import sys
     import os
+
+    try:
+        from core.env_bootstrap import bootstrap_user_environment
+
+        bootstrap_user_environment()
+    except ImportError:
+        pass
     # Add parent directory (project root) to sys.path so core/ and config.py are findable
     pkg_dir = str(Path(__file__).parent.parent)
     if pkg_dir not in sys.path:

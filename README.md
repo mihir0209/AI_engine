@@ -18,6 +18,62 @@ pip install ai-synapse[all]      # SDK + TUI + server extras
 
 ---
 
+## Configuration
+
+Provider API keys and settings are loaded in **layers**. When the same variable name appears in multiple places, the **higher layer wins**. Different names are **merged** (global baseline + project-specific extras).
+
+| Priority | Source | Typical use |
+|----------|--------|-------------|
+| **1** (highest) | Shell / container env (`export GROQ_API_KEY=…`) | CI, Docker, secrets managers |
+| **2** | `AI_SYNAPSE_ENV=/path/to/profile.env` | Named profiles (`work.env`, `personal.env`) |
+| **3** | `./.env` in the **current working directory** | Git clone, venv, per-project overrides |
+| **4** (lowest) | `~/.ai-engine/.env` | Global config after `pip install` (any cwd) |
+
+### Global setup (pip install)
+
+Works from any directory — recommended default:
+
+```bash
+mkdir -p ~/.ai-engine
+cp .env.example ~/.ai-engine/.env
+# edit ~/.ai-engine/.env — add GROQ_API_KEY, OPENROUTER_API_KEY, etc.
+python -m ai_engine tui
+```
+
+### Project overrides (venv / git clone)
+
+Keep shared keys in `~/.ai-engine/.env`. Put **only what differs** in the repo’s `./.env`:
+
+```bash
+# ~/.ai-engine/.env     → GROQ_API_KEY, OPENROUTER_API_KEY (shared)
+# ./.env                → OPENROUTER_API_KEY=test-key  (overrides that one key here)
+pip install -e ".[tui]"
+python -m ai_engine tui
+```
+
+Running from a project directory loads both files; `./.env` overrides matching names.
+
+### Explicit profile file
+
+Point at an extra env file (all file layers still load; this one wins on **same-named** variables):
+
+```bash
+AI_SYNAPSE_ENV=~/configs/ai-work.env python -m ai_engine tui
+```
+
+Merge order: `~/.ai-engine/.env` → `./.env` → `AI_SYNAPSE_ENV` file → shell exports (highest).
+
+### Optional paths
+
+| File | Purpose |
+|------|---------|
+| `~/.ai-engine/config.json` | Provider priorities / enable flags (JSON) |
+| `~/.ai-engine/data/` | Model cache, CDN config cache |
+
+See [`.env.example`](.env.example) for all supported variables.
+
+---
+
 ## Terminal chat
 
 ![Main chat](docs/images/tui_1_main_chat.png)
@@ -56,7 +112,8 @@ ai-engine version
 ## Local server (optional)
 
 ```bash
-cp .env.example .env
+# Global keys (or use ./.env in the server directory instead)
+mkdir -p ~/.ai-engine && cp .env.example ~/.ai-engine/.env
 pip install ai-synapse[server]
 python -m ai_engine serve
 ```

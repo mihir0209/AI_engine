@@ -8,17 +8,12 @@ Usage:
 """
 import os
 import re
-import shutil
 import sys
 import time
 import base64
 import mimetypes
-import tempfile
 import threading
 import subprocess
-import urllib.request
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -27,23 +22,12 @@ except ImportError:
     rf_process = None
     fuzz = None
 
-try:
-    from PIL import Image as PILImage
-    from rich_pixels import HalfcellRenderer, Pixels as RichPixels
-except ImportError:
-    PILImage = None
-    RichPixels = None
-    HalfcellRenderer = None
-
-_PIXELS_AVAILABLE = PILImage is not None and RichPixels is not None
-
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Footer, Static, Button, TextArea, Markdown, ListView, ListItem, Label,
     DirectoryTree, LoadingIndicator, Input,
 )
-from markdown_it import MarkdownIt
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.screen import ModalScreen, Screen
@@ -52,200 +36,84 @@ from textual.css.query import NoMatches
 from textual.command import Provider, Hit, DiscoveryHit
 from textual.system_commands import SystemCommandsProvider
 
-pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if pkg_root not in sys.path:
     sys.path.insert(0, pkg_root)
 
-from ai_engine.tui_files import FileHit, build_file_index, match_files
-from ai_engine.tui_media import generate_image
-from ai_engine.tui_personas import Persona, find_persona, load_personas
-from ai_engine.tui_preferences import PreferencesStore
-from ai_engine.tui_slash import SlashHit, match_slash_commands
-from ai_engine.tui_storage import (
+from .common import (
+    ATTACHMENTS_DIR,
+    IMAGE_EXTENSIONS,
+    MAX_IMAGE_BYTES,
+    bind_model_cache_to_pkg_root,
+    is_image_path,
+    _format_image_ref,
+    _user_message_display,
+    _is_ephemeral_attachment,
+    pkg_root as _pkg_root,
+)
+from .files import FileHit, build_file_index, match_files
+from .media import generate_image
+from .model_index import (
+    MODEL_PAGE_SIZE,
+    ModelEntry,
+    ModelIndex,
+    favorite_key,
+    parse_favorite_key,
+    parse_model_entry,
+)
+from .personas import Persona, find_persona, load_personas
+from .preferences import PreferencesStore
+from .routing import (
+    intent_provider_priority,
+    model_name_matches,
+    pick_route_by_priority,
+    provider_priority,
+)
+from .slash import SlashHit, match_slash_commands
+from .storage import (
     ChatStorage,
     _normalize_cwd,
     _sanitize_export_filename,
     write_chat_export,
 )
+from .widgets import (
+    ChatMarkdown,
+    ComposerInput,
+    FileSuggest,
+    ImagePreview,
+    MessageBlock,
+    PendingAttachment,
+    PersonaButton,
+    PersonaPanel,
+    SlashSuggest,
+    TerminalImage,
+    TypingIndicator,
+    UserMessage,
+)
+from .screens import (
+    ChatCommandProvider,
+    ConfirmDeleteScreen,
+    ExportChatScreen,
+    FilePickerScreen,
+    ModelPickerScreen,
+    PickerResult,
+    ProviderPickerScreen,
+    RenameChatScreen,
+    SystemPromptScreen,
+)
 
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif"}
-_MODEL_PAGE_SIZE = 100
-
-
-def _chat_markdown_parser() -> MarkdownIt:
-    """GFM-style parser tuned for chat rendering."""
-    return MarkdownIt("gfm-like", {"breaks": True, "html": False, "linkify": True})
-
-
-ATTACHMENTS_DIR = Path.home() / ".ai-engine" / "attachments"
-
-
-def _format_image_ref(path: str) -> str:
-    name = os.path.basename(path) or path
-    return f"[dim]📎 {name}[/]\n[dim]{path}[/]"
-
-
-def _user_message_display(text: str, image_path: str | None = None) -> str:
-    body = (text or "").strip()
-    if image_path:
-        ref = _format_image_ref(image_path)
-        return f"{body}\n\n{ref}" if body else ref
-    return body
-
-
-def _is_ephemeral_attachment(path: str) -> bool:
-    abs_path = os.path.abspath(path)
-    tmp = os.path.abspath(tempfile.gettempdir())
-    return abs_path.startswith(tmp + os.sep) or "/tmp/" in abs_path
-
-
-_IMAGE_SIZE_PRESETS = {
-    # (max terminal columns, max image pixel height — half-cell ≈ height/2 rows)
-    "preview": (68, 44),
-    "chat": (80, 52),
-    "large": (84, 60),
-}
-
-
-def _fit_image_dimensions(
-    width: int, height: int, max_w: int, max_h: int
-) -> tuple[int, int]:
-    scale = min(max_w / max(width, 1), max_h / max(height, 1), 1.0)
-    new_w = max(1, int(width * scale))
-    new_h = max(1, int(height * scale))
-    if new_h % 2:
-        new_h += 1
-    return new_w, new_h
-
-
-def _image_size_key(*, compact: bool = False, size: str | None = None) -> str:
-    if size in _IMAGE_SIZE_PRESETS:
-        return size
-    return "preview" if compact else "chat"
-
-
-def _pixels_from_path(
-    path: str, *, compact: bool = False, size: str | None = None
-):
-    """Render an image as rich-pixels (half-cell, LANCZOS). Returns None if unavailable."""
-    if not _PIXELS_AVAILABLE or not os.path.exists(path):
-        return None
-    preset = _image_size_key(compact=compact, size=size)
-    max_w, max_h = _IMAGE_SIZE_PRESETS[preset]
-    try:
-        with PILImage.open(path) as im:
-            im = im.convert("RGBA")
-            w, h = im.size
-            new_w, new_h = _fit_image_dimensions(w, h, max_w, max_h)
-            if (new_w, new_h) != (w, h):
-                im = im.resize((new_w, new_h), PILImage.Resampling.LANCZOS)
-            renderer = HalfcellRenderer() if HalfcellRenderer else None
-            return RichPixels.from_image(im, resize=None, renderer=renderer)
-    except Exception:
-        return None
-
-
-def _chafa_fallback(
-    path: str, *, compact: bool = False, size: str | None = None
-) -> str | None:
-    """Optional chafa fallback when rich-pixels is not installed."""
-    preset = _image_size_key(compact=compact, size=size)
-    chafa_sizes = {
-        "preview": "68x22",
-        "chat": "80x26",
-        "large": "84x30",
-    }
-    try:
-        result = subprocess.run(
-            [
-                "chafa",
-                "--size", chafa_sizes.get(preset, "80x26"),
-                "--symbols",
-                "--fill", "space",
-                path,
-            ],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout
-    except Exception:
-        pass
-    return None
-
-
-def _is_image_path(path: str) -> bool:
-    return Path(path).suffix.lower() in IMAGE_EXTENSIONS
-
-
-def _parse_model_entry(entry: str) -> tuple[str, str | None, str, str]:
-    """Return (api_model, provider, display_label, plain_display) from a cache entry."""
-    if "|" in entry:
-        provider, model = entry.split("|", 1)
-        display = model.split("/")[-1] if "/" in model else model
-        return model, provider, f"{display}  [dim]({provider})[/]", display
-    if "/" in entry:
-        provider, model = entry.split("/", 1)
-        return model, provider, f"{model}  [dim]({provider})[/]", model
-    return entry, None, entry, entry
-
-
-@dataclass(frozen=True, slots=True)
-class ModelEntry:
-    api_model: str
-    provider: str | None
-    label: str
-    plain: str
-    search_key: str
-
-
-class ModelIndex:
-    """Pre-indexed model list for instant picker search."""
-
-    __slots__ = ("entries", "_choices")
-
-    def __init__(self, raw_models: list[str]):
-        from core.model_cache import sanitize_model_cache_entry
-
-        entries: list[ModelEntry] = []
-        for raw in raw_models:
-            cleaned = sanitize_model_cache_entry(raw) or raw
-            api_model, provider, label, plain = _parse_model_entry(cleaned)
-            search_key = f"{plain} {api_model} {provider or ''}".lower()
-            entries.append(ModelEntry(api_model, provider, label, plain, search_key))
-        entries.sort(key=lambda e: e.plain.lower())
-        self.entries = entries
-        self._choices = [e.search_key for e in entries]
-
-    @classmethod
-    def build(cls, raw_models: list[str]) -> "ModelIndex":
-        return cls(raw_models)
-
-    def search(self, query: str, *, limit: int | None = 200) -> list[ModelEntry]:
-        q = query.strip().lower()
-        max_hits = len(self.entries) if limit is None else limit
-        if not q:
-            return list(self.entries) if limit is None else self.entries[:limit]
-
-        if rf_process is not None and fuzz is not None:
-            hits = rf_process.extract(
-                q,
-                self._choices,
-                scorer=fuzz.WRatio,
-                limit=max_hits,
-                score_cutoff=35,
-            )
-            if hits:
-                return [self.entries[idx] for _, _, idx in hits]
-
-        tokens = q.split()
-        results: list[ModelEntry] = []
-        for entry in self.entries:
-            if all(tok in entry.search_key for tok in tokens):
-                results.append(entry)
-                if limit is not None and len(results) >= limit:
-                    break
-        return results
-
+# Backward-compatible aliases for tests and internal callers
+_MODEL_PAGE_SIZE = MODEL_PAGE_SIZE
+_MAX_IMAGE_BYTES = MAX_IMAGE_BYTES
+_bind_model_cache_to_pkg_root = bind_model_cache_to_pkg_root
+_is_image_path = is_image_path
+_parse_model_entry = parse_model_entry
+_favorite_key = favorite_key
+_parse_favorite_key = parse_favorite_key
+_provider_priority = provider_priority
+_intent_provider_priority = intent_provider_priority
+_pick_route_by_priority = pick_route_by_priority
+_model_name_matches = model_name_matches
 
 def _load_providers() -> list[str]:
     try:
@@ -256,25 +124,6 @@ def _load_providers() -> list[str]:
         )
     except Exception:
         return []
-
-
-def _favorite_key(model: str, provider: str | None) -> str:
-    return f"{model}|{provider or ''}"
-
-
-def _parse_favorite_key(key: str) -> tuple[str, str | None]:
-    if "|" in key:
-        model, provider = key.split("|", 1)
-        return model, provider or None
-    return key, None
-
-
-def _provider_priority(provider: str | None) -> int:
-    try:
-        from core.config import AI_CONFIGS
-        return int(AI_CONFIGS.get(provider or "", {}).get("priority", 999))
-    except Exception:
-        return 999
 
 
 def _iter_cached_model_entries() -> list[tuple[str, str | None]]:
@@ -290,34 +139,6 @@ def _iter_cached_model_entries() -> list[tuple[str, str | None]]:
         api_model, provider, _, _ = _parse_model_entry(raw)
         entries.append((api_model, provider))
     return entries
-
-
-def _intent_provider_priority(provider: str | None) -> int:
-    """Prefer direct providers over gateways when auto-routing by intent."""
-    score = _provider_priority(provider)
-    if provider in {"openrouter", "vercel", "opencode_zen"}:
-        score += 50
-    return score
-
-
-def _pick_route_by_priority(
-    candidates: list[tuple[str, str | None]],
-    *,
-    for_intent: bool = False,
-) -> tuple[str, str | None] | None:
-    if not candidates:
-        return None
-    key_fn = _intent_provider_priority if for_intent else _provider_priority
-    ranked = sorted(candidates, key=lambda item: key_fn(item[1]))
-    return ranked[0]
-
-
-def _model_name_matches(candidate: str, target: str) -> bool:
-    c = candidate.lower().strip()
-    t = target.lower().strip()
-    if not c or not t:
-        return False
-    return c == t or c.endswith(f"/{t}") or t.endswith(f"/{c}") or c.split("/")[-1] == t.split("/")[-1]
 
 
 def _apply_intent_routing(
@@ -391,41 +212,10 @@ def _generated_media_dir() -> Path:
     return path
 
 
-def _save_image_from_model_response(content: str, *, stem: str = "image") -> str | None:
-    """Extract image URL or base64 from model output and save locally."""
-    if not content:
-        return None
-    out_dir = _generated_media_dir()
-    url_match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
-    if url_match:
-        url = url_match.group(1)
-        ext = ".png"
-        if "." in url.rsplit("/", 1)[-1]:
-            ext = "." + url.rsplit(".", 1)[-1].split("?")[0][:8]
-        target = out_dir / f"{stem}-{int(time.time())}{ext}"
-        try:
-            urllib.request.urlretrieve(url, target)
-            return str(target)
-        except Exception:
-            return None
-    data_match = re.search(r"(data:image/[^;]+;base64,([A-Za-z0-9+/=]+))", content)
-    if data_match:
-        mime = data_match.group(1).split(";")[0].split(":")[-1]
-        ext = ".png" if "png" in mime else ".jpg"
-        target = out_dir / f"{stem}-{int(time.time())}{ext}"
-        try:
-            with open(target, "wb") as f:
-                f.write(base64.b64decode(data_match.group(2)))
-            return str(target)
-        except Exception:
-            return None
-    return None
-
-
 def _ensure_model_cache() -> list[str]:
     """Load model cache from disk; refresh via SDK if stale."""
     try:
-        os.chdir(pkg_root)
+        _bind_model_cache_to_pkg_root()
         from core.model_cache import shared_model_cache, sanitize_model_list
         from ai_engine import OpenAI
 
@@ -444,13 +234,13 @@ def _ensure_model_cache() -> list[str]:
 def _start_model_cache_refresh() -> None:
     """Background TTL refresh using the shared model cache."""
     try:
-        os.chdir(pkg_root)
+        _bind_model_cache_to_pkg_root()
         from core.model_cache import shared_model_cache
         from ai_engine import OpenAI
 
         def refresh():
             try:
-                os.chdir(pkg_root)
+                _bind_model_cache_to_pkg_root()
                 OpenAI().models.list()
             except Exception:
                 pass
@@ -521,1262 +311,6 @@ def _clipboard_image_path() -> str | None:
 # ============================================================
 # WIDGETS
 # ============================================================
-
-class ComposerInput(TextArea):
-    """Chat input with shortcuts that work while the textarea is focused."""
-
-    BINDINGS = [
-        Binding("ctrl+j", "submit_message", "Send", priority=True, show=True),
-        Binding("alt+enter", "submit_message", "Send", priority=True, show=True),
-        Binding("ctrl+enter", "submit_message", "Send", priority=True, show=True),
-        Binding("ctrl+n", "new_chat", "New Chat", priority=True),
-        Binding("f2", "pick_model", "Model", priority=True, show=True),
-        Binding("f3", "pick_provider", "Provider", priority=True, show=True),
-        Binding("f4", "rename_chat", "Rename", priority=True),
-        Binding("f5", "edit_system_prompt", "System", priority=True, show=True),
-        Binding("f6", "toggle_intent", "Intent", priority=True, show=True),
-        Binding("f8", "export_chat", "Export", priority=True, show=True),
-        Binding("ctrl+f", "toggle_favorite", "Favorite", priority=True, show=True),
-        Binding("ctrl+q", "quit_app", "Quit", priority=True),
-        Binding("ctrl+c", "copy_selection", "Copy", priority=True),
-    ]
-
-    def action_copy_selection(self) -> None:
-        selected = (self.selected_text or "").strip()
-        if selected:
-            self.app._copy_to_clipboard(selected)
-            return
-        self.app.action_copy_message()
-
-    def action_submit_message(self) -> None:
-        self.app.action_send_message()
-
-    def action_new_chat(self) -> None:
-        self.app.action_new_chat()
-
-    def action_pick_model(self) -> None:
-        self.app.action_pick_model()
-
-    def action_pick_provider(self) -> None:
-        self.app.action_pick_provider()
-
-    def action_rename_chat(self) -> None:
-        self.app.action_rename_chat()
-
-    def action_edit_system_prompt(self) -> None:
-        self.app.action_edit_system_prompt()
-
-    def action_toggle_intent(self) -> None:
-        self.app.action_toggle_intent_routing()
-
-    def action_export_chat(self) -> None:
-        self.app.action_export_chat()
-
-    def action_toggle_favorite(self) -> None:
-        self.app.action_toggle_favorite()
-
-    def action_quit_app(self) -> None:
-        self.app.exit()
-
-
-class UserMessage(Static):
-    """User message bubble."""
-
-    def __init__(self, text: str, **kwargs):
-        super().__init__(**kwargs)
-        self._text = text
-
-    def render(self):
-        return self._text
-
-
-class ChatMarkdown(Markdown):
-    """Chat-optimized markdown with streaming and styled blocks."""
-
-    DEFAULT_CSS = """
-    ChatMarkdown {
-        height: auto;
-        padding: 0;
-        margin: 0;
-        background: transparent;
-        border: none;
-    }
-
-    ChatMarkdown MarkdownH1 {
-        text-style: bold;
-        color: $text;
-        margin: 1 0 0 0;
-        padding: 0;
-    }
-
-    ChatMarkdown MarkdownH2, ChatMarkdown MarkdownH3 {
-        text-style: bold;
-        color: $text;
-        margin: 1 0 0 0;
-        padding: 0;
-    }
-
-    ChatMarkdown MarkdownH4, ChatMarkdown MarkdownH5, ChatMarkdown MarkdownH6 {
-        text-style: bold;
-        color: $text-muted;
-        margin: 1 0 0 0;
-        padding: 0;
-    }
-
-    ChatMarkdown MarkdownParagraph {
-        margin: 0 0 1 0;
-        padding: 0;
-    }
-
-    ChatMarkdown MarkdownFence {
-        border: round $surface-lighten-1;
-        background: $surface-darken-1;
-        margin: 1 0;
-        padding: 0;
-    }
-
-    ChatMarkdown MarkdownFence > Label {
-        padding: 1;
-    }
-
-    ChatMarkdown MarkdownBlockQuote {
-        border-left: thick $primary 60%;
-        background: $surface-darken-1;
-        padding: 0 1;
-        margin: 1 0;
-        color: $text-muted;
-    }
-
-    ChatMarkdown MarkdownBulletList, ChatMarkdown MarkdownOrderedList {
-        margin: 0 0 1 0;
-        padding: 0 0 0 1;
-    }
-
-    ChatMarkdown MarkdownTable {
-        margin: 1 0;
-        border: round $surface-lighten-1;
-    }
-
-    ChatMarkdown MarkdownHorizontalRule {
-        color: $surface-lighten-1;
-        margin: 1 0;
-    }
-
-    ChatMarkdown .code_inline {
-        background: $surface;
-        color: $accent;
-        padding: 0 1;
-    }
-    """
-
-    def __init__(self, content: str = "", **kwargs):
-        super().__init__(
-            content or "",
-            parser_factory=_chat_markdown_parser,
-            open_links=False,
-            **kwargs,
-        )
-        self._buffer = content or ""
-        self._markdown_stream = None
-        self._stream_active = False
-
-    def _ensure_stream(self) -> None:
-        if self._markdown_stream is None:
-            self._markdown_stream = Markdown.get_stream(self)
-            self._markdown_stream.start()
-            self._stream_active = True
-
-    def append_chunk(self, piece: str) -> None:
-        if not piece:
-            return
-        self._buffer += piece
-        if not self._stream_active:
-            self._ensure_stream()
-        self.run_worker(self._write_piece(piece), exclusive=True, group="chat-md")
-
-    async def _write_piece(self, piece: str) -> None:
-        if self._markdown_stream is not None:
-            await self._markdown_stream.write(piece)
-
-    async def _stop_stream(self) -> None:
-        if self._markdown_stream is not None:
-            await self._markdown_stream.stop()
-            self._markdown_stream = None
-            self._stream_active = False
-
-    def update_content(self, content: str) -> None:
-        """Replace full content (replay / non-streaming fallback)."""
-        self._buffer = content
-        self.run_worker(self._apply_full_content(content), exclusive=True, group="chat-md")
-
-    async def _apply_full_content(self, content: str) -> None:
-        await self._stop_stream()
-        self.update(content or "")
-
-
-class TypingIndicator(Horizontal):
-    """Thinking indicator."""
-
-    DEFAULT_CSS = """
-    TypingIndicator {
-        height: auto;
-        width: 100%;
-        padding: 0 0 1 0;
-    }
-    TypingIndicator Static {
-        width: auto;
-        color: $text-muted;
-        padding: 0 1 0 0;
-    }
-    TypingIndicator LoadingIndicator {
-        width: auto;
-        height: 1;
-    }
-    """
-
-    def __init__(self, label: str = "Waiting for response…", **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._label = label
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._label, id="typing-label")
-        yield LoadingIndicator()
-
-
-class MessageBlock(Vertical):
-    """Focusable chat message container for copy / edit actions."""
-
-    can_focus = True
-
-    DEFAULT_CSS = """
-    MessageBlock {
-        width: 100%;
-        height: auto;
-        margin-bottom: 1;
-    }
-    MessageBlock:focus {
-        outline: solid $primary 50%;
-    }
-    """
-
-    def __init__(self, *, role: str, plain_text: str, **kwargs):
-        super().__init__(**kwargs)
-        self.role = role
-        self.plain_text = plain_text
-
-
-class PersonaButton(Button):
-    """Agent persona chip — sets system prompt for the chat."""
-
-    def __init__(self, persona: Persona, **kwargs):
-        super().__init__(f"{persona.emoji} {persona.label}", variant="default", **kwargs)
-        self.persona_id = persona.id
-
-
-class PersonaPanel(Vertical):
-    """Empty-state greeting with selectable agent personas."""
-
-    DEFAULT_CSS = """
-    PersonaPanel {
-        width: 88;
-        max-width: 88;
-        height: auto;
-        align: center middle;
-        text-align: center;
-        padding: 0 2;
-    }
-    PersonaPanel .welcome-title {
-        text-style: bold;
-        padding-bottom: 1;
-    }
-    PersonaPanel .welcome-sub {
-        color: $text-muted;
-        padding-bottom: 1;
-    }
-    #persona-row {
-        width: 100%;
-        height: auto;
-        align: center middle;
-        content-align: center middle;
-    }
-    PersonaButton {
-        margin: 0 1 1 0;
-        background: $surface;
-        border: round $surface-lighten-1;
-    }
-    PersonaButton:hover {
-        border: round $primary 60%;
-    }
-    .persona-hint {
-        color: $text-muted;
-        padding-top: 1;
-        height: auto;
-    }
-    """
-
-    def __init__(self, personas: list[Persona], **kwargs):
-        super().__init__(**kwargs)
-        self._personas = personas
-
-    def compose(self) -> ComposeResult:
-        yield Static("[bold]Choose an agent[/]", classes="welcome-title")
-        yield Static(
-            "[dim]Sets a system prompt for this chat — then type your request[/]",
-            classes="welcome-sub",
-        )
-        with Horizontal(id="persona-row"):
-            for persona in self._personas[:6]:
-                yield PersonaButton(persona)
-        yield Static(
-            "[dim]Add personas: ~/.ai-engine/personas/*.json · /persona clear[/]",
-            classes="persona-hint",
-        )
-
-
-class SlashSuggest(Vertical):
-    """Fuzzy slash-command hints shown while typing / in the composer."""
-
-    DEFAULT_CSS = """
-    SlashSuggest {
-        display: none;
-        width: 100%;
-        height: auto;
-        max-height: 12;
-        margin-bottom: 1;
-        border: round $surface-lighten-1;
-        background: $surface-darken-1;
-    }
-    SlashSuggest.-visible {
-        display: block;
-    }
-    #slash-list {
-        height: auto;
-        max-height: 12;
-        border: none;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield ListView(id="slash-list")
-
-
-class FileSuggest(Vertical):
-    """Fuzzy file hints for @attach and /read above the composer."""
-
-    DEFAULT_CSS = """
-    FileSuggest {
-        display: none;
-        width: 100%;
-        height: auto;
-        max-height: 12;
-        margin-bottom: 1;
-        border: round $surface-lighten-1;
-        background: $surface-darken-1;
-    }
-    FileSuggest.-visible {
-        display: block;
-    }
-    #file-suggest-title {
-        padding: 0 1;
-        color: $text-muted;
-        height: auto;
-    }
-    #file-list {
-        height: auto;
-        max-height: 10;
-        border: none;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield Static("", id="file-suggest-title")
-        yield ListView(id="file-list")
-
-
-class TerminalImage(Static):
-    """Terminal image preview via rich-pixels + Pillow."""
-
-    def __init__(
-        self,
-        image_path: str,
-        *,
-        compact: bool = False,
-        size: str | None = None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.image_path = image_path
-        self._image_preset = _image_size_key(compact=compact, size=size)
-
-    def render(self):
-        pixels = _pixels_from_path(self.image_path, size=self._image_preset)
-        if pixels is not None:
-            return pixels
-        art = _chafa_fallback(self.image_path, size=self._image_preset)
-        if art:
-            return art
-        return "[dim](image preview unavailable — pip install pillow rich-pixels)[/]"
-
-
-class ImagePreview(Vertical):
-    """Filename + terminal image preview."""
-
-    DEFAULT_CSS = """
-    ImagePreview {
-        height: auto;
-        width: 100%;
-        padding: 0;
-    }
-    ImagePreview .attach-name {
-        height: 1;
-        color: $text-muted;
-        padding: 0 0 0 0;
-    }
-    ImagePreview TerminalImage {
-        height: auto;
-        width: auto;
-        max-width: 100%;
-        padding: 0;
-    }
-    """
-
-    def __init__(self, image_path: str, *, size: str = "preview", **kwargs):
-        super().__init__(**kwargs)
-        self.image_path = image_path
-        self._image_preset = size
-
-    def compose(self) -> ComposeResult:
-        name = os.path.basename(self.image_path)
-        file_size = os.path.getsize(self.image_path) if os.path.exists(self.image_path) else 0
-        yield Static(f"📎 {name}  ({file_size:,} B)", classes="attach-name")
-        yield TerminalImage(self.image_path, size=self._image_preset)
-
-
-class PendingAttachment(Horizontal):
-    """Compact attachment preview shown above the composer."""
-
-    DEFAULT_CSS = """
-    PendingAttachment {
-        width: 100%;
-        height: auto;
-        padding: 0 0 1 0;
-        align: left middle;
-    }
-    PendingAttachment ImagePreview {
-        width: 1fr;
-        height: auto;
-        padding: 0;
-    }
-    PendingAttachment #clear-attach-btn {
-        width: 5;
-        min-width: 5;
-        height: 3;
-        margin-left: 1;
-        background: transparent;
-        border: none;
-        color: $text-muted;
-    }
-    PendingAttachment #clear-attach-btn:hover {
-        color: $error;
-    }
-    """
-
-    def __init__(self, image_path: str, **kwargs):
-        super().__init__(**kwargs)
-        self.image_path = image_path
-
-    def compose(self) -> ComposeResult:
-        yield ImagePreview(self.image_path, size="preview")
-        yield Button("✕", id="clear-attach-btn")
-
-
-class PickerResult(dict):
-    """Result from the file picker: optional path + last browsed directory."""
-
-    def __init__(self, path: str | None = None, cwd: str | None = None) -> None:
-        super().__init__(path=path, cwd=cwd)
-
-    @property
-    def path(self) -> str | None:
-        return self.get("path")
-
-    @property
-    def cwd(self) -> str | None:
-        return self.get("cwd")
-
-
-class FilePickerScreen(ModalScreen[PickerResult | None]):
-    """File picker starting at pwd; navigate anywhere via tree or path bar."""
-
-    DEFAULT_CSS = """
-    FilePickerScreen {
-        align: center middle;
-    }
-    #picker-panel {
-        width: 92%;
-        height: 82%;
-        max-width: 110;
-        min-width: 70;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #picker-title {
-        text-style: bold;
-        padding-bottom: 1;
-    }
-    #path-input {
-        margin-bottom: 1;
-    }
-    #dir-tree {
-        height: 1fr;
-        border: round $surface-lighten-1;
-    }
-    #picker-actions {
-        height: 3;
-        margin-top: 1;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def __init__(self, start_path: str | None = None, **kwargs):
-        super().__init__(**kwargs)
-        self.start_path = os.path.abspath(start_path or os.getcwd())
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="picker-panel"):
-            yield Static("Attach a file", id="picker-title")
-            yield Input(self.start_path, id="path-input", placeholder="Type a path and press Enter")
-            yield DirectoryTree(self.start_path, id="dir-tree")
-            with Horizontal(id="picker-actions"):
-                yield Button("Home", id="btn-home", variant="default")
-                yield Button("Root /", id="btn-root", variant="default")
-                yield Button("Here", id="btn-here", variant="default")
-            yield Static(
-                "[dim]↑↓ navigate · Enter select file · Esc cancel · Paste path in bar[/]",
-                classes="picker-help",
-            )
-
-    def on_mount(self) -> None:
-        self.query_one("#dir-tree", DirectoryTree).focus()
-
-    def _finish(self, path: str | None = None) -> None:
-        raw = (self.query_one("#path-input", Input).value or "").strip()
-        cwd = _normalize_cwd(raw or self.start_path)
-        self.dismiss(PickerResult(path=path, cwd=cwd))
-
-    def _reload_tree(self, path: str) -> None:
-        path = os.path.abspath(os.path.expanduser(path))
-        if not os.path.isdir(path):
-            return
-        tree = self.query_one("#dir-tree", DirectoryTree)
-        tree.path = path
-        tree.reload()
-        self.query_one("#path-input", Input).value = path
-
-    @on(Input.Submitted, "#path-input")
-    def on_path_submitted(self, event: Input.Submitted) -> None:
-        self._reload_tree(event.value)
-
-    @on(Button.Pressed, "#btn-home")
-    def go_home(self) -> None:
-        self._reload_tree(str(Path.home()))
-
-    @on(Button.Pressed, "#btn-root")
-    def go_root(self) -> None:
-        self._reload_tree("/")
-
-    @on(Button.Pressed, "#btn-here")
-    def go_pwd(self) -> None:
-        self._reload_tree(os.getcwd())
-
-    @on(DirectoryTree.DirectorySelected)
-    def on_directory_selected(self, event: DirectoryTree.DirectorySelected) -> None:
-        self.query_one("#path-input", Input).value = str(event.path)
-
-    @on(DirectoryTree.FileSelected)
-    def select_file(self, event: DirectoryTree.FileSelected) -> None:
-        self._finish(str(event.path))
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self._finish(None)
-
-
-class RenameChatScreen(ModalScreen[str | None]):
-    """Rename the active chat."""
-
-    DEFAULT_CSS = """
-    RenameChatScreen {
-        align: center middle;
-    }
-    #rename-panel {
-        width: 70%;
-        max-width: 70;
-        min-width: 40;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #rename-title {
-        text-style: bold;
-        padding-bottom: 1;
-    }
-    #rename-input {
-        margin-bottom: 1;
-    }
-    #rename-actions {
-        height: 3;
-        align: right middle;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def __init__(self, title: str = "", **kwargs):
-        super().__init__(**kwargs)
-        self._title = title
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="rename-panel"):
-            yield Static("Rename chat", id="rename-title")
-            yield Input(value=self._title, placeholder="Chat title…", id="rename-input")
-            with Horizontal(id="rename-actions"):
-                yield Button("Cancel", id="rename-cancel")
-                yield Button("Save", id="rename-save", variant="primary")
-            yield Static("[dim]Enter save · Esc cancel[/]", classes="picker-help")
-
-    def on_mount(self) -> None:
-        inp = self.query_one("#rename-input", Input)
-        inp.focus()
-        inp.cursor_position = len(inp.value or "")
-
-    @on(Input.Submitted, "#rename-input")
-    def on_rename_submitted(self, event: Input.Submitted) -> None:
-        title = (event.value or "").strip()
-        self.dismiss(title or None)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "rename-save":
-            title = (self.query_one("#rename-input", Input).value or "").strip()
-            self.dismiss(title or None)
-        elif event.button.id == "rename-cancel":
-            self.dismiss(None)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class SystemPromptScreen(ModalScreen[str | None]):
-    """Edit the per-chat system prompt."""
-
-    DEFAULT_CSS = """
-    SystemPromptScreen {
-        align: center middle;
-    }
-    #system-panel {
-        width: 92%;
-        height: 80%;
-        max-width: 110;
-        min-width: 70;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #system-title {
-        text-style: bold;
-        padding-bottom: 1;
-    }
-    #system-prompt-input {
-        height: 1fr;
-        min-height: 10;
-        border: round $surface-lighten-1;
-        margin-bottom: 1;
-    }
-    #system-actions {
-        height: 3;
-        align: right middle;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def __init__(self, prompt: str = "", **kwargs):
-        super().__init__(**kwargs)
-        self._prompt = prompt
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="system-panel"):
-            yield Static("System prompt", id="system-title")
-            yield TextArea(
-                self._prompt,
-                id="system-prompt-input",
-                show_line_numbers=False,
-                soft_wrap=True,
-            )
-            with Horizontal(id="system-actions"):
-                yield Button("Clear", id="system-clear", variant="warning")
-                yield Button("Cancel", id="system-cancel")
-                yield Button("Save", id="system-save", variant="primary")
-            yield Static(
-                "[dim]Applies to this chat only · Esc cancel[/]",
-                classes="picker-help",
-            )
-
-    def on_mount(self) -> None:
-        self.query_one("#system-prompt-input", TextArea).focus()
-
-    def _current_text(self) -> str:
-        return (self.query_one("#system-prompt-input", TextArea).text or "").strip()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "system-save":
-            self.dismiss(self._current_text())
-        elif event.button.id == "system-clear":
-            self.dismiss("")
-        elif event.button.id == "system-cancel":
-            self.dismiss(None)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class ExportChatScreen(ModalScreen[str | None]):
-    """Choose export format for the active chat."""
-
-    DEFAULT_CSS = """
-    ExportChatScreen {
-        align: center middle;
-    }
-    #export-panel {
-        width: 60%;
-        max-width: 60;
-        min-width: 40;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #export-title {
-        text-style: bold;
-        padding-bottom: 1;
-    }
-    #export-actions {
-        height: 3;
-        align: center middle;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="export-panel"):
-            yield Static("Export chat", id="export-title")
-            with Horizontal(id="export-actions"):
-                yield Button("Markdown", id="export-md", variant="primary")
-                yield Button("JSON", id="export-json", variant="default")
-                yield Button("Cancel", id="export-cancel")
-            yield Static("[dim]Saved to last browsed folder · Esc cancel[/]", classes="picker-help")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "export-md":
-            self.dismiss("markdown")
-        elif event.button.id == "export-json":
-            self.dismiss("json")
-        elif event.button.id == "export-cancel":
-            self.dismiss(None)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class ConfirmDeleteScreen(ModalScreen[bool]):
-    """Confirm chat deletion."""
-
-    DEFAULT_CSS = """
-    ConfirmDeleteScreen {
-        align: center middle;
-    }
-    #confirm-panel {
-        width: 70%;
-        max-width: 70;
-        min-width: 40;
-        background: $surface;
-        border: round $error 40%;
-        padding: 1 2;
-    }
-    #confirm-title {
-        text-style: bold;
-        color: $error;
-        padding-bottom: 1;
-    }
-    #confirm-message {
-        padding-bottom: 1;
-    }
-    #confirm-actions {
-        height: 3;
-        align: right middle;
-    }
-    """
-
-    def __init__(self, title: str, **kwargs):
-        super().__init__(**kwargs)
-        self._title = title
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="confirm-panel"):
-            yield Static("Delete chat?", id="confirm-title")
-            yield Static(f'Delete "{self._title}"? This cannot be undone.', id="confirm-message")
-            with Horizontal(id="confirm-actions"):
-                yield Button("Cancel", id="confirm-cancel")
-                yield Button("Delete", id="confirm-delete", variant="error")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "confirm-delete":
-            self.dismiss(True)
-        elif event.button.id == "confirm-cancel":
-            self.dismiss(False)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(False)
-
-
-class ModelPickerRow(ListItem):
-    """One model row with a clickable star on the right."""
-
-    DEFAULT_CSS = """
-    ModelPickerRow {
-        height: 3;
-        padding: 0 1;
-    }
-    ModelPickerRow .model-row-label {
-        width: 1fr;
-        height: 100%;
-        content-align: left middle;
-    }
-    ModelPickerRow .model-star-btn {
-        width: 4;
-        min-width: 4;
-        height: 100%;
-        background: transparent;
-        border: none;
-        color: $text-muted;
-        content-align: center middle;
-    }
-    ModelPickerRow .model-star-btn.-favorite {
-        color: #D4AF37;
-        text-style: bold;
-    }
-    ModelPickerRow .model-star-btn:hover {
-        background: $surface-lighten-1;
-    }
-    """
-
-    def __init__(
-        self,
-        *,
-        api_model: str,
-        provider: str | None,
-        label: str,
-        is_favorite: bool,
-        is_current: bool,
-        on_toggle_favorite,
-    ) -> None:
-        super().__init__()
-        self.api_model = api_model
-        self.provider = provider
-        self._display_label = label
-        self._is_favorite = is_favorite
-        self._is_current = is_current
-        self._on_toggle_favorite = on_toggle_favorite
-
-    def _marker_label(self) -> str:
-        marker = "★ " if self._is_favorite else ("● " if self._is_current else "  ")
-        return f"{marker}{self._display_label}"
-
-    def compose(self) -> ComposeResult:
-        with Horizontal():
-            yield Label(self._marker_label(), classes="model-row-label")
-            yield Button(
-                "★" if self._is_favorite else "☆",
-                id="model-star-btn",
-                classes="model-star-btn -favorite" if self._is_favorite else "model-star-btn",
-            )
-
-    def set_favorite(self, is_favorite: bool) -> None:
-        self._is_favorite = is_favorite
-        try:
-            self.query_one(".model-row-label", Label).update(self._marker_label())
-            btn = self.query_one("#model-star-btn", Button)
-            btn.label = "★" if is_favorite else "☆"
-            btn.set_class(is_favorite, "-favorite")
-        except NoMatches:
-            pass
-
-    @on(Button.Pressed, "#model-star-btn")
-    def on_star_pressed(self, event: Button.Pressed) -> None:
-        event.stop()
-        if self._on_toggle_favorite:
-            self._on_toggle_favorite(self.api_model, self.provider)
-
-
-class ModelPickerScreen(ModalScreen[tuple[str, str | None] | None]):
-    """Searchable model picker backed by model_cache.json."""
-
-    DEFAULT_CSS = """
-    ModelPickerScreen {
-        align: center middle;
-    }
-    #model-panel {
-        width: 92%;
-        height: 85%;
-        max-width: 120;
-        min-width: 80;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #model-search {
-        margin-bottom: 1;
-    }
-    #model-list {
-        height: 1fr;
-        border: round $surface-lighten-1;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def __init__(
-        self,
-        index: ModelIndex,
-        current: str = "",
-        favorites: list[str] | None = None,
-        on_toggle_favorite=None,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self._index = index
-        self._current = current
-        self._favorites = set(favorites or [])
-        self._on_toggle_favorite = on_toggle_favorite
-        self._pending_query = ""
-        self._all_matches: list[ModelEntry] = []
-        self._loaded_count = 0
-        self._loading_more = False
-        self._active_query: str | None = None
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="model-panel"):
-            yield Static("Select model", id="picker-title")
-            yield Input(placeholder="Search models…", id="model-search")
-            yield ListView(id="model-list")
-            yield Static("", id="picker-help", classes="picker-help")
-
-    def on_mount(self) -> None:
-        self._refresh_list(reset=True)
-        self._update_picker_help()
-        self.query_one("#model-search", Input).focus()
-
-    def _entries_for_query(self, query: str) -> list[ModelEntry]:
-        q = query.strip()
-        if not q and self._favorites:
-            fav_entries: list[ModelEntry] = []
-            seen: set[str] = set()
-            for key in self._favorites:
-                model, provider = _parse_favorite_key(key)
-                for entry in self._index.entries:
-                    entry_key = _favorite_key(entry.api_model, entry.provider)
-                    if entry.api_model == model and entry.provider == provider:
-                        fav_entries.append(entry)
-                        seen.add(entry_key)
-                        break
-            rest = [
-                entry for entry in self._index.entries
-                if _favorite_key(entry.api_model, entry.provider) not in seen
-            ]
-            return fav_entries + rest
-        return self._index.search(query, limit=None)
-
-    def _update_picker_help(self) -> None:
-        total = len(self._all_matches)
-        shown = self._loaded_count
-        cache_total = len(self._index.entries)
-        parts = [f"{shown}/{total} shown"]
-        if shown < total:
-            parts.append("↓ in list or scroll for more")
-        parts.append(f"{cache_total} cached")
-        parts.append("☆/★ saves to preferences")
-        parts.append("Esc cancel")
-        try:
-            self.query_one("#picker-help", Static).update(
-                "[dim]" + " · ".join(parts) + "[/]"
-            )
-        except NoMatches:
-            pass
-
-    def _append_page(self) -> None:
-        if self._loading_more or self._loaded_count >= len(self._all_matches):
-            return
-        self._loading_more = True
-        try:
-            lst = self.query_one("#model-list", ListView)
-            start = self._loaded_count
-            end = min(start + _MODEL_PAGE_SIZE, len(self._all_matches))
-            for entry in self._all_matches[start:end]:
-                entry_key = _favorite_key(entry.api_model, entry.provider)
-                lst.append(
-                    ModelPickerRow(
-                        api_model=entry.api_model,
-                        provider=entry.provider,
-                        label=entry.label,
-                        is_favorite=entry_key in self._favorites,
-                        is_current=entry.api_model == self._current,
-                        on_toggle_favorite=self._toggle_row_favorite,
-                    )
-                )
-            self._loaded_count = end
-            self._update_picker_help()
-            self.call_after_refresh(self._fill_viewport)
-        finally:
-            self._loading_more = False
-
-    def _fill_viewport(self) -> None:
-        """Keep loading pages until the list scrolls or all matches are shown."""
-        if self._loaded_count >= len(self._all_matches):
-            return
-        try:
-            lst = self.query_one("#model-list", ListView)
-        except NoMatches:
-            return
-        if lst.max_scroll_y <= 0:
-            self._append_page()
-
-    def _maybe_load_more(self, index: int | None) -> None:
-        if index is None or self._loaded_count >= len(self._all_matches):
-            return
-        if index >= max(0, self._loaded_count - 8):
-            self._append_page()
-
-    def _refresh_list(self, *, reset: bool) -> None:
-        query = self._pending_query
-        if reset or query != self._active_query:
-            self._active_query = query
-            self._all_matches = self._entries_for_query(query)
-            self._loaded_count = 0
-            self.query_one("#model-list", ListView).clear()
-        self._append_page()
-
-    def _toggle_row_favorite(self, model: str, provider: str | None) -> None:
-        if self._on_toggle_favorite:
-            self._on_toggle_favorite(model, provider)
-        key = _favorite_key(model, provider)
-        if key in self._favorites:
-            self._favorites.discard(key)
-        else:
-            self._favorites.add(key)
-        try:
-            lst = self.query_one("#model-list", ListView)
-            for child in lst.children:
-                if (
-                    isinstance(child, ModelPickerRow)
-                    and child.api_model == model
-                    and child.provider == provider
-                ):
-                    child.set_favorite(key in self._favorites)
-                    break
-        except NoMatches:
-            pass
-
-    def _run_search(self) -> None:
-        self._refresh_list(reset=True)
-
-    @on(Input.Changed, "#model-search")
-    def on_search_changed(self, event: Input.Changed) -> None:
-        self._pending_query = event.value
-        self.set_timer(0.05, self._run_search, name="model-search-debounce")
-
-    @on(ListView.Highlighted, "#model-list")
-    def on_model_highlighted(self, event: ListView.Highlighted) -> None:
-        self._maybe_load_more(event.list_view.index)
-
-    @on(events.MouseScrollDown, "#model-list")
-    def on_model_list_scroll_down(self, event: events.MouseScrollDown) -> None:
-        lst = self.query_one("#model-list", ListView)
-        if lst.max_scroll_y <= 0 or lst.scroll_offset.y >= max(0, lst.max_scroll_y - 24):
-            self._append_page()
-
-    @on(ListView.Selected, "#model-list")
-    def on_model_selected(self, event: ListView.Selected) -> None:
-        item = event.item
-        if hasattr(item, "api_model"):
-            self.dismiss((item.api_model, item.provider))
-
-    async def on_event(self, event: events.Event) -> None:
-        try:
-            await super().on_event(event)
-        except AttributeError as exc:
-            if "region" in str(exc) and isinstance(
-                event, (events.MouseDown, events.MouseUp, events.Click)
-            ):
-                return
-            raise
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-            return
-        if event.key not in {"down", "j"}:
-            return
-        inp = self.query_one("#model-search", Input)
-        lst = self.query_one("#model-list", ListView)
-        if inp.has_focus:
-            lst.focus()
-            if lst.index is None and lst.children:
-                lst.index = 0
-            event.stop()
-            return
-        if not lst.has_focus or lst.index is None:
-            return
-        at_end = lst.index >= len(lst.children) - 1
-        if at_end and self._loaded_count < len(self._all_matches):
-            prev_len = len(lst.children)
-            self._append_page()
-
-            def advance() -> None:
-                if len(lst.children) > prev_len:
-                    lst.index = prev_len
-
-            self.call_after_refresh(advance)
-            event.stop()
-
-
-class ProviderPickerScreen(ModalScreen[str | None]):
-    """Provider picker from enabled AI_CONFIGS providers."""
-
-    DEFAULT_CSS = """
-    ProviderPickerScreen {
-        align: center middle;
-    }
-    #provider-panel {
-        width: 70%;
-        height: 75%;
-        max-width: 80;
-        min-width: 50;
-        background: $surface;
-        border: round $surface-lighten-1;
-        padding: 1 2;
-    }
-    #provider-list {
-        height: 1fr;
-        border: round $surface-lighten-1;
-    }
-    .picker-help {
-        color: $text-muted;
-        padding-top: 1;
-        text-align: center;
-    }
-    """
-
-    def __init__(self, providers: list[str], current: str | None = None, **kwargs):
-        super().__init__(**kwargs)
-        self._providers = ["auto", *providers]
-        self._current = current or "auto"
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="provider-panel"):
-            yield Static("Select provider", id="picker-title")
-            yield ListView(id="provider-list")
-            yield Static("[dim]Esc cancel[/]", classes="picker-help")
-
-    def on_mount(self) -> None:
-        lst = self.query_one("#provider-list", ListView)
-        for prov in self._providers:
-            marker = "● " if prov == self._current else "  "
-            item = ListItem(Label(f"{marker}{prov}"))
-            item.provider_name = prov
-            lst.append(item)
-
-    @on(ListView.Selected, "#provider-list")
-    def on_provider_selected(self, event: ListView.Selected) -> None:
-        item = event.item
-        if hasattr(item, "provider_name"):
-            prov = item.provider_name
-            self.dismiss(None if prov == "auto" else prov)
-
-    def on_key(self, event: events.Key) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-
-
-class ChatCommandProvider(Provider):
-    """Command palette entries."""
-
-    _COMMANDS = (
-        ("New Chat", "Start a fresh conversation", "new_chat"),
-        ("Rename Chat", "Rename the active conversation", "rename_chat"),
-        ("Delete Chat", "Delete the active conversation", "delete_chat"),
-        ("Search Chats", "Focus sidebar chat search", "focus_chat_search"),
-        ("Pick Model", "Choose from cached models", "pick_model"),
-        ("Favorite Chat", "Star/unstar the active chat", "toggle_favorite"),
-        ("Pick Provider", "Choose inference provider", "pick_provider"),
-        ("Toggle Intent Routing", "Auto-route by prompt intent", "toggle_intent_routing"),
-        ("List Personas", "Show available agent personas", "list_personas"),
-        ("System Prompt", "Edit per-chat system instructions", "edit_system_prompt"),
-        ("Export Chat", "Save chat as Markdown or JSON", "export_chat"),
-        ("Send Message", "Send the current prompt", "send_message"),
-        ("Stop Generation", "Cancel the current reply", "stop_generation"),
-        ("Regenerate", "Redo the last assistant reply", "regenerate"),
-        ("Copy Message", "Copy focused or last message", "copy_message"),
-        ("Edit & Resend", "Edit last user message", "edit_resend"),
-        ("Attach File", "Attach an image above the composer", "attach_file"),
-        ("Set Defaults", "Save current model & provider as defaults", "set_defaults"),
-        ("Reset to Defaults", "Restore model & provider from preferences", "apply_defaults"),
-        ("Toggle Sidebar", "Collapse or expand the chat sidebar", "toggle_sidebar"),
-        ("Quit", "Exit AI Synapse", "quit"),
-    )
-
-    def _make_runner(self, action: str):
-        if action == "attach_file":
-            return lambda: self.app._open_file_picker()
-        return lambda: getattr(self.app, f"action_{action}")()
-
-    async def discover(self) -> AsyncIterator[DiscoveryHit]:
-        for title, help_text, action in self._COMMANDS:
-            yield DiscoveryHit(title, self._make_runner(action), help=help_text, text=title)
-
-    async def search(self, query: str) -> AsyncIterator[Hit]:
-        q = query.lower().strip()
-        for title, help_text, action in self._COMMANDS:
-            hay = f"{title} {help_text}".lower()
-            if not q or q in hay:
-                score = 1.0 if q and q in title.lower() else 0.8
-                yield Hit(score, title, self._make_runner(action), help=help_text, text=title)
-
-
-# ============================================================
-# MAIN APP
-# ============================================================
-
 class ChatTUI(App):
     """ChatGPT-inspired terminal chat."""
 
@@ -2140,10 +674,18 @@ class ChatTUI(App):
     chat_counter = reactive(0)
     sidebar_collapsed = reactive(False)
 
-    def __init__(self, model="default", provider=None, **kwargs):
+    def __init__(
+        self,
+        model="default",
+        provider=None,
+        *,
+        storage: ChatStorage | None = None,
+        preferences: PreferencesStore | None = None,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
-        self._storage = ChatStorage()
-        self._preferences = PreferencesStore()
+        self._storage = storage or ChatStorage()
+        self._preferences = preferences or PreferencesStore()
         self._chat_order: list[int] = []
         self._persona_banner = None
         self._last_cwd = os.getcwd()
@@ -2152,6 +694,7 @@ class ChatTUI(App):
         self._active_response = None
         self._active_block: MessageBlock | None = None
         self._cancel_event = threading.Event()
+        self._generation_chat_id: int | None = None
         self._stick_to_bottom = True
         self._cached_models: list[str] = []
         self._model_index: ModelIndex | None = None
@@ -2246,8 +789,18 @@ class ChatTUI(App):
                 current_provider=self.current_provider,
                 intent_routing_enabled=self._intent_routing_enabled,
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            self.notify(
+                f"Failed to save session: {exc}",
+                severity="error",
+                timeout=5,
+            )
+
+    def _bound_chat_id(self) -> int:
+        """Chat that owns an in-flight generation (falls back to current)."""
+        if self._generation_chat_id is not None:
+            return self._generation_chat_id
+        return self.current_chat_id
 
     def on_unmount(self) -> None:
         self._persist_session()
@@ -3081,7 +1634,7 @@ class ChatTUI(App):
         return all(tok in blob for tok in tokens)
 
     def _last_user_context(self) -> tuple[str, bool]:
-        messages = self.chats.get(self.current_chat_id, {}).get("messages", [])
+        messages = self.chats.get(self._bound_chat_id(), {}).get("messages", [])
         for msg in reversed(messages):
             if msg.get("role") == "user":
                 text = msg.get("content", "")
@@ -3257,7 +1810,11 @@ class ChatTUI(App):
             if not path:
                 return
             if os.path.exists(path):
-                self._attach_image(path)
+                composer = self.query_one(ComposerInput)
+                if _is_image_path(path):
+                    self._attach_image(path)
+                else:
+                    self._inject_file_content(path, composer)
             else:
                 self._messages_container().mount(
                     Static(f"File not found: {path}", classes="error-msg")
@@ -3437,6 +1994,7 @@ class ChatTUI(App):
 
     def _start_ai_generation(self) -> None:
         self.is_processing = True
+        self._generation_chat_id = self.current_chat_id
         self._cancel_event.clear()
         self._stick_to_bottom = True
         self._show_typing(
@@ -3453,13 +2011,19 @@ class ChatTUI(App):
 
     def _build_api_messages(self) -> list[dict]:
         messages = []
-        chat = self.chats[self.current_chat_id]
+        chat = self.chats[self._bound_chat_id()]
         system_prompt = (chat.get("system_prompt") or "").strip()
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         for m in chat["messages"]:
             if "_image_path" in m and os.path.exists(m["_image_path"]):
                 path = m["_image_path"]
+                size = os.path.getsize(path)
+                if size > _MAX_IMAGE_BYTES:
+                    raise ValueError(
+                        f"Image too large ({size // (1024 * 1024)} MB). "
+                        f"Max {_MAX_IMAGE_BYTES // (1024 * 1024)} MB."
+                    )
                 mime = mimetypes.guess_type(path)[0] or "image/png"
                 with open(path, "rb") as f:
                     b64 = base64.b64encode(f.read()).decode()
@@ -3477,8 +2041,18 @@ class ChatTUI(App):
         self._active_response = self._mount_assistant_message("")
         self._scroll_to_end()
 
-    def _on_generation_stopped(self) -> None:
+    def _on_generation_stopped(self, partial_content: str = "") -> None:
         self._hide_typing()
+        partial = (partial_content or "").strip()
+        if not partial and self._active_response is not None:
+            partial = (getattr(self._active_response, "_buffer", "") or "").strip()
+        chat_id = self._bound_chat_id()
+        if partial and chat_id in self.chats:
+            self.chats[chat_id]["messages"].append({
+                "role": "assistant",
+                "content": f"{partial}\n\n*[stopped]*",
+            })
+            self._persist_session()
         if self._active_block is not None:
             try:
                 self._active_block.remove()
@@ -3486,6 +2060,7 @@ class ChatTUI(App):
                 pass
         self._active_block = None
         self._active_response = None
+        self._generation_chat_id = None
         self._finish_processing()
         self.notify("Generation stopped", timeout=2)
 
@@ -3507,7 +2082,7 @@ class ChatTUI(App):
                 self.call_from_thread(self._on_generation_stopped)
                 return
 
-            os.chdir(pkg_root)
+            _bind_model_cache_to_pkg_root()
             image_path, status, model_used, provider_used = generate_image(
                 prompt,
                 preferred_model=model,
@@ -3531,7 +2106,7 @@ class ChatTUI(App):
                 "_model": model_used or model,
                 "_provider": provider_used,
             }
-            self.chats[self.current_chat_id]["messages"].append(assistant_msg)
+            self.chats[self._bound_chat_id()]["messages"].append(assistant_msg)
 
             def _finish():
                 if self._active_response is not None:
@@ -3588,7 +2163,7 @@ class ChatTUI(App):
                 return
 
             content = f"Speech audio saved to `{out_path}`"
-            self.chats[self.current_chat_id]["messages"].append({
+            self.chats[self._bound_chat_id()]["messages"].append({
                 "role": "assistant",
                 "content": content,
                 "_model": "tts-1",
@@ -3690,30 +2265,22 @@ class ChatTUI(App):
                     model_used = chunk.model
 
             if self._cancel_event.is_set():
-                self.call_from_thread(self._on_generation_stopped)
+                self.call_from_thread(self._on_generation_stopped, content)
                 return
 
             if not content:
-                response = client.chat.completions.create(
-                    model=effective_model,
-                    messages=messages,
-                    provider=effective_provider,
-                    stream=False,
+                self.call_from_thread(
+                    self._display_generation_error,
+                    "Model returned an empty response.",
                 )
-                if response and getattr(response, "choices", None):
-                    content = response.choices[0].message.content or ""
-                    if hasattr(response, "model") and response.model:
-                        model_used = response.model
-                    if response_msg is not None:
-                        self.call_from_thread(response_msg.update_content, content)
+                return
 
-            if content:
-                self.chats[self.current_chat_id]["messages"].append({
-                    "role": "assistant",
-                    "content": content,
-                    "_model": model_used,
-                    "_provider": provider_used,
-                })
+            self.chats[self._bound_chat_id()]["messages"].append({
+                "role": "assistant",
+                "content": content,
+                "_model": model_used,
+                "_provider": provider_used,
+            })
             self.call_from_thread(self._set_assistant_label, model_used, provider_used)
             self.call_from_thread(self._on_response_done, model_used, provider_used)
 
@@ -3728,13 +2295,14 @@ class ChatTUI(App):
         if self._active_block is not None and self._active_response is not None:
             self._active_block.plain_text = getattr(self._active_response, "_buffer", "") or ""
         self._set_assistant_label(model_used, provider_used)
-        chat = self.chats.get(self.current_chat_id, {})
+        chat = self.chats.get(self._bound_chat_id(), {})
         messages = chat.get("messages", [])
         if messages and messages[-1].get("role") == "assistant":
             messages[-1]["_model"] = model_used
             messages[-1]["_provider"] = provider_used
         self._active_block = None
         self._active_response = None
+        self._generation_chat_id = None
         self._update_header()
         self._persist_session()
         self._finish_processing()
@@ -3751,6 +2319,7 @@ class ChatTUI(App):
     def _display_generation_error(self, error_msg: str) -> None:
         self._hide_typing()
         self._cleanup_active_response()
+        self._generation_chat_id = None
         self._show_empty_state(False)
         self._messages_container().mount(
             Static(f"[bold]Generation failed[/]\n{error_msg}", classes="error-msg")
@@ -3761,6 +2330,7 @@ class ChatTUI(App):
     def _display_error(self, error_msg: str) -> None:
         self._hide_typing()
         self._cleanup_active_response()
+        self._generation_chat_id = None
         self._show_empty_state(False)
         self._messages_container().mount(Static(f"Error: {error_msg}", classes="error-msg"))
         self._scroll_to_end()
@@ -3792,6 +2362,13 @@ class ChatTUI(App):
 
     def _switch_to_chat(self, chat_id: int) -> None:
         if chat_id not in self.chats:
+            return
+        if self.is_processing:
+            self.notify(
+                "Stop generation first (■ or Esc)",
+                severity="warning",
+                timeout=3,
+            )
             return
         self.current_chat_id = chat_id
         self._load_current_chat_messages()
@@ -3931,14 +2508,17 @@ class ChatTUI(App):
         try:
             btn = self.query_one("#send-btn", Button)
             btn.label = "■" if processing else "⏎"
-        except NoMatches:
+        except Exception:
             pass
 
 
 def run_tui(model="default", provider=None):
     """Entry point."""
     try:
-        os.chdir(pkg_root)
+        from core.env_bootstrap import bootstrap_user_environment
+
+        bootstrap_user_environment()
+        _bind_model_cache_to_pkg_root()
         if pkg_root not in sys.path:
             sys.path.insert(0, pkg_root)
         if not os.environ.get("CDN_CONFIG_URL"):

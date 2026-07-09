@@ -26,6 +26,25 @@ CHATS_DIR = CHATDATA_ROOT / "chats"
 _lock = threading.Lock()
 
 
+def _redact_export_path(path: str) -> str:
+    """Redact absolute home paths from shared exports."""
+    if not path:
+        return path
+    home = str(Path.home())
+    abs_path = os.path.abspath(path)
+    if abs_path.startswith(home + os.sep):
+        return "~" + abs_path[len(home) :]
+    return os.path.basename(abs_path)
+
+
+def _safe_int(value: Any, default: int | None = None) -> int | None:
+    """Coerce JSON meta values to int without raising."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _sanitize_export_filename(title: str) -> str:
     cleaned = re.sub(r"[^\w\s-]", "", title or "chat").strip().lower()
     cleaned = re.sub(r"[-\s]+", "-", cleaned).strip("-")
@@ -70,7 +89,7 @@ def export_chat_json(
             "content": msg.get("content", ""),
         }
         if msg.get("_image_path"):
-            entry["image_path"] = msg["_image_path"]
+            entry["image_path"] = _redact_export_path(msg["_image_path"])
         messages.append(entry)
     return {
         "chat": {
@@ -167,16 +186,23 @@ class ChatStorage:
         if not chats:
             return None
 
-        chat_counter = int(meta.get("chat_counter", max(chats.keys(), default=0)))
-        current_chat_id = int(meta.get("current_chat_id", max(chats.keys())))
+        default_id = max(chats.keys())
+        chat_counter = _safe_int(meta.get("chat_counter"), default_id) or default_id
+        current_chat_id = _safe_int(meta.get("current_chat_id"), default_id) or default_id
         if current_chat_id not in chats:
-            current_chat_id = max(chats.keys())
+            current_chat_id = default_id
+
+        chat_order: list[int] = []
+        for raw in meta.get("chat_order", []):
+            chat_id = _safe_int(raw)
+            if chat_id is not None and chat_id in chats and chat_id not in chat_order:
+                chat_order.append(chat_id)
 
         return {
             "chats": chats,
             "chat_counter": chat_counter,
             "current_chat_id": current_chat_id,
-            "chat_order": [int(x) for x in meta.get("chat_order", []) if int(x) in chats],
+            "chat_order": chat_order,
             "last_cwd": _normalize_cwd(meta.get("last_cwd")),
             "current_model": meta.get("current_model", "default"),
             "current_provider": meta.get("current_provider"),

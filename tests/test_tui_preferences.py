@@ -1,7 +1,7 @@
 """Tests for TUI user preferences."""
 import json
 
-from ai_engine.tui_preferences import PreferencesStore
+from ai_engine.tui.preferences import PreferencesStore
 
 
 def test_preferences_roundtrip(tmp_path):

@@ -4,13 +4,25 @@ from __future__ import annotations
 import base64
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
+from .routing import model_name_matches, provider_priority
+
 GENERATED_DIR = Path.home() / ".ai-engine" / "generated"
+_MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
+_ALLOWED_IMAGE_HOST_SUFFIXES = (
+    "openrouter.ai",
+    "blob.core.windows.net",
+    "oaidalleapiprodscus.blob.core.windows.net",
+    "replicate.delivery",
+    "cdn.discordapp.com",
+)
 
 IMAGE_API_MODELS = (
     "openai/gpt-5-image-mini",
@@ -19,6 +31,9 @@ IMAGE_API_MODELS = (
     "google/gemini-3-pro-image",
     "bytedance-seed/seedream-4.5",
 )
+
+_capabilities_lock = threading.Lock()
+_capabilities_ready = False
 
 
 def _openrouter_key() -> str | None:
@@ -31,28 +46,57 @@ def _openrouter_key() -> str | None:
     return os.getenv("OPENROUTER_API_KEY")
 
 
-def _provider_priority(provider: str | None) -> int:
-    try:
-        from core.config import AI_CONFIGS
-        score = int(AI_CONFIGS.get(provider or "", {}).get("priority", 999))
-        if provider in {"openrouter", "vercel", "opencode_zen"}:
-            score += 50
-        return score
-    except Exception:
-        return 999
+def _ensure_openrouter_capabilities() -> None:
+    global _capabilities_ready
+    with _capabilities_lock:
+        if _capabilities_ready:
+            return
+        from core.capabilities import capability_manager
+
+        capability_manager.fetch_openrouter_capabilities()
+        _capabilities_ready = True
 
 
-def _model_name_matches(candidate: str, target: str) -> bool:
-    c = candidate.lower().strip()
-    t = target.lower().strip()
-    if not c or not t:
+def _is_allowed_image_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
         return False
-    return (
-        c == t
-        or c.endswith(f"/{t}")
-        or t.endswith(f"/{c}")
-        or c.split("/")[-1] == t.split("/")[-1]
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    return any(
+        host == suffix or host.endswith(f".{suffix}")
+        for suffix in _ALLOWED_IMAGE_HOST_SUFFIXES
     )
+
+
+def _fetch_url_image(url: str, *, stem: str = "gen") -> str | None:
+    if not _is_allowed_image_url(url):
+        return None
+    ext = ".png"
+    tail = url.rsplit("/", 1)[-1]
+    if "." in tail:
+        ext = "." + tail.rsplit(".", 1)[-1].split("?")[0][:8]
+    target = GENERATED_DIR / f"{stem}-{int(time.time())}{ext}"
+    try:
+        GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+        with requests.get(url, timeout=30, stream=True) as resp:
+            resp.raise_for_status()
+            total = 0
+            chunks: list[bytes] = []
+            for chunk in resp.iter_content(65536):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > _MAX_DOWNLOAD_BYTES:
+                    return None
+                chunks.append(chunk)
+        with open(target, "wb") as f:
+            for chunk in chunks:
+                f.write(chunk)
+        return str(target)
+    except Exception:
+        return None
 
 
 def _image_route_candidates(
@@ -63,7 +107,7 @@ def _image_route_candidates(
     from core.capabilities import capability_manager
     from core.model_cache import shared_model_cache, sanitize_model_list
 
-    capability_manager.fetch_openrouter_capabilities()
+    _ensure_openrouter_capabilities()
     capability_models = list(capability_manager.get_models_for_modality("image_gen"))
 
     models: list[str] = []
@@ -85,26 +129,26 @@ def _image_route_candidates(
         key = (preferred_model, preferred_provider)
         if key not in seen:
             seen.add(key)
-            routes.append((preferred_model, preferred_provider, _provider_priority(preferred_provider)))
+            routes.append((preferred_model, preferred_provider, provider_priority(preferred_provider)))
 
     for target in models:
         for entry in cached:
             if "|" not in entry:
                 continue
             provider, api_model = entry.split("|", 1)
-            if not _model_name_matches(api_model, target) and not _model_name_matches(target, api_model):
+            if not model_name_matches(api_model, target) and not model_name_matches(target, api_model):
                 continue
             key = (api_model, provider)
             if key in seen:
                 continue
             seen.add(key)
-            routes.append((api_model, provider, _provider_priority(provider)))
+            routes.append((api_model, provider, provider_priority(provider)))
 
-        if not any(r[0] == target or _model_name_matches(r[0], target) for r in routes):
+        if not any(r[0] == target or model_name_matches(r[0], target) for r in routes):
             key = (target, "openrouter")
             if key not in seen:
                 seen.add(key)
-                routes.append((target, "openrouter", _provider_priority("openrouter")))
+                routes.append((target, "openrouter", provider_priority("openrouter")))
 
     routes.sort(key=lambda item: item[2])
     return [(model, provider) for model, provider, _ in routes]
@@ -149,35 +193,36 @@ def _extract_images_from_message(message: dict[str, Any]) -> tuple[str, list[str
     return "\n".join(texts).strip(), images
 
 
-def _persist_image_ref(ref: str, *, stem: str = "gen") -> str | None:
+def persist_image_ref(ref: str, *, stem: str = "gen") -> str | None:
+    """Save a data-URI, allowlisted HTTPS URL, or local file path."""
     if ref.startswith("data:image"):
         match = re.search(r"base64,([A-Za-z0-9+/=]+)", ref)
         if match:
             return _save_b64_image(match.group(1), stem=stem)
         return None
     if ref.startswith("http"):
-        ext = ".png"
-        target = GENERATED_DIR / f"{stem}-{int(time.time())}{ext}"
-        try:
-            GENERATED_DIR.mkdir(parents=True, exist_ok=True)
-            urllib_mod = __import__("urllib.request")
-            urllib_mod.urlretrieve(ref, target)
-            return str(target)
-        except Exception:
-            return None
+        return _fetch_url_image(ref, stem=stem)
     if os.path.isfile(ref):
         return ref
     return None
 
 
-def _extract_image_from_text(content: str) -> str | None:
+def _persist_image_ref(ref: str, *, stem: str = "gen") -> str | None:
+    return persist_image_ref(ref, stem=stem)
+
+
+def extract_image_from_text(content: str) -> str | None:
     url_match = re.search(r"!\[.*?\]\((https?://[^\)]+)\)", content)
     if url_match:
-        return _persist_image_ref(url_match.group(1), stem="gen")
+        return persist_image_ref(url_match.group(1), stem="gen")
     data_match = re.search(r"(data:image/[^;]+;base64,([A-Za-z0-9+/=]+))", content)
     if data_match:
         return _save_b64_image(data_match.group(2), stem="gen")
     return None
+
+
+def _extract_image_from_text(content: str) -> str | None:
+    return extract_image_from_text(content)
 
 
 def _try_openrouter_images_api(prompt: str, model: str, key: str) -> tuple[str | None, str]:
@@ -232,7 +277,7 @@ def _try_engine_chat_completion(
         err = result.error_message or "no image returned"
         return None, f"{provider}/{model}: {err}", model, provider
 
-    path = _extract_image_from_text(result.content)
+    path = extract_image_from_text(result.content)
     if path:
         used = result.model_used or model
         prov = result.provider_used or provider

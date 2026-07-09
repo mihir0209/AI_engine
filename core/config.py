@@ -3,7 +3,12 @@ from typing import Dict, List, Any, Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
-load_dotenv()
+try:
+    from core.env_bootstrap import bootstrap_user_environment
+
+    bootstrap_user_environment()
+except ImportError:
+    load_dotenv()
 
 
 class ProviderConfig(BaseModel):

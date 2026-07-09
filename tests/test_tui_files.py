@@ -1,7 +1,7 @@
 """Tests for TUI fuzzy file matching."""
 from pathlib import Path
 
-from ai_engine.tui_files import build_file_index, match_files
+from ai_engine.tui.files import build_file_index, match_files
 
 
 def test_build_file_index_finds_files(tmp_path):
