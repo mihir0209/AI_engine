@@ -4,14 +4,12 @@ import asyncio
 import aiohttp
 import requests
 import re
-import json
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 import concurrent.futures
 import threading
 from dotenv import load_dotenv
-from dataclasses import dataclass
 
 # Import configuration from external config file
 try:
@@ -52,8 +50,10 @@ except ImportError as e:
     print(f"Failed to import StatisticsManager: {e}")
     print("Statistics persistence will be disabled")
     StatisticsManager = None
-    get_stats_manager = lambda: None
-    save_statistics_now = lambda: None
+    def get_stats_manager():
+        return None
+    def save_statistics_now():
+        return None
 
 # Load environment variables
 load_dotenv()
@@ -66,7 +66,7 @@ _ENGINE_MODE = os.getenv("AI_ENGINE_MODE", "all").lower()
 class AI_engine(ProviderRequestMixin, StressTestMixin):
     """
     AI Engine v3.0 - Multi-provider AI gateway with intelligent routing
-    
+
     Features:
         - Support for 7+ provider formats (OpenAI, Anthropic, Vertex AI, etc.)
         - Intelligent key rotation with load balancing
@@ -75,7 +75,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         - Rate limiting per provider
         - Streaming support
         - Autodecide: automatic model selection
-    
+
     Usage:
         >>> engine = AI_engine(verbose=True)
         >>> result = engine.chat_completion(
@@ -87,7 +87,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
 
     def __init__(self, verbose: bool = None):
         """Initialize the AI Engine v3.0
-        
+
         Args:
             verbose: Enable verbose logging. If None, uses ENGINE_SETTINGS default.
         """
@@ -241,7 +241,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def set_verbose(self, verbose: bool):
         """
         Set verbose mode for this AI_engine instance
-        
+
         Args:
             verbose (bool): Enable or disable verbose output
         """
@@ -251,7 +251,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def get_verbose(self) -> bool:
         """
         Get current verbose mode setting
-        
+
         Returns:
             bool: Current verbose mode state
         """
@@ -260,7 +260,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def set_global_verbose(self, verbose: bool):
         """
         Set global verbose mode in ENGINE_SETTINGS (affects all new instances)
-        
+
         Args:
             verbose (bool): Enable or disable global verbose output
         """
@@ -270,7 +270,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def get_global_verbose(self) -> bool:
         """
         Get global verbose mode setting
-        
+
         Returns:
             bool: Global verbose mode state
         """
@@ -578,10 +578,10 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         """
         # Classify the error to determine appropriate response
         error_type = self._classify_error(error_message, status_code, response_json)
-        
+
         # Record health check
         health_monitor.record_check(provider_name, success=False, error=error_message, status_code=status_code)
-        
+
         # Record latency (with high value to penalize slow providers)
         latency_tracker.record(provider_name, 10000, success=False)
 
@@ -604,7 +604,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         if error_type in ["rate_limit", "auth_error", "quota_exceeded"]:
             # Mark as rate limited for automatic recovery
             rate_limit_manager.mark_rate_limited(provider_name, retry_after=60)
-            
+
             # These errors suggest key-level issues - try rotating API key immediately
             if self.engine_settings.get('key_rotation_enabled', True):
                 rotated_key = self._rotate_api_key(provider_name)
@@ -834,13 +834,13 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                         if self.verbose:
                             verbose_print(f"⚠️ Skipping {provider_name} - unhealthy", self.verbose)
                         continue
-                    
+
                     # Check rate limit status
                     if not rate_limit_manager.is_available(provider_name):
                         if self.verbose:
                             verbose_print(f"⚠️ Skipping {provider_name} - rate limited", self.verbose)
                         continue
-                    
+
                     available.append((provider_name, config))
 
         # If all providers are unavailable, try anyway (last resort - try all enabled providers)
@@ -884,15 +884,15 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def normalize_model_name(self, model_name: str) -> str:
         """
         Convert model names to comparable format for matching.
-        
+
         Removes provider prefixes, special characters, and normalizes separators.
-        
+
         Args:
             model_name: Raw model name (e.g., 'provider-1/gpt-4', '@cf/meta/llama-3')
-        
+
         Returns:
             Normalized model name (e.g., 'gpt4', 'llama3')
-        
+
         Example:
             >>> engine.normalize_model_name("provider-1/gpt-4")
             'gpt4'
@@ -1264,10 +1264,10 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         def get_provider_score(provider_tuple):
             provider_name, model_name = provider_tuple
             config = self.providers.get(provider_name, {})
-            
+
             # Base priority (lower = better)
             priority = config.get('priority', 999)
-            
+
             # Health score from health monitor
             health_score = 0
             health_data = health_monitor.get_provider_health(provider_name)
@@ -1277,14 +1277,14 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 health_score = 50
             else:
                 health_score = 0
-            
+
             # Latency score from latency tracker (faster = better, max 100)
             avg_latency_ms = latency_tracker.get_avg_latency(provider_name)
             speed_score = max(0, 100 - (avg_latency_ms / 50))  # 50ms = 1 point
-            
+
             # Uptime score (higher = better)
             uptime_score = health_data.get('uptime_percent', 50)
-            
+
             # Weighted score (lower is better for sorting)
             # Health 35%, Speed 35%, Uptime 20%, Priority 10%
             weighted_score = (
@@ -1293,25 +1293,25 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 (100 - uptime_score) * 0.2 +
                 priority * 0.1
             )
-            
+
             return weighted_score
 
         # Sort providers by score
         sorted_providers = sorted(working_providers, key=get_provider_score)
-        
+
         # Return the best provider
         best_provider_name, best_model_name = sorted_providers[0]
-        
+
         if self.verbose:
             health_data = health_monitor.get_provider_health(best_provider_name)
             verbose_print(f"🎯 Selected {best_provider_name} (health: {health_data.get('status', 'unknown')}, uptime: {health_data.get('uptime_percent', 0):.1f}%)", self.verbose)
-            
+
             # Show alternatives if there are any
             if len(sorted_providers) > 1:
                 alternatives = sorted_providers[1:4]
                 alt_info = ", ".join([f"{p}" for p, m in alternatives])
                 verbose_print(f"🔄 Alternatives: {alt_info}", self.verbose)
-        
+
         return best_provider_name, best_model_name
 
     def _request_with_key_rotation(
@@ -1380,9 +1380,9 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
     def chat_completion(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs) -> RequestResult:
         """
         Main chat completion method with smart provider rotation and autodecide feature.
-        
+
         Supports provider-specific routing with format: provider_name/model_name
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content' keys
             model: Model name (e.g., 'gpt-4', 'claude-3'). If None, uses provider default.
@@ -1393,10 +1393,10 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 preferred_provider: Force specific provider
                 force_provider: If True, only use the specified provider
                 use_cache: If True, check/use response cache (default: True)
-        
+
         Returns:
             RequestResult with success status, content, and metadata
-        
+
         Example:
             >>> engine = AI_engine()
             >>> result = engine.chat_completion(
@@ -1616,7 +1616,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         """
         Streaming chat completion method - yields chunks as they arrive.
         Supports provider-specific routing with format: provider_name/model_name.
-        
+
         Yields:
             dict: {'content': str, 'done': bool} or {'error': str, 'done': True}
         """
@@ -1639,7 +1639,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         # Try providers until one streams successfully
         for provider_name, provider_config in available_providers:
             format_type = provider_config.get('format', 'openai')
-            
+
             # Skip providers that don't support streaming well
             if format_type not in ('openai', 'ollama'):
                 continue
@@ -1653,7 +1653,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     stream_gen = self._make_ollama_streaming_request(provider_name, provider_config, messages, model)
                 else:
                     stream_gen = self._make_streaming_request(provider_name, provider_config, messages, model)
-                
+
                 for chunk in stream_gen:
                     if chunk.get('error'):
                         if self.verbose:
@@ -1669,7 +1669,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 if self.verbose:
                     verbose_print(f"❌ {provider_name} streaming exception: {e}", self.verbose)
                 continue
-        
+
         yield {'error': 'All providers failed for streaming', 'done': True}
 
 
@@ -1783,7 +1783,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         if new_key and new_key != current_key:
             return f"✅ Rolled from key #{current_index} ({current_key_preview}) to key #{new_index} ({new_key_preview})"
         elif not self.engine_settings.get('key_rotation_enabled', True):
-            return f"⚠️ Key rotation is disabled in engine settings"
+            return "⚠️ Key rotation is disabled in engine settings"
         else:
             return f"🔄 Key rolling attempted: staying at key #{current_index} ({current_key_preview}) - may be optimal choice"
 
@@ -1831,7 +1831,7 @@ def main():
         if provider_name == "stress":
             engine = AI_engine(verbose=True)
             print("🧪 Running comprehensive stress test...")
-            results = engine.stress_test_providers(test_iterations=3, ask_for_priority_change=True)
+            engine.stress_test_providers(test_iterations=3, ask_for_priority_change=True)
             return
         elif provider_name == "server":
             print("🚀 Starting AI Engine FastAPI Server...")
@@ -1907,19 +1907,19 @@ def main():
             if len(sys.argv) > 2:
                 custom_message = " ".join(sys.argv[2:])
 
-            print(f"🔄 Testing automatic provider rotation...")
+            print("🔄 Testing automatic provider rotation...")
             print("-" * 50)
 
             messages = [{"role": "user", "content": custom_message}]
             result = engine.chat_completion(messages)
 
             if result.success:
-                print(f"✅ AUTO ROTATION SUCCESS!")
+                print("✅ AUTO ROTATION SUCCESS!")
                 print(f"💬 Response: {result.content}")
                 print(f"🏃‍♂️ Provider used: {result.provider_used}")
                 print(f"⏱️ Response time: {result.response_time:.2f}s")
             else:
-                print(f"❌ AUTO ROTATION FAILED!")
+                print("❌ AUTO ROTATION FAILED!")
                 print(f"🚨 Error: {result.error_message}")
                 print(f"🔍 Error type: {result.error_type}")
             return
@@ -1955,19 +1955,19 @@ def main():
                 verbose_print(f"⚠️  No providers found for model '{target_model}'", engine.verbose)
                 verbose_print("🔄 Falling back to automatic provider selection...", engine.verbose)
 
-            print(f"\n🚀 Making autodecide chat completion...")
+            print("\n🚀 Making autodecide chat completion...")
             messages = [{"role": "user", "content": custom_message}]
             result = engine.chat_completion(messages, model=target_model, autodecide=True)
 
             if result.success:
-                print(f"✅ AUTODECIDE SUCCESS!")
+                print("✅ AUTODECIDE SUCCESS!")
                 print(f"🎯 Requested model: {target_model}")
                 print(f"🏃‍♂️ Provider selected: {result.provider_used}")
                 print(f"🤖 Model used: {result.model_used}")
                 print(f"💬 Response: {result.content}")
                 print(f"⏱️ Response time: {result.response_time:.2f}s")
             else:
-                print(f"❌ AUTODECIDE FAILED!")
+                print("❌ AUTODECIDE FAILED!")
                 print(f"🎯 Requested model: {target_model}")
                 print(f"🚨 Error: {result.error_message}")
                 print(f"🔍 Error type: {result.error_type}")
@@ -2017,21 +2017,21 @@ def main():
 
     # Show status
     status = engine.get_status()
-    print(f"\n📊 Engine Status:")
+    print("\n📊 Engine Status:")
     print(f"Available providers: {status['available_providers']}/{status['total_providers']}")
     print(f"Top providers: {', '.join(status['available_provider_list'])}")
 
     # Show usage help
-    print(f"\n💡 Usage:")
-    print(f"  python ai_engine.py                    # Test with priority selection")
-    print(f"  python ai_engine.py <provider>         # Test specific provider")
-    print(f"  python ai_engine.py <provider> <msg>   # Test with custom message")
-    print(f"  python ai_engine.py list               # List all providers")
-    print(f"  python ai_engine.py status             # Show engine status")
-    print(f"  python ai_engine.py keys               # Show key usage for all providers")
-    print(f"  python ai_engine.py keys <provider>    # Show detailed key usage for provider")
-    print(f"  python ai_engine.py stress             # Run stress test")
-    print(f"  python ai_engine.py server             # Start FastAPI web server")
+    print("\n💡 Usage:")
+    print("  python ai_engine.py                    # Test with priority selection")
+    print("  python ai_engine.py <provider>         # Test specific provider")
+    print("  python ai_engine.py <provider> <msg>   # Test with custom message")
+    print("  python ai_engine.py list               # List all providers")
+    print("  python ai_engine.py status             # Show engine status")
+    print("  python ai_engine.py keys               # Show key usage for all providers")
+    print("  python ai_engine.py keys <provider>    # Show detailed key usage for provider")
+    print("  python ai_engine.py stress             # Run stress test")
+    print("  python ai_engine.py server             # Start FastAPI web server")
 
 if __name__ == "__main__":
     main()
@@ -2040,10 +2040,10 @@ if __name__ == "__main__":
 def get_ai_engine(verbose: bool = False) -> 'AI_engine':
     """
     Convenience function to get an AI_engine instance
-    
+
     Args:
         verbose (bool): Enable verbose logging
-        
+
     Returns:
         AI_engine: Configured AI Engine instance
     """

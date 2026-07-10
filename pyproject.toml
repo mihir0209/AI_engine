@@ -85,6 +85,8 @@ core = ["*.json"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E501"]
 
@@ -100,12 +102,9 @@ markers = [
 ]
 
 [tool.mutmut]
-paths_to_mutate = ["core/ai_engine.py"]
 source_paths = ["core/ai_engine.py"]
-only_mutate = ["core/ai_engine.py"]
-tests_dir = ["tests/features/test_key_rotation.py", "tests/test_ai_engine.py"]
 pytest_add_cli_args_test_selection = [
     "tests/features/test_key_rotation.py",
     "tests/test_ai_engine.py",
+    "tests/test_key_rotation_unit.py",
 ]
-mutate_only_covered_lines = true

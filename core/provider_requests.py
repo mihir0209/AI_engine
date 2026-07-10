@@ -2,12 +2,10 @@
 Provider request methods — extracted from ai_engine.py monolith.
 Mixin class that AI_engine inherits from to keep all methods accessible via self.
 """
-import re
 import json
-import time
 import logging
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass, field
+from typing import Dict, Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +65,7 @@ class ProviderRequestMixin:
         import requests as _requests
 
         endpoint = config.get("endpoint", "")
-        api_keys = config.get("api_keys", [])
+        config.get("api_keys", [])
         current_key = self._get_current_api_key(provider_name)
         if not current_key:
             return RequestResult(success=False, error_message="No API key available", error_type="auth_error")

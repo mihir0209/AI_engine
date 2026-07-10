@@ -1,11 +1,8 @@
-import re
-import json
-import os
-import time
-import threading
-from typing import Dict, List, Any
-from datetime import datetime
+import concurrent.futures
 import logging
+import re
+import time
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +37,13 @@ class StressTestMixin:
         passed_providers = sum(1 for r in results.values() if r['passed'])
         pass_rate = (passed_providers / total_providers) * 100 if total_providers > 0 else 0
 
-        print(f"\n📊 STRESS TEST SUMMARY:")
+        print("\n📊 STRESS TEST SUMMARY:")
         print(f"Providers tested: {total_providers}")
         print(f"Providers passed: {passed_providers}")
         print(f"Overall pass rate: {pass_rate:.1f}%")
 
         # Show detailed results
-        print(f"\n📋 DETAILED RESULTS:")
+        print("\n📋 DETAILED RESULTS:")
         print(f"{'Provider':<15} {'Status':<6} {'Success Rate':<12} {'Avg Time':<10} {'Priority'}")
         print("-" * 65)
 
@@ -63,9 +60,9 @@ class StressTestMixin:
 
         # Ask user about priority changes if requested
         if ask_for_priority_change and passed_providers > 0:
-            print(f"\n🔄 Priority Optimization Available")
-            print(f"Current priority ranking vs. performance-based ranking could be optimized.")
-            print(f"This will update both in-memory priorities and save changes to config.py.")
+            print("\n🔄 Priority Optimization Available")
+            print("Current priority ranking vs. performance-based ranking could be optimized.")
+            print("This will update both in-memory priorities and save changes to config.py.")
 
             response = input("Enter 'y' to optimize priorities or 'n' to keep current: ").lower().strip()
 
@@ -250,7 +247,7 @@ class StressTestMixin:
         # Sort by score (higher is better)
         provider_scores.sort(key=lambda x: x[1], reverse=True)
 
-        print(f"\n🏆 OPTIMIZED PRIORITY RANKING:")
+        print("\n🏆 OPTIMIZED PRIORITY RANKING:")
         print(f"{'Rank':<4} {'Provider':<15} {'Score':<6} {'Time':<7} {'Old Pri':<7} {'New Pri'}")
         print("-" * 60)
 
@@ -273,13 +270,13 @@ class StressTestMixin:
         if priority_changes:
             try:
                 self._save_priority_changes_to_config(priority_changes)
-                print(f"\n✅ Priority changes saved to config.py")
+                print("\n✅ Priority changes saved to config.py")
                 print(f"📝 Updated {len(priority_changes)} provider priorities")
             except Exception as e:
                 print(f"\n⚠️ Failed to save priority changes to config.py: {e}")
-                print(f"📝 In-memory priorities updated, but file changes not saved")
+                print("📝 In-memory priorities updated, but file changes not saved")
         else:
-            print(f"\n📌 No priority changes needed")
+            print("\n📌 No priority changes needed")
 
     def _save_priority_changes_to_config(self, priority_changes: Dict[str, int]):
         """Save priority changes back to config.py file"""
@@ -307,7 +304,7 @@ class StressTestMixin:
             with open('config.py', 'w', encoding='utf-8') as f:
                 f.write(updated_content)
 
-            print(f"📁 Config file updated with new priorities")
+            print("📁 Config file updated with new priorities")
 
         except Exception as e:
             raise Exception(f"Failed to update config.py: {str(e)}")

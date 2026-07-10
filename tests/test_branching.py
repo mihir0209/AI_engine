@@ -20,7 +20,7 @@ def test_create_branch(server_client):
     create_resp = server_client.post("/api/chat/chats", json={"title": "Branch Test"})
     chat_id = create_resp.json()["chat_id"]
 
-    msg1_id = _add_user_msg(server_client, chat_id, "Message 1")
+    _add_user_msg(server_client, chat_id, "Message 1")
     msg3_id = _add_user_msg(server_client, chat_id, "Message 3")
 
     # Create branch from message 3

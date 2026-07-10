@@ -431,7 +431,7 @@ class CapabilityManager:
 
     def supports_vision(self, provider: str, model: str = None) -> bool:
         """Check if a provider/model supports vision/image input.
-        
+
         Priority: model database > OpenRouter data > fuzzy keywords > provider fallback.
         """
         if model:

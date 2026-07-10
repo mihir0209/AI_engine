@@ -27,8 +27,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,server]"
 
-      - name: Lint with ruff
-        run: ruff check . --select=E,F,W --ignore=E501 || true
+      - name: Lint with ruff (core + tests)
+        run: ruff check core tests
 
       - name: Validate config
         run: |

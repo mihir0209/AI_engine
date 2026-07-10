@@ -51,7 +51,7 @@ class LoadTester:
         def make_request():
             try:
                 req_start = time.time()
-                result = func()
+                func()
                 req_time = time.time() - req_start
                 return req_time, None
             except Exception as e:
@@ -106,7 +106,7 @@ class LoadTester:
         print(f"Error Rate:          {result.error_rate:.2f}%")
         print(f"Duration:            {result.total_duration:.2f}s")
         print(f"Requests/sec:        {result.requests_per_second:.2f}")
-        print(f"\nResponse Times:")
+        print("\nResponse Times:")
         print(f"  Average:           {result.avg_response_time*1000:.2f}ms")
         print(f"  Min:               {result.min_response_time*1000:.2f}ms")
         print(f"  Max:               {result.max_response_time*1000:.2f}ms")
@@ -115,7 +115,7 @@ class LoadTester:
         print(f"  P99:               {result.p99_response_time*1000:.2f}ms")
 
         if result.errors:
-            print(f"\nSample Errors:")
+            print("\nSample Errors:")
             for error in result.errors[:5]:
                 print(f"  - {error[:100]}")
 

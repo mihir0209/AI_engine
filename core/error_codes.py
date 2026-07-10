@@ -131,7 +131,7 @@ class ErrorFactory:
 
     @staticmethod
     def rate_limited(provider: str = None, retry_after: int = 60) -> ErrorResponse:
-        msg = f"Rate limited"
+        msg = "Rate limited"
         if provider:
             msg += f" by provider '{provider}'"
         return ErrorResponse(

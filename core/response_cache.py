@@ -159,42 +159,42 @@ class ResponseCache:
     def find_similar(self, messages: List[Dict], threshold: float = 0.7) -> Optional[Dict]:
         """Find similar cached responses using word overlap similarity"""
         query_content = " ".join(m.get("content", "") for m in messages).lower()
-        
+
         # Preprocess: remove common words and normalize
         stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
                       'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
                       'should', 'may', 'might', 'shall', 'can', 'i', 'you', 'he', 'she',
                       'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your',
                       'his', 'its', 'our', 'their', 'this', 'that', 'these', 'those'}
-        
+
         query_words = set(query_content.split()) - stop_words
-        
+
         if not query_words:
             return None
-        
+
         best_match = None
         best_score = 0.0
-        
+
         with self._lock:
             for entry in self.memory_cache.values():
                 if time.time() >= entry["expires_at"]:
                     continue
-                
+
                 cached_content = entry["response"].get("content", "").lower()
                 cached_words = set(cached_content.split()) - stop_words
-                
+
                 if not cached_words:
                     continue
-                
+
                 # Calculate Jaccard similarity
                 intersection = query_words & cached_words
                 union = query_words | cached_words
-                
+
                 if union:
                     similarity = len(intersection) / len(union)
-                    
+
                     if similarity > best_score and similarity >= threshold:
                         best_score = similarity
                         best_match = entry["response"]
-        
+
         return best_match

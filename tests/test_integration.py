@@ -118,7 +118,7 @@ class TestRouterIntegration:
         chat_id = create_resp.json()["chat_id"]
 
         # Add messages
-        msg1 = server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
+        server_client.post(f"/api/chat/chats/{chat_id}/messages", json={
             "role": "user", "content": "Message 1"
         }).json()["message_id"]
 

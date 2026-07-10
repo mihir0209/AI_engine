@@ -1,6 +1,5 @@
 """Tests for per-user config paths and env bootstrap."""
 import os
-from pathlib import Path
 
 from core.env_bootstrap import ENV_FILE_OVERRIDE_VAR, bootstrap_user_environment
 from core.user_paths import AI_ENGINE_HOME, USER_DATA_DIR, USER_ENV_FILE

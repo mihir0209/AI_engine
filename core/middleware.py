@@ -183,7 +183,7 @@ def tracked_request(endpoint: str):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            metrics = RequestTracker.start_request(endpoint)
+            RequestTracker.start_request(endpoint)
             try:
                 result = func(*args, **kwargs)
                 RequestTracker.end_request(status_code=200)

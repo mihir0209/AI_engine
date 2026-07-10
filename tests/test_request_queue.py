@@ -45,7 +45,7 @@ def test_process_queue(queue):
 def test_process_queue_with_args(queue):
     def add(a, b):
         return a + b
-    
+
     queue.enqueue("provider1", add, args=(2, 3))
     results = queue.process_queue("provider1")
     assert results[0]["result"] == 5
@@ -54,7 +54,7 @@ def test_process_queue_with_args(queue):
 def test_process_queue_with_kwargs(queue):
     def greet(name, greeting="Hello"):
         return f"{greeting} {name}"
-    
+
     queue.enqueue("provider1", greet, kwargs={"name": "World", "greeting": "Hi"})
     results = queue.process_queue("provider1")
     assert results[0]["result"] == "Hi World"
@@ -63,7 +63,7 @@ def test_process_queue_with_kwargs(queue):
 def test_process_queue_max_requests(queue):
     for i in range(5):
         queue.enqueue("provider1", lambda: f"result_{i}")
-    
+
     results = queue.process_queue("provider1", max_requests=3)
     assert len(results) == 3
     assert queue.get_queue_size("provider1") == 2
@@ -72,7 +72,7 @@ def test_process_queue_max_requests(queue):
 def test_process_queue_error(queue):
     def failing():
         raise ValueError("Test error")
-    
+
     queue.enqueue("provider1", failing)
     results = queue.process_queue("provider1")
     assert results[0]["success"] is False
@@ -90,7 +90,7 @@ def test_get_queue_size(queue):
     queue.enqueue("p1", lambda: None)
     queue.enqueue("p1", lambda: None)
     queue.enqueue("p2", lambda: None)
-    
+
     assert queue.get_queue_size("p1") == 2
     assert queue.get_queue_size("p2") == 1
     assert queue.get_queue_size() == 3
@@ -99,7 +99,7 @@ def test_get_queue_size(queue):
 def test_max_queue_size(queue):
     for i in range(15):
         queue.enqueue("provider1", lambda: f"result_{i}")
-    
+
     assert queue.get_queue_size("provider1") == 10  # Max queue size
 
 
@@ -108,7 +108,7 @@ def test_max_queue_size(queue):
 def test_clear_queue_provider(queue):
     queue.enqueue("p1", lambda: None)
     queue.enqueue("p2", lambda: None)
-    
+
     queue.clear_queue("p1")
     assert queue.get_queue_size("p1") == 0
     assert queue.get_queue_size("p2") == 1
@@ -117,7 +117,7 @@ def test_clear_queue_provider(queue):
 def test_clear_all_queues(queue):
     queue.enqueue("p1", lambda: None)
     queue.enqueue("p2", lambda: None)
-    
+
     queue.clear_queue()
     assert queue.get_queue_size() == 0
 
@@ -126,10 +126,10 @@ def test_clear_all_queues(queue):
 
 def test_expired_request_skipped(queue):
     queue.enqueue("provider1", lambda: "result")
-    
+
     # Manually expire the request
     queue.queues["provider1"][0].created_at = time.time() - 100
-    
+
     results = queue.process_queue("provider1")
     assert len(results) == 0  # Expired request skipped
 
@@ -139,7 +139,7 @@ def test_expired_request_skipped(queue):
 def test_get_stats(queue):
     queue.enqueue("p1", lambda: None)
     queue.enqueue("p2", lambda: None)
-    
+
     stats = queue.get_stats()
     assert stats["total_queued"] == 2
     assert "p1" in stats["by_provider"]
@@ -152,13 +152,13 @@ def test_concurrent_enqueue(queue):
     def enqueue_requests(provider):
         for i in range(20):
             queue.enqueue(provider, lambda: None)
-    
+
     threads = [threading.Thread(target=enqueue_requests, args=(f"p{i}",)) for i in range(5)]
     for t in threads:
         t.start()
     for t in threads:
         t.join(timeout=3)
-    
+
     # Each provider has max 10 items, so total should be 50 (5 providers * 10 max)
     assert queue.get_queue_size() == 50
 
@@ -166,14 +166,14 @@ def test_concurrent_enqueue(queue):
 def test_concurrent_process(queue):
     for i in range(10):
         queue.enqueue("provider1", lambda: None)
-    
+
     def process():
         return queue.process_queue("provider1", max_requests=5)
-    
+
     threads = [threading.Thread(target=process) for _ in range(3)]
     for t in threads:
         t.start()
     for t in threads:
         t.join(timeout=3)
-    
+
     assert queue.get_queue_size() <= 10

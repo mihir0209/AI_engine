@@ -3,7 +3,6 @@ import base64
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from ai_engine.tui.media import (
     _is_allowed_image_url,

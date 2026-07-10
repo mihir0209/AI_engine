@@ -228,7 +228,7 @@ class SLAMonitor:
 
     def record_value(self, metric_name: str, value: float, higher_is_worse: bool = False):
         """Record a value for an SLA metric
-        
+
         Args:
             higher_is_worse: If True, breach when value > target (e.g., latency)
                             If False, breach when value < target (e.g., availability)

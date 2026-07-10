@@ -8,9 +8,7 @@ Environment variables:
     CDN_CONFIG_BRANCH    Git branch for default jsDelivr URL (default: main)
 """
 import os
-import sys
 import time
-import hashlib
 import threading
 import logging
 from pathlib import Path

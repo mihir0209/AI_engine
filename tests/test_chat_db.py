@@ -169,7 +169,7 @@ def test_get_context_messages_token_limit(chat_db):
 def test_message_with_metadata(chat_db):
     chat_id = chat_db.create_chat(title="Test")
     metadata = {"provider": "openai", "model": "gpt-4"}
-    msg_id = chat_db.add_message(
+    chat_db.add_message(
         chat_id=chat_id,
         role="user",
         content="Hello",
@@ -182,7 +182,7 @@ def test_message_with_metadata(chat_db):
 def test_message_with_response_to(chat_db):
     chat_id = chat_db.create_chat(title="Test")
     user_msg_id = chat_db.add_message(chat_id=chat_id, role="user", content="Hello")
-    assistant_msg_id = chat_db.add_message(
+    chat_db.add_message(
         chat_id=chat_id,
         role="assistant",
         content="Hi",

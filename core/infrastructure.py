@@ -190,7 +190,7 @@ def circuit_protected(name: str = None):
                 result = func(*args, **kwargs)
                 cb.record_success()
                 return result
-            except Exception as e:
+            except Exception:
                 cb.record_failure()
                 raise
 

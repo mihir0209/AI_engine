@@ -1,10 +1,12 @@
 """Tests for session management and database backup"""
-import pytest
-import tempfile
-import shutil
+import json
 import os
-import time
+import shutil
 import sqlite3
+import tempfile
+import time
+
+import pytest
 
 
 @pytest.fixture
@@ -146,6 +148,3 @@ def test_cleanup_old_backups(backup_utils):
 
     backups = backup_utils.list_backups()
     assert len(backups) == 3
-
-
-import json

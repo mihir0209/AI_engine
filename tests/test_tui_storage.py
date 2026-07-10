@@ -51,7 +51,6 @@ def test_save_and_load_roundtrip(storage):
 def test_last_cwd_single_value_overwrites(storage):
     storage.save_last_cwd("/first/path")
     storage.save_last_cwd("/second/path")
-    loaded = storage.load() or {}
     with open(storage.meta_file, encoding="utf-8") as f:
         meta = json.load(f)
     assert meta["last_cwd"] == "/second/path"

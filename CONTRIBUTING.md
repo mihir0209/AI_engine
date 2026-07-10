@@ -77,7 +77,7 @@ test: add integration tests
 - Use type hints
 - Add docstrings to public functions
 - Keep functions focused and small
-- Run `ruff check . --select=E,F,W --ignore=E501` before submitting
+- Run `ruff check core tests` before submitting (CI-enforced scope)
 
 ## Testing
 

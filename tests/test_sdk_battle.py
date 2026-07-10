@@ -4,12 +4,14 @@
 Run full live suite:  python tests/test_sdk_battle.py
 Pytest (live only):   AI_ENGINE_MODE=all pytest tests/test_sdk_battle.py -m live -v
 """
-import sys
 import os
-import time
-import traceback
+import sys
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+pytestmark = pytest.mark.live
 
 passed = 0
 failed = 0
@@ -215,7 +217,7 @@ def _battle_models_retrieve_provider_model():
 # === 5. Error Handling Tests ===
 
 def _battle_bad_request_error():
-    from ai_engine import OpenAI, BadRequestError
+    from ai_engine import BadRequestError
     from ai_engine._exceptions import raise_for_status
     try:
         raise_for_status(400, {"error": {"message": "test error", "type": "invalid_request_error"}})
@@ -334,10 +336,6 @@ if __name__ == "__main__":
         for name, err in errors:
             print(f"  {name}: {err}")
     print("=" * 60)
-
-import pytest
-
-pytestmark = pytest.mark.live
 
 
 @pytest.fixture(autouse=True)
