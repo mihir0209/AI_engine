@@ -2,6 +2,33 @@
 
 All notable changes to AI Synapse are documented here.
 
+## [1.0.3] - 2026-07-14
+
+### Added
+
+- Test harness: mock OpenAI provider (`AI_ENGINE_MODE=testing`), pytest fixtures, 712+ non-live tests
+- Key rotation on preferred-provider and default chat paths; 53+ rotation unit tests
+- `scripts/mutmut_rotation_gate.sh` — ≥90% kill rate check on rotation code paths
+- CLI: `serve`, `status`, `providers` via `python -m ai_engine` / `ai-engine`
+- GitHub Actions: scoped ruff (`core`, `tests`, `ai_engine`), optional live-tests workflow
+
+### Fixed
+
+- `/v1/models` in testing mode uses filtered providers (no live endpoint fan-out timeout)
+- Chat module: `has_files` in message prep for intent routing; `parse_favorite_key` typo in TUI
+- Early `/v1/uni` image-gen path no longer references undefined intent metadata
+
+### Changed
+
+- **httpx** 0.28 + **Starlette** ≥0.37.2 (TestClient compatibility)
+- Documentation overhaul: README, server, deployment, user guide aligned with current CLI and dev workflow
+- Ruff enforced on `ai_engine/` package in CI
+
+### Developers
+
+- Rotation mutmut chain: **92.9%** (391/421) on core rotation functions
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for `AI_ENGINE_MODE`, mutmut, and live test opt-in
+
 ## [1.0.2] - 2026-07-09
 
 ### Documentation

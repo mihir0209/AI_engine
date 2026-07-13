@@ -30,7 +30,7 @@ client.chat.completions.create(model="gpt-4", messages=[...])
 1. `OpenAI.chat.completions.create()` calls `engine.chat_completion()`
 2. Engine calls `_get_available_providers()` — filters by health monitor + rate limits
 3. For each available provider (in priority order):
-   a. `_make_request()` dispatches to format-specific handler:
+   a. `_request_with_key_rotation()` (forced provider, preferred provider, and default fallback paths) retries across valid API keys on 401/429/quota errors; `_make_request()` dispatches to format-specific handler:
       - `openai` format → POST with Bearer auth
       - `gemini` format → POST with `?key=` parameter
       - `cohere` format → POST with Authorization header

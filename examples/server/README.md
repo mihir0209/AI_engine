@@ -15,7 +15,7 @@ pip install -r requirements.txt
 ### Start the server
 
 ```bash
-python server.py
+python -m ai_engine serve
 ```
 
 Server starts at `http://localhost:8000` with:

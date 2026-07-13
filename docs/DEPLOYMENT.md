@@ -1,272 +1,90 @@
 # Deployment Guide
 
-## Quick Start
+## Quick start
 
-### Local Development
+### pip install (recommended)
 
 ```bash
-# Clone and setup
-git clone <repo-url>
-cd AI_engine
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate  # Windows
-
-# Install dependencies
 pip install ai-synapse[server]
+mkdir -p ~/.ai-engine
+cp .env.example ~/.ai-engine/.env   # add provider API keys
 
-# Create .env file with your API keys
+python -m ai_engine serve
+# Dashboard: http://localhost:8000
+```
+
+### Git clone (development or custom builds)
+
+```bash
+git clone https://github.com/mihir0209/AI_engine.git
+cd AI_engine
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[server]"
+
 cp .env.example .env
-# Edit .env with your keys
-
-# Run server
-python server.py
+python -m ai_engine serve
 ```
 
-### Docker Deployment
+### Docker
 
 ```bash
-# Build image
-docker build -t ai-engine .
-
-# Run container
-docker run -d \
-  --name ai-engine \
-  -p 8000:8000 \
-  --env-file .env \
-  -v $(pwd)/key_statistics.json:/app/key_statistics.json \
-  -v $(pwd)/chat_data.db:/app/chat_data.db \
-  ai-engine
-
-# Or use docker-compose
-docker-compose up -d
+docker compose up -d
 ```
 
-## Environment Variables
+Server listens on port **8000** by default. See `docker-compose.yml` and `Dockerfile` in the repo for volumes and env.
 
-### Required
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `*_API_KEY` | Provider API keys | `OPENAI_API_KEY=sk-...` |
-
-### Optional
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ADMIN_API_KEY` | API key for management endpoints | (empty = no auth) |
-| `CORS_ORIGINS` | Allowed CORS origins | `*` |
-| `VERBOSE_MODE` | Enable verbose logging | `False` |
-
-## Production Configuration
-
-### 1. Security
+## Production ASGI
 
 ```bash
-# Generate secure API key
-ADMIN_API_KEY=$(openssl rand -hex 32)
-
-# Set CORS for your domain
-CORS_ORIGINS=https://yourdomain.com,https://admin.yourdomain.com
+pip install ai-synapse[server]
+uvicorn ai_engine.server.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-### 2. Performance
+Put TLS and rate limiting behind nginx, Caddy, or a cloud load balancer. Set `ADMIN_API_KEY` if exposing management APIs.
+
+## Environment variables
+
+### Provider keys
+
+Set in `~/.ai-engine/.env`, project `.env`, or container env. See [collect_api.md](collect_api.md) and [`.env.example`](../.env.example).
+
+### Server / engine
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_ENGINE_MODE` | `live` / `all` for production; never `testing` in prod |
+| `ADMIN_API_KEY` | Protect sensitive management routes |
+| `CDN_CONFIG_URL` | `default` or custom URL for remote provider config sync |
+| `CDN_CONFIG_TTL` | Refresh interval (seconds) |
+
+### Testing / CI
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_ENGINE_MODE=testing` | Mock provider only (`127.0.0.1:18765`) |
+| `AI_ENGINE_RUN_LIVE_TESTS=1` | Opt into live pytest markers |
+
+## Data paths
+
+| Path | Contents |
+|------|----------|
+| `~/.ai-engine/.env` | API keys |
+| `~/.ai-engine/config.json` | User overrides |
+| `~/.ai-engine/data/` | Model cache, CDN cache |
+| Project `chat_data.db` / uploads | Server chat module (when run from clone) |
+
+## Health checks
 
 ```bash
-# Run with multiple workers (recommended: 2-4 per CPU core)
-uvicorn server:app --host 0.0.0.0 --port 8000 --workers 4
-
-# Or use gunicorn
-gunicorn server:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+curl -s http://localhost:8000/health
+curl -s http://localhost:8000/v1/models -H "Authorization: Bearer dummy"
 ```
 
-### 3. Monitoring
+## Upgrades
 
 ```bash
-# Health check
-curl http://localhost:8000/health
-
-# Statistics
-curl http://localhost:8000/api/statistics
-
-# Provider status
-curl http://localhost:8000/api/status
+pip install -U "ai-synapse[server]"
+ai-engine version
 ```
 
-## Docker Compose (Production)
-
-```yaml
-version: '3.8'
-
-services:
-  ai-engine:
-    build: .
-    container_name: ai-engine
-    restart: always
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-## Reverse Proxy Configuration
-
-### Nginx
-
-```nginx
-upstream ai_engine {
-    server 127.0.0.1:8000;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name api.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
-
-    location / {
-        proxy_pass http://ai_engine;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # WebSocket support
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-
-        # Timeouts
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 120s;
-        proxy_read_timeout 120s;
-    }
-}
-```
-
-## Systemd Service
-
-```ini
-[Unit]
-Description=AI Engine Server
-After=network.target
-
-[Service]
-Type=simple
-User=www-data
-WorkingDirectory=/opt/ai-engine
-Environment=PATH=/opt/ai-engine/venv/bin
-ExecStart=/opt/ai-engine/venv/bin/python server.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-# Install service
-sudo cp ai-engine.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable ai-engine
-sudo systemctl start ai-engine
-```
-
-## Backup & Recovery
-
-### Database Backup
-
-```bash
-# Backup chat database
-sqlite3 chat_data.db .backup backup_$(date +%Y%m%d).db
-
-# Backup statistics
-cp key_statistics.json key_statistics_$(date +%Y%m%d).json
-```
-
-### Restore
-
-```bash
-# Restore database
-cp backup_20240115.db chat_data.db
-
-# Restore statistics
-cp key_statistics_20240115.json key_statistics.json
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Port already in use**
-   ```bash
-   lsof -i :8000
-   kill -9 <PID>
-   ```
-
-2. **Database locked**
-   ```bash
-   # Check for concurrent access
-   fuser chat_data.db
-   ```
-
-3. **API key errors**
-   ```bash
-   # Verify environment variables
-   env | grep API_KEY
-   ```
-
-### Logs
-
-```bash
-# View server logs
-tail -f ai_engine_server.log
-
-# Docker logs
-docker logs -f ai-engine
-```
-
-## Scaling
-
-### Horizontal Scaling
-
-1. Use load balancer (Nginx, HAProxy, cloud LB)
-2. Share database (use PostgreSQL instead of SQLite)
-3. Share statistics via Redis
-
-### Vertical Scaling
-
-- Increase workers: `--workers 8`
-- Increase memory limit
-- Use faster storage (SSD)
-
-## Security Checklist
-
-- [ ] Set `ADMIN_API_KEY`
-- [ ] Configure `CORS_ORIGINS`
-- [ ] Enable HTTPS
-- [ ] Review rate limits
-- [ ] Monitor access logs
-- [ ] Regular backups
+Release notes: [CHANGELOG.md](../CHANGELOG.md).
