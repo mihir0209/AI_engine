@@ -745,7 +745,8 @@ async def discover_and_cache_models():
 
     try:
         all_models = []
-        enabled_providers = {name: config for name, config in AI_CONFIGS.items() if config.get('enabled', True)}
+        provider_configs = getattr(engine, 'providers', AI_CONFIGS)
+        enabled_providers = {name: config for name, config in provider_configs.items() if config.get('enabled', True)}
 
         if not enabled_providers:
             return {"object": "list", "data": []}
