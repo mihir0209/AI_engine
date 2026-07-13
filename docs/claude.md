@@ -1,5 +1,7 @@
 # AI Engine - Project Instructions
 
+> **Note:** Superseded by [CONTRIBUTING.md](../CONTRIBUTING.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Project Overview
 
 AI Engine v3.0 is a Python-based multi-provider AI gateway that provides:

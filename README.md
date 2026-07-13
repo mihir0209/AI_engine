@@ -146,6 +146,7 @@ Sidebar history, model/provider routing, slash commands, `@` file attach, vision
 | [Deployment](docs/DEPLOYMENT.md) | Docker, production |
 | [TUI guide](docs/TUI.md) | Terminal chat (optional) |
 | [Contributing](CONTRIBUTING.md) | Dev setup, tests, mutmut gate |
+| [Roadmap](docs/ROADMAP.md) | Maintainer backlog |
 
 ---
 

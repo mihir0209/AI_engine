@@ -128,6 +128,27 @@ mutmut results                        # lists survivors only
 | `AI_ENGINE_MODE` | `testing`, `live`, `all` | Filter which providers load at runtime |
 | `AI_ENGINE_RUN_LIVE_TESTS` | `1` | Opt in to `@pytest.mark.live` tests |
 
+### `AI_ENGINE_MODE` semantics
+
+| Mode | Providers loaded |
+|------|------------------|
+| `testing` | `modes: ["testing"]` only (mock `test_harness` for CI) |
+| `live` | `modes: ["live"]` |
+| `all` | Live-capable providers; **excludes** testing-only mocks |
+
+Coverage: `tests/test_engine_modes.py`. Default in `tests/conftest.py` is `testing`.
+
+## Releasing (maintainers)
+
+PyPI publish requires **explicit approval** each time.
+
+1. Update `CHANGELOG.md` and `pyproject.toml` `version`
+2. `AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q`
+3. `ruff check core tests ai_engine scripts`
+4. Optional: `mutmut run` + `./scripts/mutmut_rotation_gate.sh 90` (or **Actions → Mutation tests**)
+5. `python -m build` && `twine check dist/*`
+6. `twine upload` only after approval
+
 ## Pull Requests
 
 1. Fork the repository

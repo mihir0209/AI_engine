@@ -1,6 +1,6 @@
 # AI Synapse — Free Multi-Provider AI SDK
 
-> **Awesome-list submission text.** Copy-paste into PRs for awesome-selfhosted, awesome-python, etc.
+> **Awesome-list submission text** — update version/links before reuse. Primary docs: [README](../README.md). Copy-paste into PRs for awesome-selfhosted, awesome-python, etc.
 
 ## One-liner
 

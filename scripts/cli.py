@@ -25,17 +25,22 @@ def get_yes_no(prompt, default=True):
     suffix = "[Y/n]" if default else "[y/N]"
     while True:
         user_input = input(f"{prompt} {suffix}: ").strip().lower()
-        if not user_input: return default
-        if user_input in ('y', 'yes'): return True
-        if user_input in ('n', 'no'): return False
+        if not user_input:
+            return default
+        if user_input in ('y', 'yes'):
+            return True
+        if user_input in ('n', 'no'):
+            return False
 
 
 def format_api_key(raw_key):
     """Convert input to proper Python code"""
-    if not raw_key: return "None"
+    if not raw_key:
+        return "None"
     if raw_key.isupper() and '_' in raw_key and ' ' not in raw_key:
         return f'os.getenv("{raw_key}")'
-    if raw_key.startswith('os.getenv('): return raw_key
+    if raw_key.startswith('os.getenv('):
+        return raw_key
     return f'"{raw_key}"'
 
 
@@ -198,7 +203,6 @@ def test_all_providers():
     failed = 0
 
     for name, config in AI_CONFIGS.items():
-        endpoint = config.get('endpoint', '')
         models_endpoint = config.get('model_endpoint')
 
         if models_endpoint:
@@ -252,12 +256,19 @@ def main():
         print("  6. Exit")
 
         choice = input("\nSelect: ").strip()
-        if choice == '1': list_providers()
-        elif choice == '2': add_provider()
-        elif choice == '3': show_status()
-        elif choice == '4': test_all_providers()
-        elif choice == '5': show_stats()
-        elif choice == '6': print("\nGoodbye!"); break
+        if choice == '1':
+            list_providers()
+        elif choice == '2':
+            add_provider()
+        elif choice == '3':
+            show_status()
+        elif choice == '4':
+            test_all_providers()
+        elif choice == '5':
+            show_stats()
+        elif choice == '6':
+            print("\nGoodbye!")
+            break
 
 
 if __name__ == "__main__":

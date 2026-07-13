@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Audit all enabled providers' model endpoints"""
-import requests, os, sys, time
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from dotenv import load_dotenv
+import requests
+import os
+import sys
+import time
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
-from config import AI_CONFIGS
+from config import AI_CONFIGS  # noqa: E402
 
 print("=== Provider Model Endpoint Audit ===\n")
 
@@ -56,7 +60,7 @@ for name, config in sorted(AI_CONFIGS.items(), key=lambda x: x[1].get('id', 99))
         print(f"  {name:20s} ERROR {str(e)[:50]}")
         results["error"].append(name)
 
-print(f"\n=== Summary ===")
+print("\n=== Summary ===")
 print(f"  OK:          {len(results['ok'])}")
 print(f"  No endpoint: {len(results['no_endpoint'])}")
 print(f"  Error:       {len(results['error'])}")

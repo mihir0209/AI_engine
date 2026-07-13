@@ -1,5 +1,7 @@
 # AI Engine v3.0 - Technical Documentation
 
+> **Note:** Superseded for day-to-day use by [README](../README.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [SERVER_README.md](SERVER_README.md). Kept for historical reference.
+
 ## Architecture Overview
 
 AI Engine v3.0 is a sophisticated multi-provider AI management system designed for enterprise applications requiring high availability, intelligent routing, and robust error handling. The system features threaded model discovery, verbose mode control, an autodecide mechanism for automatic model-to-provider matching, and comprehensive provider lifecycle management with web dashboard interface.
