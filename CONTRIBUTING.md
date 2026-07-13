@@ -111,10 +111,14 @@ You can also trigger live tests manually via the **Live Tests** GitHub Actions w
 
 ### Mutation testing (key rotation)
 
+Targets `core/ai_engine.py` rotation paths. Full run takes several minutes.
+
 ```bash
 pip install -e ".[dev,server]"
+# If source changed: rm -rf mutants
 mutmut run --max-children 4
-mutmut results
+./scripts/mutmut_rotation_gate.sh 90   # exit 0 if rotation chain kill rate ≥ 90%
+mutmut results                        # lists survivors only
 ```
 
 ## Environment Variables
