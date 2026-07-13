@@ -1,14 +1,10 @@
 """Shared TUI helpers — images, clipboard, model cache binding."""
 from __future__ import annotations
 
-import base64
-import mimetypes
 import os
 import subprocess
 import sys
 import tempfile
-import threading
-import time
 from pathlib import Path
 
 from markdown_it import MarkdownIt

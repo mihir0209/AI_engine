@@ -1,7 +1,7 @@
 """Chat completions resource — wraps AI_engine.chat_completion()."""
 import time
 import uuid
-from typing import List, Dict, Any, Optional, Iterator, Union
+from typing import List, Dict, Any, Optional
 
 
 class Completions:
@@ -44,7 +44,7 @@ class Completions:
         )
 
         if not result or not getattr(result, "success", False):
-            from .._exceptions import raise_for_status, InternalServerError
+            from .._exceptions import InternalServerError
             error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
             raise InternalServerError(message=error_msg)
 

@@ -1,5 +1,5 @@
 """Pydantic response types matching the OpenAI SDK format."""
-from typing import Optional, List, Any, Dict, Union, Iterator, AsyncIterator
+from typing import Optional, List, Any, Dict
 from dataclasses import dataclass, field
 import time
 import uuid

@@ -77,7 +77,7 @@ test: add integration tests
 - Use type hints
 - Add docstrings to public functions
 - Keep functions focused and small
-- Run `ruff check core tests` before submitting (CI-enforced scope)
+- Run `ruff check core tests ai_engine` before submitting (CI-enforced scope)
 
 ## Testing
 

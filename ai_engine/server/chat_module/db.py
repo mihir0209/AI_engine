@@ -117,12 +117,12 @@ class ChatDB:
         """Get list of chats"""
         with self.get_connection() as conn:
             query = """
-                SELECT c.*, 
+                SELECT c.*,
                        (SELECT content FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
                        (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) as message_count
-                FROM chats c 
+                FROM chats c
                 WHERE (? OR is_temporary = 0)
-                ORDER BY updated_at DESC 
+                ORDER BY updated_at DESC
                 LIMIT ?
             """
             rows = conn.execute(query, (include_temporary, limit)).fetchall()
@@ -133,8 +133,8 @@ class ChatDB:
         with self.get_connection() as conn:
             query = """
                 SELECT id, title, created_at, temporary_timer_minutes
-                FROM chats 
-                WHERE is_temporary = 1 
+                FROM chats
+                WHERE is_temporary = 1
                 AND datetime(created_at, '+' || temporary_timer_minutes || ' minutes') < datetime('now')
                 ORDER BY created_at ASC
             """
@@ -177,16 +177,16 @@ class ChatDB:
         with self.get_connection() as conn:
             if after_id:
                 query = """
-                    SELECT * FROM messages 
-                    WHERE chat_id = ? AND id > ? 
-                    ORDER BY created_at ASC 
+                    SELECT * FROM messages
+                    WHERE chat_id = ? AND id > ?
+                    ORDER BY created_at ASC
                     LIMIT ?"""
                 rows = conn.execute(query, (chat_id, after_id, limit)).fetchall()
             else:
                 query = """
-                    SELECT * FROM messages 
-                    WHERE chat_id = ? 
-                    ORDER BY created_at ASC 
+                    SELECT * FROM messages
+                    WHERE chat_id = ?
+                    ORDER BY created_at ASC
                     LIMIT ?"""
                 rows = conn.execute(query, (chat_id, limit)).fetchall()
 
@@ -329,8 +329,8 @@ class ChatDB:
             # Update the chat to be permanent
             title_to_use = new_title if new_title else current_title
             conn.execute("""
-                UPDATE chats 
-                SET is_temporary = 0, title = ?, updated_at = CURRENT_TIMESTAMP 
+                UPDATE chats
+                SET is_temporary = 0, title = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
             """, (title_to_use, chat_id))
             conn.commit()
@@ -351,8 +351,8 @@ class ChatDB:
         """Clean up old temporary chats"""
         with self.get_connection() as conn:
             cursor = conn.execute("""
-                DELETE FROM chats 
-                WHERE is_temporary = 1 
+                DELETE FROM chats
+                WHERE is_temporary = 1
                 AND created_at < datetime('now', '-' || ? || ' hours')
             """, (str(max_age_hours),))
             deleted = cursor.rowcount
@@ -405,7 +405,7 @@ class ChatDB:
             conn.execute("""
                 INSERT INTO messages (chat_id, role, content, metadata, tokens, response_to, branch_id, parent_message_id, is_active)
                 SELECT chat_id, role, content, metadata, tokens, response_to, ?, id, 1
-                FROM messages 
+                FROM messages
                 WHERE chat_id = ? AND branch_id = 0 AND id <= ? AND is_active = 1
             """, (new_branch_id, chat_id, from_message_id))
 
@@ -417,9 +417,9 @@ class ChatDB:
         """Get messages for a specific branch"""
         with self.get_connection() as conn:
             query = """
-                SELECT * FROM messages 
+                SELECT * FROM messages
                 WHERE chat_id = ? AND branch_id = ? AND is_active = 1
-                ORDER BY created_at ASC 
+                ORDER BY created_at ASC
                 LIMIT ?
             """
             rows = conn.execute(query, (chat_id, branch_id, limit)).fetchall()
@@ -452,9 +452,9 @@ class ChatDB:
         """Get all branches for a chat"""
         with self.get_connection() as conn:
             rows = conn.execute("""
-                SELECT branch_id, COUNT(*) as message_count, 
+                SELECT branch_id, COUNT(*) as message_count,
                        MIN(created_at) as created_at
-                FROM messages 
+                FROM messages
                 WHERE chat_id = ?
                 GROUP BY branch_id
                 ORDER BY branch_id

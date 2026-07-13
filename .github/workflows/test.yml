@@ -27,8 +27,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,server]"
 
-      - name: Lint with ruff (core + tests)
-        run: ruff check core tests
+      - name: Lint with ruff (core + tests + ai_engine)
+        run: ruff check core tests ai_engine
 
       - name: Validate config
         run: |

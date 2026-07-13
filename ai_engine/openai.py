@@ -1,9 +1,9 @@
 """Drop-in replacement for openai.OpenAI — routes through AI Synapse core."""
-from functools import cached_property
-from typing import Dict, Any, Optional
+from pathlib import Path
+from typing import Dict
 import logging
 
-from ._engine import get_engine, _resolve_config, _init_engine
+from ._engine import get_engine, _resolve_config
 from .resources.chat import Completions
 from .resources.models import Models
 
@@ -106,7 +106,6 @@ class OpenAI:
             port: Port number (default: 8000)
         """
         import sys
-        import os
         pkg_root = str(Path(__file__).parent.parent)
         if pkg_root not in sys.path:
             sys.path.insert(0, pkg_root)

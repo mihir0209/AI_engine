@@ -8,7 +8,9 @@ Usage:
 """
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 import base64
 import mimetypes
@@ -25,15 +27,13 @@ except ImportError:
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
-    Footer, Static, Button, TextArea, Markdown, ListView, ListItem, Label,
-    DirectoryTree, LoadingIndicator, Input,
+    Footer, Static, Button, TextArea, ListView, ListItem, Label,
+    Input,
 )
 from textual.binding import Binding
 from textual.reactive import reactive
-from textual.screen import ModalScreen, Screen
 from textual import work, on, events
 from textual.css.query import NoMatches
-from textual.command import Provider, Hit, DiscoveryHit
 from textual.system_commands import SystemCommandsProvider
 
 pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -42,26 +42,22 @@ if pkg_root not in sys.path:
 
 from .common import (
     ATTACHMENTS_DIR,
-    IMAGE_EXTENSIONS,
     MAX_IMAGE_BYTES,
     bind_model_cache_to_pkg_root,
     is_image_path,
-    _format_image_ref,
     _user_message_display,
     _is_ephemeral_attachment,
-    pkg_root as _pkg_root,
 )
-from .files import FileHit, build_file_index, match_files
+from .files import build_file_index, match_files
 from .media import generate_image
 from .model_index import (
     MODEL_PAGE_SIZE,
-    ModelEntry,
     ModelIndex,
     favorite_key,
     parse_favorite_key,
     parse_model_entry,
 )
-from .personas import Persona, find_persona, load_personas
+from .personas import find_persona, load_personas
 from .preferences import PreferencesStore
 from .routing import (
     intent_provider_priority,
@@ -80,10 +76,8 @@ from .widgets import (
     ChatMarkdown,
     ComposerInput,
     FileSuggest,
-    ImagePreview,
     MessageBlock,
     PendingAttachment,
-    PersonaButton,
     PersonaPanel,
     SlashSuggest,
     TerminalImage,

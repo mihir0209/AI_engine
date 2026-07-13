@@ -1,5 +1,4 @@
 """Anthropic SDK compatibility — placeholder for future implementation."""
-from ._engine import get_engine
 
 
 class Anthropic:

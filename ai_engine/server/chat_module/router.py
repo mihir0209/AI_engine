@@ -110,7 +110,7 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
                 has_files = True
 
     if not has_images and not has_files:
-        return formatted_messages, False, None, False
+        return formatted_messages, False, False, None, False
 
     processed = []
     for msg in formatted_messages:
@@ -122,7 +122,7 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
             if has_images and not vision_ok:
                 vision_providers = capability_manager.get_vision_providers()
                 warning = f"This provider may not support images. Routing to vision provider: {', '.join(vision_providers[:3])}"
-                return processed, True, warning, True
+                return processed, True, has_files, warning, True
             continue
 
         # String content — handle markdown image refs and file refs
@@ -148,16 +148,16 @@ def _prepare_messages_for_ai(formatted_messages: list, provider: str, model: str
                         replacement = f"![{alt_text}]({data_uri})"
                         content = content.replace(img_md, replacement)
                 processed.append({**msg, 'content': content})
-                return processed, True, None, False
+                return processed, True, has_files, None, False
             else:
                 vision_providers = capability_manager.get_vision_providers()
                 warning = f"This provider may not support images. Routing to vision provider: {', '.join(vision_providers[:3])}"
                 processed.append({**msg, 'content': content})
-                return processed, True, warning, True
+                return processed, True, has_files, warning, True
 
         processed.append({**msg, 'content': content})
 
-    return processed, has_images, None, False
+    return processed, has_images, has_files, None, False
 
 # Pydantic models for API
 class CreateChatRequest(BaseModel):
@@ -629,12 +629,11 @@ async def upload_file(file: UploadFile = File(...), chat_id: Optional[int] = Non
         file_type = "image" if is_image else "document"
 
         # Read content for text files
-        file_content = None
         if not is_image and file_ext in ALLOWED_EXTENSIONS:
             try:
-                file_content = content.decode('utf-8')
+                content.decode('utf-8')
             except UnicodeDecodeError:
-                file_content = None
+                pass
 
         result = {
             "success": True,
@@ -922,7 +921,7 @@ async def process_ai_response(chat_id: int, user_message_id: int, model: str = N
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
+        formatted_messages, has_images, has_files, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         ai = get_global_engine()
@@ -1060,7 +1059,7 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
         for msg in context_messages:
             formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
-        formatted_messages, has_images, vision_warning, force_vision_routing = _prepare_messages_for_ai(
+        formatted_messages, has_images, has_files, vision_warning, force_vision_routing = _prepare_messages_for_ai(
             formatted_messages, provider, model)
 
         force_provider_setting = chat.get('force_provider', False) if chat else False

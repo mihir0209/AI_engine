@@ -3,7 +3,7 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 logger = logging.getLogger("ai_engine")
 
@@ -56,7 +56,6 @@ def _resolve_config(config=None, cdn_config=None, **kwargs) -> Dict[str, Any]:
         base["cdn_config_url"] = cdn_config
 
     # 4. Environment variable overrides
-    env_prefix = "AI_ENGINE_"
     env_map = {
         "AI_ENGINE_CDN_CONFIG": "cdn_config_url",
         "AI_ENGINE_TIMEOUT": "timeout",
@@ -91,18 +90,18 @@ def _init_engine(config: Dict[str, Any]):
     pkg_dir = str(Path(__file__).parent.parent)
     if pkg_dir not in sys.path:
         sys.path.insert(0, pkg_dir)
-    
+
     cwd = os.getcwd()
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
-    
+
     # Apply config.json overrides to AI_CONFIGS before engine loads providers
     try:
         from core.config import AI_CONFIGS
         _apply_config_overrides(AI_CONFIGS, config)
     except ImportError:
         pass
-    
+
     from core.ai_engine import AI_engine
     engine = AI_engine(verbose=False)
     return engine

@@ -67,6 +67,36 @@ def main():
         parser.print_help()
 
 
+def _cmd_serve(host: str, port: int, reload: bool):
+    from ai_engine import OpenAI
+
+    client = OpenAI()
+    client.serve(host=host, port=port, reload=reload)
+
+
+def _cmd_status():
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if pkg_root not in sys.path:
+        sys.path.insert(0, pkg_root)
+    from config import AI_CONFIGS
+
+    enabled = sum(1 for c in AI_CONFIGS.values() if c.get("enabled", True))
+    print(f"Providers: {len(AI_CONFIGS)} configured, {enabled} enabled")
+
+
+def _cmd_providers():
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if pkg_root not in sys.path:
+        sys.path.insert(0, pkg_root)
+    from config import AI_CONFIGS
+
+    print(f"{'name':<20} {'enabled':<8} model")
+    print("-" * 60)
+    for name, cfg in sorted(AI_CONFIGS.items(), key=lambda x: x[1].get("priority", 99)):
+        en = "yes" if cfg.get("enabled", True) else "no"
+        print(f"{name:<20} {en:<8} {cfg.get('model', '')}")
+
+
 def _cmd_version():
     from ai_engine import __version__
     print(f"ai-synapse {__version__}")
@@ -181,7 +211,7 @@ def _cmd_chat(args):
                 break
 
             history.append({"role": "user", "content": user_input})
-            messages = list(history)
+            list(history)
 
             response = run_prompt(user_input, args.image)
             if response and hasattr(response, 'choices') and response.choices:

@@ -48,7 +48,7 @@ def build_file_index(
         return []
 
     results: list[str] = []
-    root_str = str(root_path)
+    str(root_path)
 
     def walk(current: Path, depth: int) -> None:
         if len(results) >= max_files or depth > max_depth:

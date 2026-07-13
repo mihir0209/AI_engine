@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import os
 
-from markdown_it import MarkdownIt
+from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import (
-    Button, Label, ListView, LoadingIndicator, Markdown, Static, TextArea,
+    Button, ListView, LoadingIndicator, Markdown, Static, TextArea,
 )
 
 from .common import (

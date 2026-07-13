@@ -9,20 +9,19 @@ from textual import events, on
 from textual.command import DiscoveryHit, Hit, Provider
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
+from textual.app import ComposeResult
 from textual.screen import ModalScreen
 from textual.widgets import Button, DirectoryTree, Input, Label, ListItem, ListView, Static, TextArea
 
-from .common import _pixels_from_path
 from .model_index import (
     MODEL_PAGE_SIZE,
     ModelEntry,
     ModelIndex,
     favorite_key,
     parse_favorite_key,
-    parse_model_entry,
 )
 from .storage import _normalize_cwd
-from .widgets import ComposerInput, PickerResult, TerminalImage
+from .widgets import PickerResult
 
 class FilePickerScreen(ModalScreen[PickerResult | None]):
     """File picker starting at pwd; navigate anywhere via tree or path bar."""
@@ -522,7 +521,7 @@ class ModelPickerScreen(ModalScreen[tuple[str, str | None] | None]):
             fav_entries: list[ModelEntry] = []
             seen: set[str] = set()
             for key in self._favorites:
-                model, provider = parsefavorite_key(key)
+                model, provider = parse_favorite_key(key)
                 for entry in self._index.entries:
                     entry_key = favorite_key(entry.api_model, entry.provider)
                     if entry.api_model == model and entry.provider == provider:
