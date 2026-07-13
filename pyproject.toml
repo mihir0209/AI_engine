@@ -99,6 +99,7 @@ ignore = ["E501"]
 "ai_engine/server/app.py" = ["E402"]
 "ai_engine/server/chat_module/router.py" = ["E402"]
 "chat_module/router.py" = ["E402"]
+"server.py" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -20,14 +20,14 @@ Components:
 
 Usage:
     from AI_engine import AI_engine
-    
+
     # Initialize with verbose output
     engine = AI_engine(verbose=True)
-    
+
     # Make a request with automatic provider rotation
     messages = [{"role": "user", "content": "Hello!"}]
     result = engine.chat_completion(messages)
-    
+
     if result.success:
         print(f"Response: {result.content}")
         print(f"Provider used: {result.provider_used}")
@@ -54,10 +54,10 @@ try:
     def get_ai_engine(verbose=True):
         """
         Factory function to get a configured AI Engine v3.0 instance
-        
+
         Args:
             verbose (bool): Enable verbose logging output
-            
+
         Returns:
             AI_engine: Configured AI Engine instance with all 22 providers
         """
@@ -66,7 +66,7 @@ try:
     def get_available_providers():
         """
         Get list of all configured providers
-        
+
         Returns:
             dict: Dictionary of provider configurations
         """
@@ -75,7 +75,7 @@ try:
     def get_engine_settings():
         """
         Get current engine settings
-        
+
         Returns:
             dict: Engine configuration settings
         """

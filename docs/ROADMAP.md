@@ -13,7 +13,7 @@
 
 | Area | Notes |
 |------|--------|
-| Ruff | Extend to `scripts/`, `chat_module/` (in progress on `main`) |
+| Ruff | CI: `core`, `tests`, `ai_engine`, `scripts`, `chat_module`; optional: root `server.py`, `__init__.py` |
 | CI | `mutmut.yml` workflow_dispatch for pre-release checks |
 | Docs | Legacy files stubbed; primary path: README + ARCHITECTURE |
 | Providers | Reliability, fallback chains, dashboard metrics — one feature per PR |
@@ -26,7 +26,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md):
 ```bash
 pip install -e ".[dev,server]"
 AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q
-ruff check core tests ai_engine
+ruff check core tests ai_engine scripts chat_module
 ```
 
 ## Detailed plan

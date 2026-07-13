@@ -161,7 +161,7 @@ pip install -e ".[dev,server]"
 # Non-live tests (mock provider on 127.0.0.1:18765 — no live API calls)
 AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q
 
-ruff check core tests ai_engine
+ruff check core tests ai_engine scripts chat_module
 ```
 
 Key rotation and server paths are covered by integration + unit tests; optional local mutation gate: `./scripts/mutmut_rotation_gate.sh 90` after `mutmut run`. Details in [CONTRIBUTING.md](CONTRIBUTING.md).

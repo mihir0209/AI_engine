@@ -43,14 +43,10 @@ try:
     from .chat_module.router import router as chat_router
     # Import new modules
     from core.caching import lru_cache, request_deduplicator
-    from core.middleware import metrics_collector, RequestTracker
+    from core.middleware import metrics_collector
     from core.capabilities import capability_manager, error_message_manager
     from core.infrastructure import health_checker
     from core.logging_sla import sla_monitor
-    from core.health_monitor import health_monitor
-    from core.latency_tracker import latency_tracker
-    from core.rate_limit_manager import rate_limit_manager
-    from core.usage_tracker import usage_tracker
 except ImportError as e:
     print(f"Failed to import AI Engine components: {e}")
     print("Make sure you're running from the AI_engine directory")
@@ -247,11 +243,9 @@ async def add_rate_limit_headers(request: Request, call_next):
             limit = 60
 
         # Try to get actual remaining count from slowapi
-        client_ip = request.client.host if request.client else "unknown"
         try:
-            storage = app.state.limiter._storage
             key_func = app.state.limiter._key_func
-            key = key_func(request)
+            key_func(request)
             # slowapi uses a token bucket; get actual remaining
             actual_limit = limit
             response.headers["X-RateLimit-Limit"] = str(actual_limit)
@@ -270,16 +264,16 @@ async def log_requests(request: Request, call_next):
     import uuid
     request_id = str(uuid.uuid4())[:8]
     start_time = time.time()
-    
+
     # Log request
     verbose_print(f"📥 [{request_id}] {request.method} {request.url.path}")
-    
+
     response = await call_next(request)
-    
+
     # Log response
     duration = time.time() - start_time
     verbose_print(f"📤 [{request_id}] {response.status_code} ({duration:.3f}s)")
-    
+
     return response
 
 # Request validation and sanitization
@@ -308,7 +302,7 @@ class ChatMessage(BaseModel):
     @classmethod
     def validate_role(cls, v):
         if v not in ('system', 'user', 'assistant', 'tool', 'developer'):
-            raise ValueError(f'role must be one of: system, user, assistant, tool, developer')
+            raise ValueError('role must be one of: system, user, assistant, tool, developer')
         return v
 
     @field_validator('content')
@@ -429,17 +423,11 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
 
     **Request body:** `model`, `messages`, `stream`, `temperature`, `max_tokens`, etc.
     """
-    from fastapi.responses import StreamingResponse
 
     try:
         messages = [{"role": m.role, "content": m.content} for m in body.messages]
         model = body.model
         stream = body.stream
-        tools = body.tools
-        tool_choice = body.tool_choice
-        response_format = body.response_format
-        temperature = body.temperature
-        max_tokens = body.max_tokens
 
         effective_model = model
         effective_provider = x_preferred_provider
@@ -474,14 +462,14 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
                 status_code=400,
                 content={"error": {"message": "messages is required", "type": "invalid_request_error", "param": "messages", "code": "missing_messages"}}
             )
-        
+
         # Handle streaming
         if stream:
             return await handle_streaming_response(messages, effective_model, effective_provider, background_tasks, use_autodecide=not force_provider_flag)
-        
+
         # Non-streaming request
         start_time = asyncio.get_event_loop().time()
-        
+
         result = None
         request_trail = []
         if vision_chain:
@@ -526,11 +514,11 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
                 preferred_provider=effective_provider,
                 force_provider=force_provider_flag
             )
-        
-        end_time = asyncio.get_event_loop().time()
-        
+
+        asyncio.get_event_loop().time()
+
         background_tasks.add_task(save_statistics_async)
-        
+
         if not result.success:
             error_code = "server_error"
             status_code = 500
@@ -543,14 +531,14 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
             elif "not_found" in (result.error_type or "").lower():
                 error_code = "model_not_found"
                 status_code = 404
-            
+
             request_id = f"req-{uuid.uuid4().hex[:12]}"
             return JSONResponse(
                 status_code=status_code,
                 headers={"x-request-id": request_id},
                 content={"error": {"message": result.error_message, "type": error_code, "param": None, "code": error_code}, "x_request_trail": request_trail or None}
             )
-        
+
         response = format_openai_response(result, messages, body, start_time)
         request_id = f"req-{uuid.uuid4().hex[:12]}"
         resp_data = response.model_dump()
@@ -566,7 +554,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
             content=resp_data,
             headers={"x-request-id": request_id}
         )
-        
+
     except Exception as e:
         request_id = f"req-{uuid.uuid4().hex[:12]}"
         return JSONResponse(
@@ -578,7 +566,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest, backgr
 
 async def handle_streaming_response(messages, model, preferred_provider, background_tasks, use_autodecide=False):
     """Handle streaming chat completion — fully OpenAI-compatible SSE.
-    
+
     Uses non-streaming backend + simulated chunking. This is the standard approach
     for proxies where upstream providers may not support real SSE streaming.
     """
@@ -670,7 +658,7 @@ async def handle_streaming_response(messages, model, preferred_provider, backgro
 @app.post("/v1/models", tags=["OpenAI Compatible"])
 async def list_models(request: Request = None, provider: str = None, search: str = None):
     """List all available models across all providers in OpenAI-compatible format.
-    
+
     Supports both GET and POST (some SDK clients send POST).
     """
 
@@ -683,7 +671,7 @@ async def list_models(request: Request = None, provider: str = None, search: str
         verbose_print("🔍 Cache miss or expired, discovering models...")
         result = await discover_and_cache_models()
         cached_models = result.get("data", [])
-    
+
     # Apply filters
     filtered_models = []
     for model_id in cached_models:
@@ -694,23 +682,23 @@ async def list_models(request: Request = None, provider: str = None, search: str
         # Filter by provider
         if provider and not model_id.startswith(provider + "/"):
             continue
-        
+
         # Filter by search term
         if search and search.lower() not in model_id.lower():
             continue
-        
+
         # Format model entry
         model_parts = model_id.split("/", 1)
         provider_name = model_parts[0] if len(model_parts) > 1 else "unknown"
-        model_name = model_parts[1] if len(model_parts) > 1 else model_id
-        
+        model_parts[1] if len(model_parts) > 1 else model_id
+
         filtered_models.append({
             "id": model_id,
             "object": "model",
             "created": int(datetime.now().timestamp()),
             "owned_by": provider_name
         })
-    
+
     return {"object": "list", "data": filtered_models}
 
 @app.get("/v1/models/{model_id}", tags=["OpenAI Compatible"])
@@ -1107,14 +1095,14 @@ async def toggle_provider(provider_name: str, request: Request, x_api_key: str =
                     except Exception as filter_error:
                         verbose_print(f"⚠️ Could not filter providers: {filter_error}")
             else:
-                verbose_print(f"🔍 engine.providers is empty")
+                verbose_print("🔍 engine.providers is empty")
         elif enabled:
             # If enabling, reinitialize the engine (simplified approach)
             if hasattr(engine, '_load_enabled_providers'):
                 verbose_print(f"🔄 Reloading engine providers for {provider_name}")
                 engine._load_enabled_providers()
             else:
-                verbose_print(f"⚠️ Engine does not have _load_enabled_providers method")
+                verbose_print("⚠️ Engine does not have _load_enabled_providers method")
 
         verbose_print(f"✅ Toggle operation completed for {provider_name}")
 
@@ -1151,7 +1139,7 @@ async def roll_provider_key(provider_name: str, x_api_key: str = Header(None, al
             verbose_print(f"✅ Key rolling result: {result}")
             return {"message": f"API key rolled for {provider_name}: {result}"}
         else:
-            verbose_print(f"⚠️ Engine does not have roll_api_key method")
+            verbose_print("⚠️ Engine does not have roll_api_key method")
             return {"message": f"Key rolling not supported for {provider_name}"}
 
     except Exception as e:
@@ -1231,7 +1219,7 @@ async def discover_provider_models_internal(provider_name: str):
                     }
                 else:
                     return None
-    except Exception as e:
+    except Exception:
         return None
 
 @app.get("/api/providers/{provider_name}/models")
@@ -1892,7 +1880,8 @@ async def reset_rate_limit(provider_name: str):
 async def get_request_log(limit: int = 20, chat_id: int = None):
     """Get recent request logs from chat messages with full metadata"""
     try:
-        import sqlite3, json as _json
+        import sqlite3
+        import json as _json
         db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'chat_data.db')
         if not os.path.exists(db_path):
             db_path = 'chat_data.db'
@@ -2054,12 +2043,12 @@ async def images_generations(request: Request):
     try:
         body = await request.json()
         prompt = body.get("prompt", "")
-        n = body.get("n", 1)
-        size = body.get("size", "1024x1024")
-        response_format = body.get("response_format", "url")
+        body.get("n", 1)
+        body.get("size", "1024x1024")
+        body.get("response_format", "url")
         model = body.get("model", "auto")
-        quality = body.get("quality", "standard")
-        style = body.get("style", "vivid")
+        body.get("quality", "standard")
+        body.get("style", "vivid")
 
         if not prompt:
             return JSONResponse(status_code=400, content={"error": {"message": "prompt is required", "type": "invalid_request_error"}})
@@ -2129,7 +2118,7 @@ async def audio_speech(request: Request):
     try:
         body = await request.json()
         text = body.get("input", "")
-        model = body.get("model", "tts-1")
+        body.get("model", "tts-1")
         voice = body.get("voice", "alloy")
         response_format = body.get("response_format", "mp3")
         speed = body.get("speed", 1.0)
@@ -2139,8 +2128,8 @@ async def audio_speech(request: Request):
 
         try:
             import edge_tts
-            import asyncio as _aio
-            import tempfile, os
+            import tempfile
+            import os
 
             voice_map = {
                 "alloy": "en-US-AriaNeural", "echo": "en-US-GuyNeural",
@@ -2185,7 +2174,7 @@ async def audio_transcriptions(request: Request):
     try:
         form = await request.form()
         file = form.get("file")
-        model = form.get("model", "whisper-1")
+        form.get("model", "whisper-1")
         language = form.get("language")
 
         if not file:
@@ -2313,7 +2302,7 @@ async def _handle_image_generation(body: dict):
     """Handle image generation from a body dict. Returns OpenAI-compatible image response."""
     prompt = body.get("prompt", "")
     model = body.get("model", "auto")
-    response_format = body.get("response_format", "url")
+    body.get("response_format", "url")
 
     if not prompt:
         return JSONResponse(status_code=400, content={"error": {"message": "prompt is required"}})
@@ -2334,7 +2323,9 @@ async def _handle_image_generation(body: dict):
     if not target_model:
         return JSONResponse(status_code=404, content={"error": {"message": "No image generation model available"}})
 
-    import asyncio, re, base64 as b64
+    import asyncio
+    import re
+    import base64 as b64
     from core.ai_engine import AI_engine
     engine = AI_engine()
     gen_messages = [{"role": "user", "content": f"Generate an image: {prompt}. Output ONLY the image. No text explanation."}]
@@ -2360,7 +2351,7 @@ async def _handle_image_generation(body: dict):
 async def _handle_audio_speech(body: dict):
     """Handle TTS from a body dict. Returns binary audio stream."""
     text = body.get("input", "")
-    model = body.get("model", "tts-1")
+    body.get("model", "tts-1")
     voice = body.get("voice", "alloy")
     response_format = body.get("response_format", "mp3")
     speed = body.get("speed", 1.0)
@@ -2369,8 +2360,9 @@ async def _handle_audio_speech(body: dict):
         return JSONResponse(status_code=400, content={"error": {"message": "input is required"}})
 
     try:
-        import edge_tts, asyncio as _aio
-        import tempfile, os
+        import edge_tts
+        import tempfile
+        import os
         voice_map = {
             "alloy": "en-US-AriaNeural", "echo": "en-US-GuyNeural",
             "fable": "en-GB-SoniaNeural", "onyx": "en-US-ChristopherNeural",
@@ -2467,14 +2459,10 @@ async def universal_endpoint(request: Request):
             gen_body = {"prompt": body.get("prompt", ""), "model": body.get("model", "auto"),
                          "n": body.get("n", 1), "size": body.get("size", "1024x1024"),
                          "response_format": body.get("response_format", "url")}
-            result = await _handle_image_generation(gen_body)
-            if isinstance(result, dict):
-                result["x_intent"] = intent_result
-            return result
+            return await _handle_image_generation(gen_body)
 
         # === Detect images/audio/video in messages ===
         has_images = False
-        has_audio = False
         has_video = False
         user_text = ""
 
@@ -2490,7 +2478,7 @@ async def universal_endpoint(request: Request):
                             if ptype == "image_url":
                                 has_images = True
                             elif ptype == "audio":
-                                has_audio = True
+                                pass
                             elif ptype == "video":
                                 has_video = True
                             elif ptype == "text":
@@ -2623,26 +2611,26 @@ async def batch_completions(request: Request, background_tasks: BackgroundTasks)
         requests_list = body.get("requests", [])
         model = body.get("model")
         provider = body.get("provider")
-        
+
         if not requests_list:
             return JSONResponse(
                 status_code=400,
                 content={"error": {"message": "requests array is required", "type": "invalid_request_error"}}
             )
-        
+
         if len(requests_list) > 100:
             return JSONResponse(
                 status_code=400,
                 content={"error": {"message": "Maximum 100 requests per batch", "type": "invalid_request_error"}}
             )
-        
+
         processor = get_batch_processor(engine)
         results = await processor.process_batch(requests_list, model=model, provider=provider)
-        
+
         background_tasks.add_task(save_statistics_async)
-        
+
         return {"results": results, "total": len(results)}
-        
+
     except Exception as e:
         return JSONResponse(
             status_code=500,
