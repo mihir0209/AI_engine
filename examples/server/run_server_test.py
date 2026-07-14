@@ -3,7 +3,6 @@
 import subprocess
 import sys
 import time
-import signal
 
 # Start server in background
 print("Starting AI Synapse server...")
@@ -15,16 +14,16 @@ server = subprocess.Popen(
 
 try:
     time.sleep(3)
-    
+
     from openai import OpenAI
     client = OpenAI(base_url="http://127.0.0.1:8766/v1", api_key="dummy")
-    
+
     print("=== Server + OpenAI SDK Test ===")
-    
+
     # List models
     models = client.models.list()
     print(f"Models: {len(models.data)}")
-    
+
     # Chat completion
     response = client.chat.completions.create(
         model="gpt-4",
@@ -32,7 +31,7 @@ try:
         max_tokens=20,
     )
     print(f"Response: {response.choices[0].message.content}")
-    
+
     # Streaming
     print("Streaming: ", end="")
     for chunk in client.chat.completions.create(
@@ -44,7 +43,7 @@ try:
         if chunk.choices[0].delta.content:
             print(chunk.choices[0].delta.content, end="")
     print()
-    
+
     print("\nALL SERVER TESTS PASSED")
 
 finally:

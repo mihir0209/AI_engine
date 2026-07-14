@@ -15,6 +15,7 @@
 |------|--------|
 | Ruff | CI scope + root shims (`server.py`, `config.py`, `chat_module/`) |
 | Source of truth | **Done:** packaged server/chat/config; TUI `routing_engine`; `tests/test_source_of_truth.py` |
+| Quality sprint | Provider adapter matrix, native TUI stream seam, examples lint, CI coverage gate in progress |
 | CI | `mutmut.yml` workflow_dispatch for pre-release checks |
 | Docs | Legacy files stubbed; primary path: README + ARCHITECTURE |
 | Providers | Reliability, fallback chains, dashboard metrics — one feature per PR |

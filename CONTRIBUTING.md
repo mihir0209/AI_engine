@@ -77,7 +77,7 @@ test: add integration tests
 - Use type hints
 - Add docstrings to public functions
 - Keep functions focused and small
-- Run `ruff check core tests ai_engine scripts chat_module` before submitting (CI-enforced scope)
+- Run `ruff check core tests ai_engine scripts chat_module examples server.py config.py` before submitting (CI-enforced scope)
 
 ## Testing
 
@@ -90,7 +90,8 @@ AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -v
 ### Coverage
 
 ```bash
-AI_ENGINE_MODE=testing pytest tests/ -m "not live" --cov=core --cov=ai_engine
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --cov=core --cov=ai_engine \
+  --cov-report=term-missing --cov-fail-under=40
 ```
 
 ### Specific test file
@@ -144,7 +145,7 @@ PyPI publish requires **explicit approval** each time.
 
 1. Update `CHANGELOG.md` and `pyproject.toml` `version`
 2. `AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q`
-3. `ruff check core tests ai_engine scripts chat_module`
+3. `ruff check core tests ai_engine scripts chat_module examples server.py config.py`
 4. Optional: `mutmut run` + `./scripts/mutmut_rotation_gate.sh 90` (or **Actions → Mutation tests**)
 5. `python -m build` && `twine check dist/*`
 6. `twine upload` only after approval

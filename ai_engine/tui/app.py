@@ -50,6 +50,7 @@ from .common import (
 )
 from .files import build_file_index, match_files
 from .media import generate_image
+from .routing_engine import stream_chat_completion
 from .model_index import (
     MODEL_PAGE_SIZE,
     ModelIndex,
@@ -2228,35 +2229,31 @@ class ChatTUI(App):
                 self.call_from_thread(self._on_generation_stopped)
                 return
 
-            from ai_engine import OpenAI
-            client = OpenAI()
-
-            stream = client.chat.completions.create(
-                model=effective_model,
-                messages=messages,
-                provider=effective_provider,
-                stream=True,
-            )
-
             content = ""
             model_used = effective_model
             provider_used = effective_provider or "auto"
             response_msg = self._active_response
 
-            for chunk in stream:
+            for chunk in stream_chat_completion(
+                messages,
+                model=effective_model,
+                preferred_provider=effective_provider,
+                force_provider=bool(effective_provider),
+            ):
                 if self._cancel_event.is_set():
                     break
-                if not getattr(chunk, "choices", None):
+                if chunk.get("error"):
+                    raise RuntimeError(chunk["error"])
+                if chunk.get("done"):
+                    model_used = chunk.get("model") or model_used
+                    provider_used = chunk.get("provider") or provider_used
                     continue
-                delta = chunk.choices[0].delta
-                piece = getattr(delta, "content", None) or ""
+                piece = chunk.get("content", "")
                 if piece:
                     content += piece
                     if response_msg is not None:
                         self.call_from_thread(response_msg.append_chunk, piece)
                         self.call_from_thread(self._scroll_to_end)
-                if hasattr(chunk, "model") and chunk.model:
-                    model_used = chunk.model
 
             if self._cancel_event.is_set():
                 self.call_from_thread(self._on_generation_stopped, content)

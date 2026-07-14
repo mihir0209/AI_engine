@@ -14,7 +14,7 @@ for m in models.data[:10]:
     print(f"  {m.id:60s} (owned by {m.owned_by})")
 
 # Retrieve a specific model
-print(f"\n=== Retrieve Model ===")
+print("\n=== Retrieve Model ===")
 model = client.models.retrieve("gpt-4")
 print(f"ID: {model.id}")
 print(f"Object: {model.object}")
