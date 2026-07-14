@@ -1836,11 +1836,12 @@ def main():
         elif provider_name == "server":
             print("🚀 Starting AI Engine FastAPI Server...")
             try:
-                from server import main as server_main
+                from ai_engine.server.app import main as server_main
+
                 server_main()
             except ImportError as e:
                 print(f"❌ Server module not found: {e}")
-                print("Make sure server.py is in the same directory and requirements are installed:")
+                print("Install server extras: pip install ai-synapse[server]")
                 print("pip install ai-synapse[server]")
             return
         elif provider_name == "list":

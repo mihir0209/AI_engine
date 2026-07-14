@@ -13,7 +13,8 @@
 
 | Area | Notes |
 |------|--------|
-| Ruff | CI: `core`, `tests`, `ai_engine`, `scripts`, `chat_module`; optional: root `server.py`, `__init__.py` |
+| Ruff | CI scope + root shims (`server.py`, `config.py`, `chat_module/`) |
+| Source of truth | **Done:** packaged server/chat/config; TUI `routing_engine`; `tests/test_source_of_truth.py` |
 | CI | `mutmut.yml` workflow_dispatch for pre-release checks |
 | Docs | Legacy files stubbed; primary path: README + ARCHITECTURE |
 | Providers | Reliability, fallback chains, dashboard metrics — one feature per PR |

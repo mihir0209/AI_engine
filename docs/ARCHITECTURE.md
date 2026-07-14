@@ -1,5 +1,20 @@
 # AI Synapse — Architecture
 
+## Canonical code layout (single source of truth)
+
+| Concern | Canonical module | Legacy shim (repo root) |
+|---------|------------------|-------------------------|
+| HTTP server + dashboard | `ai_engine/server/app.py` | `server.py` → re-exports `app`, `main` |
+| Chat REST + WebSocket | `ai_engine/server/chat_module/` | `chat_module/` → re-exports |
+| Provider config | `core/config.py` | `config.py` → re-exports |
+| Intent routing | `core/intent_classifier.py` | — |
+| CLI server | `python -m ai_engine serve` | `OpenAI().serve()` → packaged `app` |
+| TUI chat / image gen | `core.ai_engine` via `ai_engine/tui/routing_engine.py` | Same engine as server chat |
+
+PyPI ships `ai_engine*` and `core*` only. Root shims exist for editable installs and older docs.
+
+---
+
 ## How Every Feature Works
 
 ### 1. Import & Initialization

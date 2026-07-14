@@ -256,10 +256,9 @@ def _try_openrouter_images_api(prompt: str, model: str, key: str) -> tuple[str |
 def _try_engine_chat_completion(
     prompt: str, model: str, provider: str
 ) -> tuple[str | None, str, str, str]:
-    """Use the shared AI_engine chat path (same as server image generation)."""
-    from core.ai_engine import AI_engine
+    """Use canonical engine routing (server chat / SDK / TUI share ``routing_engine``)."""
+    from ai_engine.tui.routing_engine import chat_completion
 
-    engine = AI_engine()
     gen_messages = [
         {
             "role": "user",
@@ -267,8 +266,8 @@ def _try_engine_chat_completion(
         }
     ]
     force = provider not in (None, "", "auto")
-    result = engine.chat_completion(
-        messages=gen_messages,
+    result = chat_completion(
+        gen_messages,
         model=model,
         preferred_provider=provider if force else None,
         force_provider=force,

@@ -1,5 +1,4 @@
 """Drop-in replacement for openai.OpenAI — routes through AI Synapse core."""
-from pathlib import Path
 from typing import Dict
 import logging
 
@@ -105,17 +104,13 @@ class OpenAI:
             host: Bind address (default: 0.0.0.0)
             port: Port number (default: 8000)
         """
-        import sys
-        pkg_root = str(Path(__file__).parent.parent)
-        if pkg_root not in sys.path:
-            sys.path.insert(0, pkg_root)
-
-        # Set up the engine for the server
         from core.config_sync import config_fetcher
+
         config_fetcher.initialize()
 
-        from server import app
+        from ai_engine.server.app import app
         import uvicorn
+
         uvicorn.run(app, host=host, port=port, **kwargs)
 
 

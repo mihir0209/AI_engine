@@ -1091,7 +1091,9 @@ async def process_ai_response_stream(websocket: WebSocket, chat_id: int, user_me
                     user_text = c if isinstance(c, str) else str(c)[:500]
                     break
             if user_text:
-                intent_info = intent_classifier.classify(user_text, has_images=has_images)
+                intent_info = intent_classifier.classify(
+                    user_text, has_images=has_images, has_files=has_files
+                )
                 intent = intent_info.get("intent", "text_chat")
                 if intent != "text_chat":
                     eff_p, eff_m, eff_f = _apply_intent_routing(intent_info, has_images, has_files, provider, model)
