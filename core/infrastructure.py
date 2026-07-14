@@ -26,14 +26,18 @@ class CircuitBreaker:
     failure_threshold: int = 5
     recovery_timeout: int = 60  # seconds
     half_open_max_calls: int = 3
+    clock: Callable[[], float] = time.time
 
     # Internal state
     state: CircuitState = CircuitState.CLOSED
     failure_count: int = 0
     success_count: int = 0
     last_failure_time: Optional[float] = None
-    last_state_change: float = field(default_factory=time.time)
+    last_state_change: float = 0.0
     _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self):
+        self.last_state_change = self.clock()
 
     def can_execute(self) -> bool:
         """Check if request can be executed"""
@@ -43,7 +47,7 @@ class CircuitBreaker:
 
             if self.state == CircuitState.OPEN:
                 # Check if recovery timeout has passed
-                if time.time() - self.last_failure_time >= self.recovery_timeout:
+                if self.clock() - self.last_failure_time >= self.recovery_timeout:
                     self._transition_to(CircuitState.HALF_OPEN)
                     return True
                 return False
@@ -68,7 +72,7 @@ class CircuitBreaker:
         """Record a failed call"""
         with self._lock:
             self.failure_count += 1
-            self.last_failure_time = time.time()
+            self.last_failure_time = self.clock()
 
             if self.state == CircuitState.HALF_OPEN:
                 # Failed during recovery, back to open
@@ -80,7 +84,7 @@ class CircuitBreaker:
     def _transition_to(self, new_state: CircuitState):
         """Transition to a new state"""
         self.state = new_state
-        self.last_state_change = time.time()
+        self.last_state_change = self.clock()
         if new_state == CircuitState.CLOSED:
             self.failure_count = 0
             self.success_count = 0

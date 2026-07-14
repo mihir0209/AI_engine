@@ -12,6 +12,21 @@ def test_circuit_breaker_initial_state():
     assert cb.can_execute() is True
 
 
+def test_circuit_breaker_uses_injected_clock_for_recovery():
+    from core.infrastructure import CircuitBreaker, CircuitState
+
+    now = [100.0]
+    cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=10, clock=lambda: now[0])
+    cb.record_failure()
+
+    assert cb.state == CircuitState.OPEN
+    assert cb.can_execute() is False
+
+    now[0] = 110.0
+    assert cb.can_execute() is True
+    assert cb.state == CircuitState.HALF_OPEN
+
+
 def test_circuit_breaker_opens_after_failures():
     from core.infrastructure import CircuitBreaker, CircuitState
     cb = CircuitBreaker("test", failure_threshold=3, recovery_timeout=1)

@@ -20,6 +20,7 @@ try:
     from core.rate_limit_manager import rate_limit_manager
     from core.usage_tracker import usage_tracker
     from core.provider_requests import ProviderRequestMixin, RequestResult
+    from core.provider_reliability import should_retry_provider
     from core.stress_test import StressTestMixin
 except ImportError:
     try:
@@ -30,6 +31,7 @@ except ImportError:
         from core.rate_limit_manager import rate_limit_manager
         from core.usage_tracker import usage_tracker
         from core.provider_requests import ProviderRequestMixin, RequestResult
+        from core.provider_reliability import should_retry_provider
         from core.stress_test import StressTestMixin
     except ImportError as e:
         print(f"Failed to import from config: {e}")
@@ -814,8 +816,8 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         if any(pattern in combined_text for pattern in network_patterns):
             return "network_error"
 
-        # Bad request (may need different handling)
-        if status_code == 400:
+        # Bad request (do not retry or route around malformed caller input)
+        if status_code == 400 or "invalid request" in combined_text or "bad request" in combined_text:
             return "bad_request"
 
         return "unknown"
@@ -1654,16 +1656,25 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 else:
                     stream_gen = self._make_streaming_request(provider_name, provider_config, messages, model)
 
+                stream_failed = False
                 for chunk in stream_gen:
                     if chunk.get('error'):
+                        stream_failed = True
                         if self.verbose:
                             verbose_print(f"❌ Streaming error from {provider_name}: {chunk['error']}", self.verbose)
-                        yield chunk
                         break
                     if chunk.get('done'):
                         yield {'done': True, 'provider': provider_name, 'model': model or provider_config.get('model')}
                         return
                     yield chunk
+                if stream_failed:
+                    error_message = chunk.get('error', 'streaming failure')
+                    error_type = self._classify_error(error_message, 0, None)
+                    self._handle_provider_failure(provider_name, error_message, 0, None)
+                    if should_retry_provider(error_type):
+                        continue
+                    yield {'error': error_message, 'done': True, 'provider': provider_name}
+                    return
                 return
             except Exception as e:
                 if self.verbose:

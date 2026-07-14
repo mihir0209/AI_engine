@@ -479,6 +479,54 @@ def test_model_matches(engine):
 
 # === Chat Completion Tests ===
 
+def test_streaming_falls_back_after_retryable_provider_error(testing_engine):
+    testing_engine.providers = {
+        "first": {"enabled": True, "priority": 1, "format": "openai", "model": "m1"},
+        "second": {"enabled": True, "priority": 2, "format": "openai", "model": "m2"},
+    }
+    testing_engine._get_available_providers = lambda preferred=None: [
+        ("first", testing_engine.providers["first"]),
+        ("second", testing_engine.providers["second"]),
+    ]
+
+    def first_stream(*args, **kwargs):
+        yield {"error": "upstream timeout", "done": True}
+
+    def second_stream(*args, **kwargs):
+        yield {"content": "ok"}
+        yield {"done": True}
+
+    from unittest.mock import patch
+    with patch.object(testing_engine, "_make_streaming_request", side_effect=[first_stream(), second_stream()]):
+        chunks = list(testing_engine.chat_completion_stream([{"role": "user", "content": "hi"}]))
+
+    assert chunks == [
+        {"content": "ok"},
+        {"done": True, "provider": "second", "model": "m2"},
+    ]
+
+
+def test_streaming_non_retryable_error_is_terminal(testing_engine):
+    testing_engine.providers = {
+        "first": {"enabled": True, "priority": 1, "format": "openai", "model": "m1"},
+        "second": {"enabled": True, "priority": 2, "format": "openai", "model": "m2"},
+    }
+    testing_engine._get_available_providers = lambda preferred=None: [
+        ("first", testing_engine.providers["first"]),
+        ("second", testing_engine.providers["second"]),
+    ]
+
+    def first_stream(*args, **kwargs):
+        yield {"error": "invalid request", "done": True}
+
+    from unittest.mock import patch
+    with patch.object(testing_engine, "_make_streaming_request", side_effect=[first_stream()]) as stream:
+        chunks = list(testing_engine.chat_completion_stream([{"role": "user", "content": "hi"}]))
+
+    assert chunks == [{"error": "invalid request", "done": True, "provider": "first"}]
+    assert stream.call_count == 1
+
+
 def test_chat_completion_no_providers():
     engine = AI_engine(verbose=False)
     engine.providers = {}

@@ -18,7 +18,7 @@
 | Quality sprint | Provider adapter matrix, native TUI stream seam, examples lint, CI coverage gate in progress |
 | CI | `mutmut.yml` workflow_dispatch for pre-release checks |
 | Docs | Legacy files stubbed; primary path: README + ARCHITECTURE |
-| Providers | Reliability, fallback chains, dashboard metrics — one feature per PR |
+| Providers | **Reliability v2 done:** injectable circuit clock, explicit retry policy, streaming fallback; next: dashboard metrics and broader provider health integration |
 | Release | Next PyPI version only with explicit maintainer approval |
 
 ## How to develop
