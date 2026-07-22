@@ -110,6 +110,49 @@ MODEL_CAPABILITIES: Dict[str, Dict[str, ModelCapabilities]] = {
         "glm-4.5-flash": ModelCapabilities(vision=True, max_context_length=128000, supported_formats=["text", "image"]),
         "glm-4.6v-flash": ModelCapabilities(vision=True, max_context_length=128000, supported_formats=["text", "image"]),
     },
+    "ollama": {
+        "llama3.1": ModelCapabilities(max_context_length=128000),
+        "llama3.2": ModelCapabilities(max_context_length=128000),
+        "gemma2": ModelCapabilities(max_context_length=8192),
+        "qwen2.5": ModelCapabilities(max_context_length=128000),
+        "mistral": ModelCapabilities(max_context_length=32768),
+        "codellama": ModelCapabilities(max_context_length=16384),
+    },
+    "github": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+        "gpt-4o-mini": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "vercel": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "huggingface": {
+        "meta-llama/Meta-Llama-3.1-70B-Instruct": ModelCapabilities(tool_calling=True, max_context_length=128000),
+        "mistralai/Mistral-7B-Instruct-v0.3": ModelCapabilities(max_context_length=32768),
+    },
+    "opencode_zen": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "hcnsec": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "mimo": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "paxsenix": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "freetheai": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "hermes": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "pollinations": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
+    "longcat": {
+        "gpt-4o": ModelCapabilities(vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    },
 }
 
 # ============================================
@@ -124,18 +167,20 @@ PROVIDER_CAPABILITIES: Dict[str, ProviderCapabilities] = {
     "cerebras": ProviderCapabilities(provider="cerebras", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
     "cohere": ProviderCapabilities(provider="cohere", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
     "mistral": ProviderCapabilities(provider="mistral", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
-    "huggingface": ProviderCapabilities(provider="huggingface", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "huggingface": ProviderCapabilities(provider="huggingface", vision=False, tool_calling=True, max_context_length=128000, supported_formats=["text"]),
     "kilo": ProviderCapabilities(provider="kilo", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
-    "github": ProviderCapabilities(provider="github", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
-    "vercel": ProviderCapabilities(provider="vercel", vision=False, max_context_length=4096, supported_formats=["text"]),
-    "opencode_zen": ProviderCapabilities(provider="opencode_zen", vision=False, max_context_length=4096, supported_formats=["text"]),
-    "pollinations": ProviderCapabilities(provider="pollinations", vision=False, max_context_length=4096, supported_formats=["text"]),
-    "hermes": ProviderCapabilities(provider="hermes", vision=False, max_context_length=4096, supported_formats=["text"]),
-    "longcat": ProviderCapabilities(provider="longcat", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "github": ProviderCapabilities(provider="github", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "vercel": ProviderCapabilities(provider="vercel", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "opencode_zen": ProviderCapabilities(provider="opencode_zen", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "pollinations": ProviderCapabilities(provider="pollinations", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "hermes": ProviderCapabilities(provider="hermes", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "longcat": ProviderCapabilities(provider="longcat", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
     "zai": ProviderCapabilities(provider="zai", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
-    "hcnsec": ProviderCapabilities(provider="hcnsec", vision=True, max_context_length=128000, supported_formats=["text", "image"]),
-    "mimo": ProviderCapabilities(provider="mimo", vision=False, max_context_length=4096, supported_formats=["text"]),
-    "paxsenix": ProviderCapabilities(provider="paxsenix", vision=False, max_context_length=4096, supported_formats=["text"]),
+    "hcnsec": ProviderCapabilities(provider="hcnsec", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "mimo": ProviderCapabilities(provider="mimo", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "paxsenix": ProviderCapabilities(provider="paxsenix", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "freetheai": ProviderCapabilities(provider="freetheai", vision=True, tool_calling=True, max_context_length=128000, supported_formats=["text", "image"]),
+    "ollama": ProviderCapabilities(provider="ollama", vision=False, max_context_length=128000, supported_formats=["text"]),
     "llm7": ProviderCapabilities(provider="llm7", vision=False, max_context_length=4096, supported_formats=["text"]),
     "g4f_groq": ProviderCapabilities(provider="g4f_groq", vision=False, max_context_length=128000, supported_formats=["text"]),
     "g4f_gemini": ProviderCapabilities(provider="g4f_gemini", vision=True, max_context_length=1000000, supported_formats=["text", "image"]),

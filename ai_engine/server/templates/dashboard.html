@@ -66,7 +66,29 @@
         }
         .provider-dot.active { background: #198754; }
         .provider-dot.inactive { background: #dc3545; }
-    </style>
+        .metric-card {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .metric-card h6 { font-size: 0.85rem; text-transform: uppercase; color: #6c757d; margin-bottom: 0.5rem; }
+        .metric-row { display: flex; justify-content: space-between; padding: 0.25rem 0; }
+        .metric-row:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+        .metric-label { font-size: 0.85rem; color: #6c757d; }
+        .metric-value { font-size: 0.85rem; font-weight: 600; }
+        .success-rate { color: #198754; }
+        .fail-rate { color: #dc3545; }
+        .endpoint-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+        .endpoint-card .endpoint-name { font-weight: 600; }
+        .endpoint-card .endpoint-stats { color: #6c757d; font-size: 0.75rem; }
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark" style="background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));">
@@ -215,6 +237,54 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Provider Statistics (Key-Level) -->
+            <div class="col-md-6">
+                <div class="card feature-card h-100">
+                    <div class="card-body">
+                        <h5><i class="fas fa-chart-bar text-success"></i> Provider Key Statistics</h5>
+                        <div id="keyStatistics">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Request Metrics -->
+            <div class="col-md-6">
+                <div class="card feature-card h-100">
+                    <div class="card-body">
+                        <h5><i class="fas fa-tachometer-alt text-primary"></i> Request Metrics</h5>
+                        <div id="requestMetrics">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Endpoint Metrics -->
+            <div class="col-md-12">
+                <div class="card feature-card">
+                    <div class="card-body">
+                        <h5><i class="fas fa-route text-info"></i> Endpoint Performance</h5>
+                        <div id="endpointMetrics">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SLA Status -->
+            <div class="col-md-12">
+                <div class="card feature-card">
+                    <div class="card-body">
+                        <h5><i class="fas fa-shield-alt text-warning"></i> SLA / Health Monitoring</h5>
+                        <div id="slaStatus">
+                            <div class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -222,15 +292,37 @@
     <script>
         let startTime = Date.now();
 
+        function formatDuration(ms) {
+            if (ms < 1000) return `${ms.toFixed(0)}ms`;
+            return `${(ms / 1000).toFixed(2)}s`;
+        }
+
+        function formatRate(rate) {
+            const cls = rate >= 90 ? 'success-rate' : rate >= 70 ? 'text-warning' : 'fail-rate';
+            return `<span class="${cls}">${rate.toFixed(1)}%</span>`;
+        }
+
         async function updateDashboard() {
             try {
-                const [statusRes, cdnRes] = await Promise.all([
+                const [statusRes, cdnRes, statsRes, metricsRes, endpointsRes, slaRes] = await Promise.all([
                     fetch('/api/status'),
-                    fetch('/api/cdn-config').catch(() => ({json: () => ({})}))
+                    fetch('/api/cdn-config').catch(() => ({json: () => ({})})),
+                    fetch('/api/statistics').catch(() => ({json: () => ({})})),
+                    fetch('/api/metrics/summary').catch(() => ({json: () => ({})})),
+                    fetch('/api/metrics/endpoints').catch(() => ({json: () => ({})})),
+                    fetch('/api/sla/status').catch(() => ({json: () => ({})}))
                 ]);
-                const status = await statusRes.json();
-                const cdn = await cdnRes.json ? await cdnRes.json() : {};
 
+                const [status, cdn, stats, metrics, endpoints, sla] = await Promise.all([
+                    statusRes.json(),
+                    cdnRes.json ? cdnRes.json() : Promise.resolve({}),
+                    statsRes.json ? statsRes.json() : Promise.resolve({}),
+                    metricsRes.json ? metricsRes.json() : Promise.resolve({}),
+                    endpointsRes.json ? endpointsRes.json() : Promise.resolve({}),
+                    slaRes.json ? slaRes.json() : Promise.resolve({})
+                ]);
+
+                // Top stats
                 document.getElementById('activeProviders').textContent = status.available_providers || 0;
                 document.getElementById('totalProviders').textContent = status.total_providers || 0;
                 document.getElementById('flaggedProviders').textContent = status.flagged_providers || 0;
@@ -266,9 +358,140 @@
                 ).join('');
                 document.getElementById('providerList').innerHTML = providerHtml || '<div class="text-muted text-center py-3">No providers</div>';
 
+                // Key Statistics
+                const keyStatsHtml = renderKeyStatistics(stats);
+                document.getElementById('keyStatistics').innerHTML = keyStatsHtml;
+
+                // Request Metrics
+                const metricsHtml = renderRequestMetrics(metrics);
+                document.getElementById('requestMetrics').innerHTML = metricsHtml;
+
+                // Endpoint Metrics
+                const endpointsHtml = renderEndpointMetrics(endpoints);
+                document.getElementById('endpointMetrics').innerHTML = endpointsHtml;
+
+                // SLA Status
+                const slaHtml = renderSLAStatus(sla);
+                document.getElementById('slaStatus').innerHTML = slaHtml;
+
             } catch(e) {
                 console.error('Dashboard error:', e);
             }
+        }
+
+        function renderKeyStatistics(stats) {
+            if (!stats || !stats.providers) return '<div class="text-muted text-center py-2">No statistics available</div>';
+            
+            let html = '';
+            for (const [provider, data] of Object.entries(stats.providers)) {
+                if (!data.keys) continue;
+                html += `<div class="metric-card"><h6>${provider}</h6>`;
+                for (const [keyId, keyData] of Object.entries(data.keys)) {
+                    const rate = keyData.requests > 0 ? (keyData.successes / keyData.requests * 100) : 0;
+                    html += `
+                        <div class="metric-row">
+                            <span class="metric-label">${keyId}</span>
+                            <span class="metric-value">${formatRate(rate)}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Requests</span>
+                            <span class="metric-value">${keyData.requests}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Success / Fail</span>
+                            <span class="metric-value"><span class="success-rate">${keyData.successes}</span> / <span class="fail-rate">${keyData.failures}</span></span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Avg Latency</span>
+                            <span class="metric-value">${formatDuration(keyData.avg_latency_ms || 0)}</span>
+                        </div>
+                        <div class="metric-row">
+                            <span class="metric-label">Rate Limited</span>
+                            <span class="metric-value">${keyData.rate_limited ? '<span class="fail-rate">Yes</span>' : '<span class="success-rate">No</span>'}</span>
+                        </div>
+                    `;
+                }
+                html += '</div>';
+            }
+            return html || '<div class="text-muted text-center py-2">No key statistics</div>';
+        }
+
+        function renderRequestMetrics(metrics) {
+            if (!metrics || metrics.total_requests === undefined) return '<div class="text-muted text-center py-2">No metrics available</div>';
+            
+            return `
+                <div class="metric-card">
+                    <div class="metric-row">
+                        <span class="metric-label">Total Requests</span>
+                        <span class="metric-value">${metrics.total_requests}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Successful</span>
+                        <span class="metric-value success-rate">${metrics.successful}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Failed</span>
+                        <span class="metric-value fail-rate">${metrics.failed}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Success Rate</span>
+                        <span class="metric-value">${formatRate(metrics.success_rate)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Avg Duration</span>
+                        <span class="metric-value">${formatDuration(metrics.avg_duration_ms)}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderEndpointMetrics(endpoints) {
+            if (!endpoints || Object.keys(endpoints).length === 0) return '<div class="text-muted text-center py-2">No endpoint metrics</div>';
+            
+            let html = '';
+            for (const [endpoint, data] of Object.entries(endpoints)) {
+                if (!data.count) continue;
+                html += `
+                    <div class="endpoint-card">
+                        <div class="endpoint-name">${endpoint}</div>
+                        <div class="endpoint-stats">
+                            Requests: ${data.count} | Avg: ${data.avg_ms}ms | P50: ${data.p50_ms}ms | P95: ${data.p95_ms}ms
+                        </div>
+                    </div>
+                `;
+            }
+            return html || '<div class="text-muted text-center py-2">No endpoint metrics</div>';
+        }
+
+        function renderSLAStatus(sla) {
+            if (!sla || !sla.providers) return '<div class="text-muted text-center py-2">No SLA data</div>';
+            
+            let html = '<div class="row">';
+            for (const [provider, data] of Object.entries(sla.providers)) {
+                const healthy = data.healthy === true || data.healthy === 'healthy';
+                const uptime = data.uptime_percent !== undefined ? data.uptime_percent : 'N/A';
+                html += `
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <h6>${provider}</h6>
+                            <div class="metric-row">
+                                <span class="metric-label">Status</span>
+                                <span class="metric-value">${healthy ? '<span class="success-rate">Healthy</span>' : '<span class="fail-rate">Degraded</span>'}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Uptime</span>
+                                <span class="metric-value">${typeof uptime === 'number' ? uptime.toFixed(1) + '%' : uptime}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span class="metric-label">Checks</span>
+                                <span class="metric-value">${data.total_checks || 0}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            return html;
         }
 
         async function createQuickChat() {
