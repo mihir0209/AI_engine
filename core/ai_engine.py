@@ -20,7 +20,11 @@ try:
     from core.rate_limit_manager import rate_limit_manager
     from core.usage_tracker import usage_tracker
     from core.provider_requests import ProviderRequestMixin, RequestResult
-    from core.provider_reliability import should_retry_provider
+    from core.provider_reliability import (
+        should_retry_provider,
+        backoff_tracker,
+        get_fallback_chain,
+    )
     from core.stress_test import StressTestMixin
 except ImportError:
     try:
@@ -31,19 +35,23 @@ except ImportError:
         from core.rate_limit_manager import rate_limit_manager
         from core.usage_tracker import usage_tracker
         from core.provider_requests import ProviderRequestMixin, RequestResult
-        from core.provider_reliability import should_retry_provider
+        from core.provider_reliability import (
+            should_retry_provider,
+            backoff_tracker,
+            get_fallback_chain,
+        )
         from core.stress_test import StressTestMixin
     except ImportError as e:
         print(f"Failed to import from config: {e}")
         print("Falling back to inline configuration...")
         AI_CONFIGS = {}
         ENGINE_SETTINGS = {"key_rotation_enabled": True, "provider_rotation_enabled": True, "consecutive_failure_limit": 5, "verbose_mode": False}
-    AUTODECIDE_CONFIG = {"enabled": True, "cache_duration": 1800, "model_cache": {}}
+        AUTODECIDE_CONFIG = {"enabled": False, "cache_duration": 1800, "model_cache": {}}
 
-    # Fallback verbose_print function
-    def verbose_print(message: str, verbose_override: bool = None):
-        if verbose_override or ENGINE_SETTINGS.get("verbose_mode", False):
-            print(message)
+        # Fallback verbose_print function
+        def verbose_print(message: str, verbose_override: bool = None):
+            if verbose_override or ENGINE_SETTINGS.get("verbose_mode", False):
+                print(message)
 
 # Import Statistics Manager
 try:
@@ -1325,14 +1333,23 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
         max_attempts: int = None,
         **kwargs,
     ) -> RequestResult:
-        """Make a provider request, rotating API keys on auth/rate-limit failures."""
+        """Make a provider request, rotating API keys on auth/rate-limit failures with exponential backoff."""
+        from core.provider_reliability import get_retry_policy
+
         api_keys = provider_config.get("api_keys", [])
         valid_keys = [key for key in api_keys if key is not None]
+        policy = get_retry_policy(provider_name)
         if max_attempts is None:
-            max_attempts = max(1, len(valid_keys))
+            max_attempts = max(1, min(len(valid_keys), policy.retries))
 
         last_result = None
         for attempt in range(max_attempts):
+            if attempt > 0:
+                delay = policy.compute_delay(attempt - 1)
+                if self.verbose:
+                    verbose_print(f"⏳ Backoff {delay:.1f}s before retry #{attempt} for {provider_name}", self.verbose)
+                time.sleep(delay)
+
             start_time = time.time()
             try:
                 result = self._make_request(provider_name, provider_config, messages, model, **kwargs)
@@ -1343,6 +1360,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                     result.provider_used = provider_name
                     result.response_time = response_time
                     self._handle_provider_success(provider_name, response_time)
+                    backoff_tracker.reset(provider_name)
                     return result
 
                 last_result = result
@@ -1370,6 +1388,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
 
         if last_result:
             last_result.provider_used = provider_name
+            backoff_tracker.record_attempt(provider_name)
             return last_result
 
         return RequestResult(
@@ -1638,13 +1657,26 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             yield {'error': 'No available providers', 'done': True}
             return
 
-        # Try providers until one streams successfully
+        # Try providers until one streams successfully, respecting fallback chains
+        available_set = {name for name, _ in available_providers}
         for provider_name, provider_config in available_providers:
             format_type = provider_config.get('format', 'openai')
 
             # Skip providers that don't support streaming well
             if format_type not in ('openai', 'ollama'):
-                continue
+                # Check fallback chain for a streaming-capable provider
+                chain = get_fallback_chain(provider_name)
+                fallback = chain.next(provider_name, available_set)
+                if fallback and fallback in dict(available_providers):
+                    if self.verbose:
+                        verbose_print(f"🔀 Fallback from {provider_name} (non-streaming) → {fallback}", self.verbose)
+                    provider_name = fallback
+                    provider_config = dict(available_providers)[fallback]
+                    format_type = provider_config.get('format', 'openai')
+                    if format_type not in ('openai', 'ollama'):
+                        continue
+                else:
+                    continue
 
             try:
                 if self.verbose:

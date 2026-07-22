@@ -143,12 +143,52 @@ Coverage: `tests/test_engine_modes.py`. Default in `tests/conftest.py` is `testi
 
 PyPI publish requires **explicit approval** each time.
 
+### Pre-release checklist
+
+Before tagging a release, verify all items:
+
+```bash
+# 1. Tests pass across supported Python versions
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q
+
+# 2. Ruff is clean on all enforced scopes
+ruff check core tests ai_engine scripts chat_module examples server.py config.py
+
+# 3. Coverage gate passes
+AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q \
+  --cov=core --cov=ai_engine --cov-report=term-missing --cov-fail-under=40
+
+# 4. Source-of-truth shims are intact
+AI_ENGINE_MODE=testing pytest tests/test_source_of_truth.py -q --timeout=30
+
+# 5. Config validation (no duplicate IDs, required fields)
+python -c "
+from config import AI_CONFIGS
+ids = [c['id'] for c in AI_CONFIGS.values()]
+assert len(ids) == len(set(ids)), 'Duplicate IDs'
+for name, c in AI_CONFIGS.items():
+    assert 'endpoint' in c, f'{name}: missing endpoint'
+    assert 'model' in c, f'{name}: missing model'
+    assert 'priority' in c, f'{name}: missing priority'
+    assert 'modes' in c, f'{name}: missing modes'
+assert 'test_harness' in AI_CONFIGS
+print(f'Config OK: {len(AI_CONFIGS)} providers')
+"
+
+# 6. Optional: mutation testing (rotation kill rate >= 90%)
+mutmut run --max-children 4
+./scripts/mutmut_rotation_gate.sh 90
+```
+
+### Release steps
+
 1. Update `CHANGELOG.md` and `pyproject.toml` `version`
-2. `AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q`
-3. `ruff check core tests ai_engine scripts chat_module examples server.py config.py`
-4. Optional: `mutmut run` + `./scripts/mutmut_rotation_gate.sh 90` (or **Actions → Mutation tests**)
-5. `python -m build` && `twine check dist/*`
-6. `twine upload` only after approval
+2. Run all items in the pre-release checklist above
+3. Commit: `git commit -m "chore: release vX.Y.Z"`
+4. Tag: `git tag vX.Y.Z`
+5. Build: `python -m build && twine check dist/*`
+6. Push: `git push origin main --tags`
+7. `twine upload dist/*` **only after explicit maintainer approval**
 
 ## Pull Requests
 

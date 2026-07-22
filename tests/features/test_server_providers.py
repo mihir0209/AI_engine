@@ -79,6 +79,21 @@ def test_provider_health_summary(server_client):
 
 
 @pytest.mark.integration
+def test_provider_dashboard_includes_normalized_reliability_snapshot(server_client):
+    resp = server_client.get("/api/dashboard/providers")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["providers"]
+    provider = next(iter(data["providers"].values()))
+    assert provider["health"]["status"] in ("unknown", "healthy", "degraded", "unhealthy")
+    assert "total_requests" in provider["latency"]
+    assert "requests_made" in provider["rate_limit"]
+    assert "success_rate" in provider["usage"]
+    assert provider["circuit"]["state"] in ("unknown", "closed", "open", "half_open")
+    assert "capabilities" in provider
+
+
+@pytest.mark.integration
 def test_capabilities_endpoint(server_client):
     resp = server_client.get("/api/capabilities")
     assert resp.status_code == 200

@@ -10,11 +10,16 @@
 | Intent routing | `core/intent_classifier.py` | — |
 | CLI server | `python -m ai_engine serve` | `OpenAI().serve()` → packaged `app` |
 | TUI chat / image gen | `core.ai_engine` via `ai_engine/tui/routing_engine.py` | Same engine as server chat |
+| Provider observability | `core/provider_observability.py` | Dashboard consumes normalized snapshots |
 
 The TUI execution seam exposes `chat_completion()` for a `RequestResult` and
 `stream_chat_completion()` for normalized dictionaries (`content`, `done`,
 `provider`, `model`, or `error`). OpenAI SDK response objects remain inside
 `ai_engine/resources/chat.py`; they are not part of the TUI contract.
+
+Provider-facing dashboard views use `core.provider_observability` as a read-only
+composition seam. It normalizes health, latency, rate-limit, usage, and existing
+circuit-breaker state without creating provider state or making network calls.
 
 PyPI ships `ai_engine*` and `core*` only. Root shims exist for editable installs and older docs.
 

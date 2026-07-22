@@ -9,28 +9,23 @@
 - httpx 0.28 + Starlette ≥0.37.2; ruff on `core`, `tests`, `ai_engine`
 - Docs refresh (README, server, deployment, user guide)
 
-## Open work (optional)
+## Completed post-release work
+
+| Area | Status |
+|------|--------|
+| Ruff `scripts/` | Clean — CI scope covers `core tests ai_engine scripts chat_module examples server.py config.py` |
+| Source of truth | **Done:** packaged server/chat/config; TUI `routing_engine`; `tests/test_source_of_truth.py` |
+| Provider reliability v2 | **Done:** exponential backoff per provider, configurable fallback chains, `BackoffTracker` |
+| Observability integration | **Done:** normalized provider snapshots feed the dashboard |
+| Legacy docs consolidation | **Done:** archived `AI_ENGINE_DOCUMENTATION.md`, `SUBMISSION.md`, `claude.md` |
+| CI pre-release checklist | **Done:** documented in `CONTRIBUTING.md` |
+| Monthly live test cadence | **Done:** cron schedule `0 8 1 * *` in `live-tests.yml` |
+| Anthropic SDK | **Done:** drop-in `Anthropic`/`AsyncAnthropic` with message format conversion |
+
+## Next release (requires explicit maintainer approval)
 
 | Area | Notes |
 |------|--------|
-| Ruff | CI scope + root shims (`server.py`, `config.py`, `chat_module/`) |
-| Source of truth | **Done:** packaged server/chat/config; TUI `routing_engine`; `tests/test_source_of_truth.py` |
-| Quality sprint | Provider adapter matrix, native TUI stream seam, examples lint, CI coverage gate in progress |
-| CI | `mutmut.yml` workflow_dispatch for pre-release checks |
-| Docs | Legacy files stubbed; primary path: README + ARCHITECTURE |
-| Providers | **Reliability v2 done:** injectable circuit clock, explicit retry policy, streaming fallback; next: dashboard metrics and broader provider health integration |
-| Release | Next PyPI version only with explicit maintainer approval |
-
-## How to develop
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md):
-
-```bash
-pip install -e ".[dev,server]"
-AI_ENGINE_MODE=testing pytest tests/ -m "not live" --timeout=30 -q
-ruff check core tests ai_engine scripts chat_module
-```
-
-## Detailed plan
-
-Internal execution checklist: [post-release roadmap](superpowers/plans/2026-07-14-post-release-roadmap.md).
+| Release | `v1.0.4` — PyPI publish only with explicit approval |
+| Provider hardening | Extended retry policies, per-provider circuit breaker tuning |
+| Distribution | Redis/Memcached caching, Kubernetes manifests, Grafana dashboards |

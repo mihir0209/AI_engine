@@ -5,6 +5,7 @@ from ._version import get_version
 __version__ = get_version()
 
 from .openai import OpenAI, AsyncOpenAI
+from .anthropic import Anthropic, AsyncAnthropic
 from ._engine import AIEngine, get_engine, set_engine, _global_config
 from ._exceptions import (
     AIEngineError,
@@ -16,11 +17,6 @@ from ._exceptions import (
     NotFoundError,
 )
 
-# Lazy Anthropic import (not implemented yet)
-try:
-    from .anthropic import Anthropic, AsyncAnthropic
-except ImportError:
-    pass
 
 def use(**kwargs):
     """Configure global AI Engine settings (late configuration)."""

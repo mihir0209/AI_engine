@@ -1,6 +1,8 @@
 name: Live Tests
 
 on:
+  schedule:
+    - cron: "0 8 1 * *"
   workflow_dispatch:
     inputs:
       python-version:
@@ -22,7 +24,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python-version }}
+          python-version: ${{ inputs.python-version || '3.12' }}
 
       - name: Install package and test dependencies
         run: |

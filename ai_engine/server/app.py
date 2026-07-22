@@ -1924,36 +1924,35 @@ async def get_provider_usage(provider_name: str):
 
 @app.get("/api/dashboard/providers", tags=["Provider Management"])
 async def get_provider_dashboard():
-    """Get comprehensive provider dashboard: health, latency, rate limits, capabilities, vision support"""
-    from core.health_monitor import health_monitor
-    from core.latency_tracker import latency_tracker
-    from core.rate_limit_manager import rate_limit_manager
+    """Get comprehensive provider dashboard with reliability and capabilities."""
     from core.capabilities import capability_manager
+    from core.provider_observability import get_all_provider_snapshots
 
     capability_manager.fetch_openrouter_capabilities()
+    provider_names = list(AI_CONFIGS)
+    reliability = get_all_provider_snapshots(provider_names)
     dashboard = {}
     for name, config in AI_CONFIGS.items():
-        health = health_monitor.get_provider_health(name)
-        latency = latency_tracker.get_stats(name)
-        rl = rate_limit_manager.get_provider(name)
+        snapshot = reliability[name]
         caps = capability_manager.get_provider_capabilities(name)
         vision_model = capability_manager.get_vision_model_for_provider(name)
         dashboard[name] = {
             "enabled": config.get("enabled", True),
             "priority": config.get("priority", 999),
+            **snapshot,
             "health": {
-                "status": health.get("status", "unknown") if health else "unknown",
-                "success_rate": health.get("success_rate", 0) if health else 0,
-                "last_check": health.get("last_check") if health else None,
+                **snapshot["health"],
+                "success_rate": snapshot["usage"]["success_rate"],
             },
             "latency": {
-                "avg_ms": latency.get("avg_latency", 0) * 1000 if latency else 0,
-                "p95_ms": latency.get("p95_latency", 0) * 1000 if latency else 0,
-                "sample_count": latency.get("sample_count", 0) if latency else 0,
+                **snapshot["latency"],
+                "avg_ms": snapshot["latency"]["avg_latency_ms"],
+                "p95_ms": snapshot["latency"]["p95_latency_ms"],
+                "sample_count": snapshot["latency"]["total_requests"],
             },
             "rate_limit": {
-                "is_limited": rl.is_rate_limited if rl else False,
-                "available": rl.is_available() if rl else True,
+                **snapshot["rate_limit"],
+                "is_limited": snapshot["rate_limit"]["is_limited"],
             },
             "capabilities": {
                 "vision": caps.vision if caps else False,
