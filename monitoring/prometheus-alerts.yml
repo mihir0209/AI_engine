@@ -1,0 +1,56 @@
+groups:
+  - name: ai_engine_alerts
+    rules:
+      # Provider is down / circuit breaker open
+      - alert: ProviderCircuitBreakerOpen
+        expr: ai_engine_circuit_breaker_state == 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker OPEN for {{ $labels.breaker }}"
+          description: "Provider {{ $labels.breaker }} has tripped the circuit breaker due to repeated failures."
+
+      # High error rate (>10% failures over 5 min)
+      - alert: ProviderHighErrorRate
+        expr: |
+          sum(rate(ai_engine_request_duration_seconds_count{status!="success"}[5m])) by (provider)
+          / sum(rate(ai_engine_request_duration_seconds_count[5m])) by (provider) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.provider }}"
+          description: "{{ $labels.provider }} error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # p95 latency > 15s
+      - alert: ProviderHighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(ai_engine_request_duration_seconds_bucket[5m])) by (le, provider)) > 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency on {{ $labels.provider }}"
+          description: "p95 latency on {{ $labels.provider }} is {{ $value | humanizeDuration }}."
+
+      # Cache hit rate < 50%
+      - alert: CacheHitRateLow
+        expr: |
+          sum(rate(ai_engine_cache_hits_total[5m])) / sum(rate(ai_engine_cache_requests_total[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}."
+
+      # Any provider has 0 success rate for 10 minutes
+      - alert: ProviderDown
+        expr: sum(rate(ai_engine_request_duration_seconds_count{status="success"}[5m])) by (provider) == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Provider {{ $labels.provider }} appears to be down"
+          description: "No successful requests to {{ $labels.provider }} in the last 10 minutes."

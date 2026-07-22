@@ -9,6 +9,16 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
+# Circuit breaker thresholds per provider (configurable)
+_PROVIDER_CIRCUIT_THRESHOLDS: Dict[str, Dict] = {
+    "default": {"failure_threshold": 5, "recovery_timeout": 60, "half_open_max": 3},
+    "groq": {"failure_threshold": 3, "recovery_timeout": 30, "half_open_max": 2},
+    "gemini": {"failure_threshold": 3, "recovery_timeout": 45, "half_open_max": 2},
+    "openrouter": {"failure_threshold": 4, "recovery_timeout": 60, "half_open_max": 3},
+    "nvidia": {"failure_threshold": 4, "recovery_timeout": 60, "half_open_max": 3},
+    "cerebras": {"failure_threshold": 4, "recovery_timeout": 60, "half_open_max": 3},
+}
+
 
 @dataclass
 class RequestResult:
@@ -27,32 +37,68 @@ class RequestResult:
 class ProviderRequestMixin:
     """All HTTP request methods for communicating with AI providers."""
 
+    def _get_circuit_breaker(self, provider_name: str):
+        """Get or create a circuit breaker for a provider."""
+        try:
+            from core.infrastructure import get_circuit_breaker
+        except ImportError:
+            return None
+        cb_name = f"provider:{provider_name}"
+        thresholds = _PROVIDER_CIRCUIT_THRESHOLDS.get(
+            provider_name, _PROVIDER_CIRCUIT_THRESHOLDS["default"]
+        )
+        cb = get_circuit_breaker(
+            cb_name,
+            failure_threshold=thresholds["failure_threshold"],
+            recovery_timeout=thresholds["recovery_timeout"],
+            half_open_max_calls=thresholds["half_open_max"],
+        )
+        return cb
+
     def _make_request(self, provider_name, config, messages, model=None, **kwargs):
-        """Make a request to a specific provider"""
+        """Make a request to a specific provider, with circuit breaker protection."""
+        cb = self._get_circuit_breaker(provider_name)
+        if cb and not cb.can_execute():
+            return RequestResult(
+                success=False,
+                error_message=f"Circuit breaker OPEN for {provider_name} — too many recent failures",
+                error_type="circuit_open",
+                provider_used=provider_name,
+            )
+
         try:
             format_type = config.get('format', 'openai')
 
             if format_type == 'openai':
-                return self._make_openai_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_openai_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'anthropic':
-                return self._make_anthropic_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_anthropic_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'vertex_ai':
-                return self._make_vertex_ai_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_vertex_ai_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'azure_openai':
-                return self._make_azure_openai_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_azure_openai_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'bedrock':
-                return self._make_bedrock_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_bedrock_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'gemini':
-                return self._make_gemini_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_gemini_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'cohere':
-                return self._make_cohere_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_cohere_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'cloudflare':
-                return self._make_cloudflare_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_cloudflare_request(provider_name, config, messages, model, **kwargs)
             elif format_type == 'a3z_get':
-                return self._make_a3z_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_a3z_request(provider_name, config, messages, model, **kwargs)
             else:
-                return self._make_openai_request(provider_name, config, messages, model, **kwargs)
+                result = self._make_openai_request(provider_name, config, messages, model, **kwargs)
+
+            if cb:
+                if result.success:
+                    cb.record_success()
+                else:
+                    cb.record_failure()
+            return result
         except Exception as e:
+            if cb:
+                cb.record_failure()
             return RequestResult(
                 success=False,
                 error_message=f"Provider request failed: {str(e)}",
