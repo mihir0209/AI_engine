@@ -40,10 +40,15 @@ class ProviderConfig(BaseModel):
     def validate_format(cls, v):
         valid_formats = {
             "openai",
+            "anthropic",
             "gemini",
+            "vertex_ai",
+            "azure_openai",
+            "bedrock",
             "cohere",
             "cloudflare",
             "ollama",
+            "a3z_get",
             "flowith",
             "minimax",
         }

@@ -155,13 +155,150 @@ class ProviderRequestMixin:
             return RequestResult(success=False, error_message=str(e), error_type="request_exception")
 
     def _make_bedrock_request(self, provider_name, config, messages, model=None, **kwargs):
-        """Make request to AWS Bedrock provider"""
+        """Make request to AWS Bedrock provider using the Converse API."""
+        import requests as _requests
+        import json
+        import hashlib
+        import hmac
+        import datetime
 
-        return RequestResult(
-            success=False,
-            error_message="Bedrock provider not yet implemented",
-            error_type="not_implemented"
+        endpoint = config.get("endpoint", "")
+        current_key = self._get_current_api_key(provider_name)
+        region = config.get("region", "us-east-1")
+
+        if not current_key:
+            return RequestResult(success=False, error_message="No API key available", error_type="auth_error")
+
+        # Extract model from endpoint or use config model
+        model_id = model or config.get("model", "anthropic.claude-3-sonnet-20240229-v1:0")
+
+        # Build the Converse API request
+        api_url = f"{endpoint}/model/{model_id}/converse"
+
+        # Convert messages to Bedrock Converse format
+        bedrock_messages = []
+        system_prompt = None
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_prompt = content
+                continue
+
+            bedrock_content = [{"text": content}]
+            bedrock_messages.append({
+                "role": role,
+                "content": bedrock_content,
+            })
+
+        payload = {
+            "messages": bedrock_messages,
+            "inferenceConfig": {
+                "maxTokens": config.get("max_tokens", 4096),
+                "temperature": config.get("temperature", 0.7),
+            },
+        }
+
+        if system_prompt:
+            payload["system"] = [{"text": system_prompt}]
+
+        # AWS Signature V4 signing
+        now = datetime.datetime.utcnow()
+        date_stamp = now.strftime("%Y%m%d")
+        amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+
+        # Parse access key and secret from the API key (format: access_key:secret_key)
+        key_parts = current_key.split(":", 1) if ":" in current_key else [current_key, ""]
+        access_key = key_parts[0]
+        secret_key = key_parts[1] if len(key_parts) > 1 else ""
+
+        # Create canonical request
+        payload_bytes = json.dumps(payload).encode("utf-8")
+        payload_hash = hashlib.sha256(payload_bytes).hexdigest()
+
+        headers_to_sign = {
+            "content-type": "application/json",
+            "host": endpoint.replace("https://", "").replace("http://", ""),
+            "x-amz-date": amz_date,
+            "x-amz-content-sha256": payload_hash,
+        }
+
+        signed_headers = ";".join(sorted(headers_to_sign.keys()))
+        canonical_headers = "".join(f"{k}:{v}\n" for k, v in sorted(headers_to_sign.items()))
+
+        canonical_request = "\n".join([
+            "POST",
+            f"/model/{model_id}/converse",
+            "",
+            canonical_headers,
+            signed_headers,
+            payload_hash,
+        ])
+
+        # Create string to sign
+        credential_scope = f"{date_stamp}/{region}/aws4_request"
+        string_to_sign = "\n".join([
+            "AWS4-HMAC-SHA256",
+            amz_date,
+            credential_scope,
+            hashlib.sha256(canonical_request.encode("utf-8")).hexdigest(),
+        ])
+
+        # Calculate signature
+        def _sign(key, msg):
+            return hmac.new(key, msg.encode("utf-8"), hashlib.sha256).digest()
+
+        k_date = _sign(("AWS4" + secret_key).encode("utf-8"), date_stamp)
+        k_region = _sign(k_date, region)
+        k_service = _sign(k_region, "bedrock")
+        k_signing = _sign(k_service, "aws4_request")
+        signature = hmac.new(k_signing, string_to_sign.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        # Build authorization header
+        auth_header = (
+            f"AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, "
+            f"SignedHeaders={signed_headers}, Signature={signature}"
         )
+
+        request_headers = {
+            "Content-Type": "application/json",
+            "Host": headers_to_sign["host"],
+            "X-Amz-Date": amz_date,
+            "X-Amz-Content-Sha256": payload_hash,
+            "Authorization": auth_header,
+        }
+
+        timeout = config.get("timeout", 60)
+        try:
+            resp = _requests.post(api_url, headers=request_headers, data=payload_bytes, timeout=timeout)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                # Extract text from Converse response
+                output = data.get("output", {})
+                message = output.get("message", {})
+                content_blocks = message.get("content", [])
+                content = " ".join(block.get("text", "") for block in content_blocks if "text" in block)
+
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    provider_used=provider_name,
+                    model_used=model_id,
+                    status_code=200,
+                    raw_response=data,
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=f"Bedrock {resp.status_code}: {resp.text[:200]}",
+                    error_type="provider_error",
+                    status_code=resp.status_code,
+                )
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
 
     def _make_streaming_request(self, provider_name, config, messages, model=None, **kwargs):
         """Make streaming request to a provider (yields chunks)"""
@@ -304,9 +441,89 @@ class ProviderRequestMixin:
             return RequestResult(success=False, error_message=str(e), error_type="request_exception")
 
     def _make_vertex_ai_request(self, provider_name, config, messages, model=None, **kwargs):
-        """Make request to Vertex AI provider"""
+        """Make request to Vertex AI provider using the Gemini API format."""
+        import requests as _requests
 
-        return RequestResult(success=False, error_message="Vertex AI not yet implemented", error_type="not_implemented")
+        current_key = self._get_current_api_key(provider_name)
+        project_id = config.get("project_id", "")
+        location = config.get("region", "us-central1")
+
+        if not current_key:
+            return RequestResult(success=False, error_message="No API key available", error_type="auth_error")
+
+        model_id = model or config.get("model", "gemini-1.5-pro")
+
+        # Build Vertex AI endpoint
+        api_url = (
+            f"https://{location}-aiplatform.googleapis.com/v1/"
+            f"projects/{project_id}/locations/{location}"
+            f"/publishers/google/models/{model_id}:generateContent"
+        )
+
+        # Convert messages to Vertex AI format
+        contents = []
+        system_instruction = None
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if role == "system":
+                system_instruction = content
+                continue
+
+            # Vertex AI uses "user" and "model" roles
+            vertex_role = "user" if role == "user" else "model"
+            contents.append({
+                "role": vertex_role,
+                "parts": [{"text": content}],
+            })
+
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": config.get("max_tokens", 4096),
+                "temperature": config.get("temperature", 0.7),
+            },
+        }
+
+        if system_instruction:
+            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {current_key}",
+        }
+
+        timeout = config.get("timeout", 60)
+        try:
+            resp = _requests.post(api_url, headers=headers, json=payload, timeout=timeout)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                content = ""
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    content = " ".join(part.get("text", "") for part in parts)
+
+                return RequestResult(
+                    success=True,
+                    content=content,
+                    provider_used=provider_name,
+                    model_used=model_id,
+                    status_code=200,
+                    raw_response=data,
+                )
+            else:
+                return RequestResult(
+                    success=False,
+                    error_message=f"Vertex AI {resp.status_code}: {resp.text[:200]}",
+                    error_type="provider_error",
+                    status_code=resp.status_code,
+                )
+        except Exception as e:
+            return RequestResult(success=False, error_message=str(e), error_type="request_exception")
 
     def _make_openai_request(self, provider_name, config, messages, model=None, **kwargs):
         """Make request to OpenAI-compatible provider"""

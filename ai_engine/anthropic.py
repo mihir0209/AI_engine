@@ -1,4 +1,5 @@
 """Anthropic SDK compatibility — routes Anthropic-style requests through AI Synapse core."""
+import asyncio
 from typing import List, Dict, Any, Optional, Union
 import uuid
 
@@ -123,6 +124,123 @@ class _MessagesResource:
         yield MessageStop(type="message_stop")
 
 
+class AsyncMessagesResource:
+    """Async client.messages resource."""
+
+    def __init__(self, engine):
+        self._engine = engine
+
+    async def create(
+        self,
+        *,
+        model: str,
+        max_tokens: int = 1024,
+        messages: List[Dict[str, Any]],
+        system: Optional[Union[str, List[Dict[str, Any]]]] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
+        stop_sequences: Optional[List[str]] = None,
+        stream: bool = False,
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs,
+    ):
+        """Create a message asynchronously — Anthropic API compatible."""
+        oai_messages = self._convert_messages(messages, system)
+
+        if stream:
+            return self._stream(model, oai_messages, max_tokens=max_tokens,
+                               temperature=temperature, **kwargs)
+
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self._engine.chat_completion(messages=oai_messages, model=model),
+        )
+
+        if not result or not getattr(result, "success", False):
+            error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
+            raise AnthropicError(error_msg)
+
+        content = getattr(result, "content", None) or ""
+
+        return Message(
+            id=f"msg_{uuid.uuid4().hex[:24]}",
+            type="message",
+            role="assistant",
+            content=[TextBlock(type="text", text=content)],
+            model=result.model_used or model,
+            stop_reason="end_turn",
+            usage=Usage(input_tokens=max(1, sum(len(m.get("content", "").split()) for m in messages)),
+                        output_tokens=max(1, len(content.split()))),
+        )
+
+    def _convert_messages(self, messages: List[Dict[str, Any]], system=None) -> List[Dict[str, str]]:
+        """Convert Anthropic message format to OpenAI format."""
+        oai_messages = []
+
+        if system:
+            if isinstance(system, str):
+                oai_messages.append({"role": "system", "content": system})
+            elif isinstance(system, list):
+                text_parts = [b.get("text", "") for b in system if b.get("type") == "text"]
+                oai_messages.append({"role": "system", "content": " ".join(text_parts)})
+
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+
+            if isinstance(content, str):
+                oai_messages.append({"role": role, "content": content})
+            elif isinstance(content, list):
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            text_parts.append(block.get("text", ""))
+                        elif block.get("type") == "image":
+                            text_parts.append("[image]")
+                oai_messages.append({"role": role, "content": " ".join(text_parts) if text_parts else str(content)})
+            else:
+                oai_messages.append({"role": role, "content": str(content)})
+
+        return oai_messages
+
+    async def _stream(self, model, messages, max_tokens=1024, temperature=None, **kwargs):
+        """Async stream message chunks."""
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: self._engine.chat_completion(messages=messages, model=model),
+        )
+
+        if not result or not getattr(result, "success", False):
+            error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
+            raise AnthropicError(error_msg)
+
+        content = getattr(result, "content", None) or ""
+        msg_id = f"msg_{uuid.uuid4().hex[:24]}"
+
+        yield MessageStart(type="message_start", message=Message(
+            id=msg_id, type="message", role="assistant", content=[],
+            model=result.model_used or model, stop_reason=None,
+            usage=Usage(input_tokens=0, output_tokens=0),
+        ))
+
+        words = content.split(" ")
+        for i, word in enumerate(words):
+            text = (" " if i > 0 else "") + word
+            yield ContentBlockStart(type="content_block_start", index=0,
+                                   content_block=TextBlock(type="text", text=""))
+            yield ContentBlockDelta(type="content_block_delta", index=0,
+                                   delta=TextDelta(type="text_delta", text=text))
+
+        yield ContentBlockStop(type="content_block_stop", index=0)
+        yield MessageDelta(type="message_delta", delta=StopDelta(stop_reason="end_turn"),
+                          usage=Usage(output_tokens=max(1, len(words))))
+        yield MessageStop(type="message_stop")
+
+
 class Anthropic:
     """Drop-in replacement for anthropic.Anthropic.
 
@@ -169,11 +287,15 @@ class AsyncAnthropic:
     """
 
     def __init__(self, **kwargs):
-        self._sync_client = Anthropic(**kwargs)
+        self._api_key = kwargs.pop("api_key", "dummy")
+        from ._engine import get_engine, _resolve_config
+        self._config = _resolve_config(**kwargs)
+        self._engine = get_engine(self._config)
+        self._messages = AsyncMessagesResource(self._engine)
 
     @property
-    def messages(self):
-        return self._sync_client.messages
+    def messages(self) -> AsyncMessagesResource:
+        return self._messages
 
 
 class Message:

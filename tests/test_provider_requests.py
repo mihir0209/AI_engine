@@ -59,14 +59,14 @@ def test_azure_openai_no_api_key(engine):
     assert result.error_type == "auth_error"
 
 
-def test_bedrock_not_implemented(engine):
+def test_bedrock_no_auth(engine):
     result = engine._make_bedrock_request(
         "bedrock",
         {},
         [{"role": "user", "content": "x"}],
     )
     assert result.success is False
-    assert result.error_type == "not_implemented"
+    assert result.error_type == "auth_error"
 
 
 def test_streaming_request_yields_content(engine):

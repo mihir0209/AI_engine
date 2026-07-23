@@ -130,12 +130,28 @@ class AsyncOpenAI:
     """
 
     def __init__(self, **kwargs):
-        self._sync_client = OpenAI(**kwargs)
+        from .resources.models import AsyncModels
+        self._config = _resolve_config(**kwargs)
+        self._engine = get_engine(self._config)
+        self._chat = _AsyncChatNamespace(self._engine)
+        self._models = AsyncModels(self._engine)
 
     @property
     def chat(self):
-        return self._sync_client.chat
+        return self._chat
 
     @property
     def models(self):
-        return self._sync_client.models
+        return self._models
+
+
+class _AsyncChatNamespace:
+    """Async namespace for client.chat.*"""
+
+    def __init__(self, engine):
+        from .resources.chat import AsyncCompletions
+        self._completions = AsyncCompletions(engine)
+
+    @property
+    def completions(self):
+        return self._completions

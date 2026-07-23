@@ -1769,7 +1769,7 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
                 result.response_time = response_time
 
                 if self.verbose:
-                    verbose_print(f"✅ {provider_name} test successful ({response_time:.2f}s, self.verbose)")
+                    verbose_print(f"✅ {provider_name} test successful ({response_time:.2f}s)")
             else:
                 # Handle errors and flagging
                 error_type = self._classify_error(result.error_message, result.status_code)
@@ -1846,236 +1846,17 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
 
         return status
 
-# Test function
 def main():
-    """Test the AI Engine with command-line support"""
-    import sys
-    import atexit
+    """CLI entry point — delegates to core.cli module."""
+    import warnings
+    warnings.warn(
+        "Calling main() from core.ai_engine is deprecated. Use 'python -m core.cli' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from core.cli import main as cli_main
+    cli_main()
 
-    # Initialize engine
-    engine = None
-
-    def cleanup():
-        """Save statistics on exit"""
-        if engine:
-            try:
-                engine.save_statistics_now()
-            except Exception:
-                pass
-
-    # Register cleanup function
-    atexit.register(cleanup)
-
-    # Check for command-line arguments
-    if len(sys.argv) > 1:
-        provider_name = sys.argv[1].lower()
-
-        # Handle special commands
-        if provider_name == "stress":
-            engine = AI_engine(verbose=True)
-            print("🧪 Running comprehensive stress test...")
-            engine.stress_test_providers(test_iterations=3, ask_for_priority_change=True)
-            return
-        elif provider_name == "server":
-            print("🚀 Starting AI Engine FastAPI Server...")
-            try:
-                from ai_engine.server.app import main as server_main
-
-                server_main()
-            except ImportError as e:
-                print(f"❌ Server module not found: {e}")
-                print("Install server extras: pip install ai-synapse[server]")
-                print("pip install ai-synapse[server]")
-            return
-        elif provider_name == "list":
-            engine = AI_engine(verbose=False)
-            print("📋 Available Providers:")
-            sorted_providers = sorted(engine.providers.items(), key=lambda x: x[1]['priority'])
-            for i, (name, config) in enumerate(sorted_providers, 1):
-                priority = config.get('priority', 999)
-                model = config.get('model', 'Unknown')[:30]
-                status = "🔑" if engine._get_current_api_key(name) else "🚫"
-                print(f"{i:2d}. {name:15} | Priority: {priority:2d} | {status} | {model}")
-            return
-        elif provider_name == "status":
-            engine = AI_engine(verbose=False)
-            status = engine.get_status()
-            print("📊 Engine Status:")
-            print(f"Available providers: {status['available_providers']}/{status['total_providers']}")
-            print(f"Top 5 providers: {', '.join(status['available_provider_list'])}")
-            if status['flagged_provider_list']:
-                print(f"Flagged providers: {', '.join(status['flagged_provider_list'])}")
-            return
-        elif provider_name == "keys":
-            # Show key usage statistics
-            engine = AI_engine(verbose=False)
-            if len(sys.argv) > 2:
-                target_provider = sys.argv[2].lower()
-                if target_provider in engine.providers:
-                    print(f"🔑 Key Usage Report for {target_provider}:")
-                    print("-" * 50)
-                    report = engine.get_key_usage_report(target_provider)
-                    if report:
-                        for key_name, stats in report.items():
-                            print(f"{key_name}:")
-                            print(f"  📊 Requests: {stats['total_requests']} (this minute: {stats['requests_this_minute']})")
-                            print(f"  ✅ Success Rate: {stats['success_rate']:.1f}%")
-                            print(f"  ⚖️  Load Weight: {stats['weight']:.2f}")
-                            print(f"  🚦 Rate Limited: {'Yes' if stats['rate_limited'] else 'No'}")
-                            print(f"  ⏰ Last Used: {stats['last_used'] or 'Never'}")
-                            print()
-                    else:
-                        print(f"No key data available for {target_provider}")
-                else:
-                    print(f"Provider '{target_provider}' not found")
-            else:
-                print("🔑 Key Usage Summary for Multi-Key Providers:")
-                print("-" * 60)
-                for provider_name, config in engine.providers.items():
-                    api_keys = config.get('api_keys', [])
-                    valid_keys = [k for k in api_keys if k is not None]
-                    if len(valid_keys) > 1:
-                        report = engine.get_key_usage_report(provider_name)
-                        if report:
-                            print(f"📈 {provider_name} ({len(valid_keys)} keys):")
-                            for key_name, stats in report.items():
-                                status = "🔴 RATE LIMITED" if stats['rate_limited'] else "🟢 ACTIVE"
-                                print(f"  {key_name}: {stats['total_requests']} requests, {stats['success_rate']:.1f}% success {status}")
-                            print()
-            return
-        elif provider_name == "auto":
-            # Auto mode - use priority-based provider rotation
-            engine = AI_engine(verbose=True)
-
-            custom_message = "Hello! Please respond with a short test message to verify the system is working."
-            if len(sys.argv) > 2:
-                custom_message = " ".join(sys.argv[2:])
-
-            print("🔄 Testing automatic provider rotation...")
-            print("-" * 50)
-
-            messages = [{"role": "user", "content": custom_message}]
-            result = engine.chat_completion(messages)
-
-            if result.success:
-                print("✅ AUTO ROTATION SUCCESS!")
-                print(f"💬 Response: {result.content}")
-                print(f"🏃‍♂️ Provider used: {result.provider_used}")
-                print(f"⏱️ Response time: {result.response_time:.2f}s")
-            else:
-                print("❌ AUTO ROTATION FAILED!")
-                print(f"🚨 Error: {result.error_message}")
-                print(f"🔍 Error type: {result.error_type}")
-            return
-        elif provider_name == "autodecide":
-            # Autodecide mode - automatically find best provider for specified model
-            engine = AI_engine()  # Use global config for verbose mode
-
-            if len(sys.argv) < 3:
-                print("❌ Usage: python ai_engine.py autodecide <model_name> [message]")
-                print("📋 Examples:")
-                print("   python ai_engine.py autodecide gpt-4 'Hello world'")
-                print("   python ai_engine.py autodecide claude 'Test message'")
-                print("   python ai_engine.py autodecide llama 'Quick test'")
-                return
-
-            target_model = sys.argv[2]
-            custom_message = "Hello! Please respond with a short test message."
-            if len(sys.argv) > 3:
-                custom_message = " ".join(sys.argv[3:])
-
-            print(f"🎯 Testing autodecide for model: {target_model}")
-            print("-" * 50)
-
-            # Discover providers for this model
-            providers = engine._discover_model_providers(target_model)
-            if providers:
-                verbose_print(f"� Found {len(providers)} providers supporting '{target_model}':", engine.verbose)
-                for i, (provider_name, provider_model) in enumerate(providers[:5], 1):
-                    verbose_print(f"  {i}. {provider_name}: {provider_model}", engine.verbose)
-                if len(providers) > 5:
-                    verbose_print(f"     ... and {len(providers) - 5} more providers", engine.verbose)
-            else:
-                verbose_print(f"⚠️  No providers found for model '{target_model}'", engine.verbose)
-                verbose_print("🔄 Falling back to automatic provider selection...", engine.verbose)
-
-            print("\n🚀 Making autodecide chat completion...")
-            messages = [{"role": "user", "content": custom_message}]
-            result = engine.chat_completion(messages, model=target_model, autodecide=True)
-
-            if result.success:
-                print("✅ AUTODECIDE SUCCESS!")
-                print(f"🎯 Requested model: {target_model}")
-                print(f"🏃‍♂️ Provider selected: {result.provider_used}")
-                print(f"🤖 Model used: {result.model_used}")
-                print(f"💬 Response: {result.content}")
-                print(f"⏱️ Response time: {result.response_time:.2f}s")
-            else:
-                print("❌ AUTODECIDE FAILED!")
-                print(f"🎯 Requested model: {target_model}")
-                print(f"🚨 Error: {result.error_message}")
-                print(f"🔍 Error type: {result.error_type}")
-            return
-
-        # Test specific provider
-        engine = AI_engine(verbose=True)
-
-        # Custom message if provided
-        custom_message = None
-        if len(sys.argv) > 2:
-            custom_message = " ".join(sys.argv[2:])
-
-        print(f"🎯 Testing specific provider: {provider_name}")
-        print("-" * 50)
-
-        result = engine.test_specific_provider(provider_name, custom_message)
-
-        if result.success:
-            print(f"✅ {provider_name.upper()} SUCCESS!")
-            print(f"💬 Response: {result.content}")
-            print(f"⏱️ Response time: {result.response_time:.2f}s")
-        else:
-            print(f"❌ {provider_name.upper()} FAILED!")
-            print(f"🚨 Error: {result.error_message}")
-            print(f"🔍 Error type: {result.error_type}")
-
-        return
-
-    # Default behavior - test with priority selection
-    engine = AI_engine(verbose=True)
-
-    print("🧪 Testing AI Engine v3.0...")
-
-    messages = [
-        {"role": "user", "content": "Hello! Please respond with a short greeting."}
-    ]
-
-    result = engine.chat_completion(messages)
-
-    if result.success:
-        print(f"✅ Success! Response: {result.content}")
-        print(f"🏃‍♂️ Provider used: {result.provider_used}")
-        print(f"⏱️ Response time: {result.response_time:.2f}s")
-    else:
-        print(f"❌ Failed: {result.error_message}")
-
-    # Show status
-    status = engine.get_status()
-    print("\n📊 Engine Status:")
-    print(f"Available providers: {status['available_providers']}/{status['total_providers']}")
-    print(f"Top providers: {', '.join(status['available_provider_list'])}")
-
-    # Show usage help
-    print("\n💡 Usage:")
-    print("  python ai_engine.py                    # Test with priority selection")
-    print("  python ai_engine.py <provider>         # Test specific provider")
-    print("  python ai_engine.py <provider> <msg>   # Test with custom message")
-    print("  python ai_engine.py list               # List all providers")
-    print("  python ai_engine.py status             # Show engine status")
-    print("  python ai_engine.py keys               # Show key usage for all providers")
-    print("  python ai_engine.py keys <provider>    # Show detailed key usage for provider")
-    print("  python ai_engine.py stress             # Run stress test")
-    print("  python ai_engine.py server             # Start FastAPI web server")
 
 if __name__ == "__main__":
     main()

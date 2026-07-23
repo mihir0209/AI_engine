@@ -208,28 +208,33 @@ ChatCompletion(id, object, model, choices, usage)  ← SDK wraps result
 ```
 ai_engine/              # SDK package (PyPI: ai-synapse)
 ├── __init__.py         # from ai_engine import OpenAI
-├── openai.py           # OpenAI class — drop-in replacement
-├── anthropic.py        # Anthropic placeholder
+├── openai.py           # OpenAI, AsyncOpenAI — drop-in replacements
+├── anthropic.py        # Anthropic, AsyncAnthropic — drop-in replacements
 ├── _engine.py          # Shared engine singleton + config
 ├── _exceptions.py      # Error hierarchy
-├── _types.py           # (unused, types in types/)
 ├── config.json         # Provider priorities
 ├── resources/
-│   ├── chat.py         # client.chat.completions.create()
-│   └── models.py       # client.models.list(), retrieve()
+│   ├── chat.py         # Completions, AsyncCompletions
+│   └── models.py       # Models, AsyncModels
 └── types/
     └── __init__.py     # ChatCompletion, Model, etc.
 
 core/                   # Engine modules (imported by SDK)
-├── ai_engine.py        # AI_engine class (2044 lines)
-├── provider_requests.py # HTTP request methods (454 lines)
-├── stress_test.py      # Stress testing (313 lines)
-├── config.py           # Provider configs (29 providers)
-├── config_sync.py      # CDN config sync
+├── ai_engine.py        # AI_engine class
+├── cli.py              # CLI interface (extracted from ai_engine.py)
+├── provider_requests.py # HTTP request methods (OpenAI, Anthropic, Gemini, Bedrock, Vertex AI, etc.)
+├── config.py           # Provider configs (29 providers, 12 formats)
+├── config_sync.py      # CDN config sync with caching
+├── infrastructure.py   # Circuit breakers, retry logic, health checks
 ├── capabilities.py     # Vision/tool detection
 ├── health_monitor.py   # Provider health tracking
 ├── rate_limit_manager.py # Rate limiting
 ├── model_cache.py      # Model cache with TTL
 ├── latency_tracker.py  # Latency tracking
 └── usage_tracker.py    # Usage tracking
+
+monitoring/             # Observability configs
+├── grafana/            # Grafana dashboards
+└── prometheus-alerts.yml # Alerting rules
+```
 ```
