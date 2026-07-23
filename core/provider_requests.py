@@ -205,7 +205,7 @@ class ProviderRequestMixin:
             payload["system"] = [{"text": system_prompt}]
 
         # AWS Signature V4 signing
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         date_stamp = now.strftime("%Y%m%d")
         amz_date = now.strftime("%Y%m%dT%H%M%SZ")
 
@@ -323,6 +323,25 @@ class ProviderRequestMixin:
         timeout = config.get("timeout", 60)
 
         try:
+            try:
+                from core.http_client import stream_sse
+                for data_str in stream_sse(endpoint, headers=headers, json_body=payload, timeout=timeout):
+                    if data_str.strip() == '[DONE]':
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data.get('choices', [{}])[0].get('delta', {})
+                        content = delta.get('content')
+                        if content:
+                            yield {'content': content}
+                    except json.JSONDecodeError:
+                        continue
+                yield {'done': True}
+                return
+            except Exception:
+                # Fall back to direct requests streaming
+                pass
+
             resp = _requests.post(endpoint, json=payload, headers=headers, timeout=timeout, stream=True)
 
             if resp.status_code != 200:

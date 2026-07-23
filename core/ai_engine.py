@@ -20,10 +20,9 @@ try:
     from core.rate_limit_manager import rate_limit_manager
     from core.usage_tracker import usage_tracker
     from core.provider_requests import ProviderRequestMixin, RequestResult
+    from core.streaming import StreamingMixin
     from core.provider_reliability import (
-        should_retry_provider,
         backoff_tracker,
-        get_fallback_chain,
     )
     from core.stress_test import StressTestMixin
 except ImportError:
@@ -35,10 +34,9 @@ except ImportError:
         from core.rate_limit_manager import rate_limit_manager
         from core.usage_tracker import usage_tracker
         from core.provider_requests import ProviderRequestMixin, RequestResult
+        from core.streaming import StreamingMixin
         from core.provider_reliability import (
-            should_retry_provider,
             backoff_tracker,
-            get_fallback_chain,
         )
         from core.stress_test import StressTestMixin
     except ImportError as e:
@@ -73,7 +71,7 @@ _CHAT_ROUTING_KWARGS = frozenset({"provider", "force_provider", "use_cache", "pr
 _ENGINE_MODE = os.getenv("AI_ENGINE_MODE", "all").lower()
 
 
-class AI_engine(ProviderRequestMixin, StressTestMixin):
+class AI_engine(ProviderRequestMixin, StressTestMixin, StreamingMixin):
     """
     AI Engine v3.0 - Multi-provider AI gateway with intelligent routing
 
@@ -1632,96 +1630,6 @@ class AI_engine(ProviderRequestMixin, StressTestMixin):
             error_message=f"All {len(available_providers)} providers failed. Last errors: {error_summary}",
             error_type="all_failed"
         )
-
-    def chat_completion_stream(self, messages: List[Dict[str, str]], model: str = None, autodecide: bool = True, **kwargs):
-        """
-        Streaming chat completion method - yields chunks as they arrive.
-        Supports provider-specific routing with format: provider_name/model_name.
-
-        Yields:
-            dict: {'content': str, 'done': bool} or {'error': str, 'done': True}
-        """
-        preferred_provider = kwargs.get('preferred_provider')
-
-        # Parse provider/model format
-        if model and '/' in model:
-            provider_part, model_part = model.split('/', 1)
-            if provider_part in self.providers:
-                preferred_provider = provider_part
-                model = model_part
-
-        # Get available providers
-        available_providers = self._get_available_providers(preferred_provider)
-
-        if not available_providers:
-            yield {'error': 'No available providers', 'done': True}
-            return
-
-        # Try providers until one streams successfully, respecting fallback chains
-        available_set = {name for name, _ in available_providers}
-        for provider_name, provider_config in available_providers:
-            format_type = provider_config.get('format', 'openai')
-
-            # Skip providers that don't support streaming well
-            if format_type not in ('openai', 'ollama'):
-                # Check fallback chain for a streaming-capable provider
-                chain = get_fallback_chain(provider_name)
-                fallback = chain.next(provider_name, available_set)
-                if fallback and fallback in dict(available_providers):
-                    if self.verbose:
-                        verbose_print(f"🔀 Fallback from {provider_name} (non-streaming) → {fallback}", self.verbose)
-                    provider_name = fallback
-                    provider_config = dict(available_providers)[fallback]
-                    format_type = provider_config.get('format', 'openai')
-                    if format_type not in ('openai', 'ollama'):
-                        continue
-                else:
-                    continue
-
-            try:
-                if self.verbose:
-                    verbose_print(f"🔄 Streaming from {provider_name} ({format_type})...", self.verbose)
-
-                # Use appropriate streaming method based on format
-                if format_type == 'ollama':
-                    stream_gen = self._make_ollama_streaming_request(provider_name, provider_config, messages, model)
-                else:
-                    stream_gen = self._make_streaming_request(provider_name, provider_config, messages, model)
-
-                stream_failed = False
-                for chunk in stream_gen:
-                    if chunk.get('error'):
-                        stream_failed = True
-                        if self.verbose:
-                            verbose_print(f"❌ Streaming error from {provider_name}: {chunk['error']}", self.verbose)
-                        break
-                    if chunk.get('done'):
-                        yield {'done': True, 'provider': provider_name, 'model': model or provider_config.get('model')}
-                        return
-                    yield chunk
-                if stream_failed:
-                    error_message = chunk.get('error', 'streaming failure')
-                    error_type = self._classify_error(error_message, 0, None)
-                    self._handle_provider_failure(provider_name, error_message, 0, None)
-                    if should_retry_provider(error_type):
-                        continue
-                    yield {'error': error_message, 'done': True, 'provider': provider_name}
-                    return
-                return
-            except Exception as e:
-                if self.verbose:
-                    verbose_print(f"❌ {provider_name} streaming exception: {e}", self.verbose)
-                continue
-
-        yield {'error': 'All providers failed for streaming', 'done': True}
-
-
-    # Provider request methods moved to core/provider_requests.py (ProviderRequestMixin)
-
-
-
-    # Stress test methods moved to core/stress_test.py (StressTestMixin)
-
 
     def test_specific_provider(self, provider_name: str, test_message: str = None) -> RequestResult:
         """

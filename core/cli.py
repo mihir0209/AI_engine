@@ -11,7 +11,7 @@ from core.ai_engine import AI_engine
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     """Test the AI Engine with command-line support."""
     engine = None
 

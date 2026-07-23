@@ -291,72 +291,121 @@ class AsyncCompletions:
         )
 
     async def _stream(self, model, messages, temperature=None, max_tokens=None, **kwargs):
-        """Async generator yielding ChatCompletionChunk objects for streaming."""
+        """Async generator yielding ChatCompletionChunk objects for streaming.
+
+        Prefer engine SSE streaming on a worker thread so the event loop stays free.
+        Fall back to non-streaming completion + word-by-word chunks if needed.
+        """
         from ..types import ChatCompletionChunk, ChatCompletionChunkChoice, ChatCompletionChunkDelta
+        from .._exceptions import InternalServerError
 
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
-
         preferred = kwargs.get("preferred_provider") or kwargs.get("provider")
         force = kwargs.get("force_provider", False)
+        actual_model = model if model != "auto" else None
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        sentinel = object()
 
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: self._engine.chat_completion(
-                messages=messages,
-                model=model if model != "auto" else None,
-                preferred_provider=preferred,
-                force_provider=force,
-            ),
-        )
+        def _worker():
+            try:
+                if hasattr(self._engine, "chat_completion_stream"):
+                    for chunk in self._engine.chat_completion_stream(
+                        messages=messages,
+                        model=actual_model,
+                        preferred_provider=preferred,
+                        force_provider=force,
+                    ):
+                        asyncio.run_coroutine_threadsafe(queue.put(("chunk", chunk)), loop).result()
+                    asyncio.run_coroutine_threadsafe(queue.put(("done", None)), loop).result()
+                    return
 
-        if not result or not getattr(result, "success", False):
-            from .._exceptions import InternalServerError
-            error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
-            raise InternalServerError(message=error_msg)
+                result = self._engine.chat_completion(
+                    messages=messages,
+                    model=actual_model,
+                    preferred_provider=preferred,
+                    force_provider=force,
+                )
+                asyncio.run_coroutine_threadsafe(queue.put(("result", result)), loop).result()
+            except Exception as exc:
+                asyncio.run_coroutine_threadsafe(queue.put(("error", exc)), loop).result()
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put((sentinel, None)), loop).result()
 
-        actual_model = result.model_used or model
-        content = getattr(result, "content", None) or ""
+        worker = loop.run_in_executor(None, _worker)
+        got_content = False
 
-        # First chunk: role
-        yield ChatCompletionChunk(
-            id=completion_id,
-            object="chat.completion.chunk",
-            created=created,
-            model=actual_model,
-            choices=[ChatCompletionChunkChoice(
-                index=0,
-                delta=ChatCompletionChunkDelta(role="assistant", content=""),
-                finish_reason=None,
-            )],
-        )
+        while True:
+            kind, payload = await queue.get()
+            if kind is sentinel:
+                break
+            if kind == "error":
+                raise InternalServerError(message=str(payload))
+            if kind == "chunk":
+                if payload.get("error"):
+                    raise InternalServerError(message=payload["error"])
+                if payload.get("done"):
+                    continue
+                content = payload.get("content", "")
+                if content:
+                    got_content = True
+                    yield ChatCompletionChunk(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=payload.get("model") or actual_model or "auto",
+                        choices=[ChatCompletionChunkChoice(
+                            index=0,
+                            delta=ChatCompletionChunkDelta(content=content),
+                            finish_reason=None,
+                        )],
+                    )
+            elif kind == "result":
+                result = payload
+                if not result or not getattr(result, "success", False):
+                    error_msg = getattr(result, "error_message", "Unknown error") if result else "No response"
+                    raise InternalServerError(message=error_msg)
+                model_name = result.model_used or model
+                content = getattr(result, "content", None) or ""
+                yield ChatCompletionChunk(
+                    id=completion_id,
+                    object="chat.completion.chunk",
+                    created=created,
+                    model=model_name,
+                    choices=[ChatCompletionChunkChoice(
+                        index=0,
+                        delta=ChatCompletionChunkDelta(role="assistant", content=""),
+                        finish_reason=None,
+                    )],
+                )
+                words = content.split(" ")
+                for i, word in enumerate(words):
+                    chunk_content = (" " if i > 0 else "") + word + (" " if i < len(words) - 1 else "")
+                    got_content = True
+                    yield ChatCompletionChunk(
+                        id=completion_id,
+                        object="chat.completion.chunk",
+                        created=created,
+                        model=model_name,
+                        choices=[ChatCompletionChunkChoice(
+                            index=0,
+                            delta=ChatCompletionChunkDelta(content=chunk_content),
+                            finish_reason=None,
+                        )],
+                    )
 
-        # Content chunks (word by word)
-        words = content.split(" ")
-        for i, word in enumerate(words):
-            chunk_content = (" " if i > 0 else "") + word + (" " if i < len(words) - 1 else "")
+        await worker
+
+        if got_content:
             yield ChatCompletionChunk(
                 id=completion_id,
                 object="chat.completion.chunk",
                 created=created,
-                model=actual_model,
+                model=actual_model or "auto",
                 choices=[ChatCompletionChunkChoice(
                     index=0,
-                    delta=ChatCompletionChunkDelta(content=chunk_content),
-                    finish_reason=None,
+                    delta=ChatCompletionChunkDelta(),
+                    finish_reason="stop",
                 )],
             )
-
-        # Final chunk
-        yield ChatCompletionChunk(
-            id=completion_id,
-            object="chat.completion.chunk",
-            created=created,
-            model=actual_model,
-            choices=[ChatCompletionChunkChoice(
-                index=0,
-                delta=ChatCompletionChunkDelta(),
-                finish_reason="stop",
-            )],
-        )

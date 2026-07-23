@@ -8,7 +8,9 @@
 | Chat REST + WebSocket | `ai_engine/server/chat_module/` | `chat_module/` → re-exports |
 | Provider config | `core/config.py` | `config.py` → re-exports |
 | Intent routing | `core/intent_classifier.py` | — |
-| CLI server | `python -m ai_engine serve` | `OpenAI().serve()` → packaged `app` |
+| CLI server | `python -m ai_engine serve` / `ai-engine` | `OpenAI().serve()` → packaged `app` |
+| Engine CLI | `python -m core` / `ai-engine-cli` | legacy `python -m core.cli` |
+| Monitoring | `monitoring/` (Prometheus + Grafana) | — |
 | TUI chat / image gen | `core.ai_engine` via `ai_engine/tui/routing_engine.py` | Same engine as server chat |
 | Provider observability | `core/provider_observability.py` | Dashboard consumes normalized snapshots |
 
@@ -222,6 +224,8 @@ ai_engine/              # SDK package (PyPI: ai-synapse)
 core/                   # Engine modules (imported by SDK)
 ├── ai_engine.py        # AI_engine class
 ├── cli.py              # CLI interface (extracted from ai_engine.py)
+├── streaming.py        # StreamingMixin (chat_completion_stream)
+├── http_client.py      # requests/httpx transport helpers
 ├── provider_requests.py # HTTP request methods (OpenAI, Anthropic, Gemini, Bedrock, Vertex AI, etc.)
 ├── config.py           # Provider configs (29 providers, 12 formats)
 ├── config_sync.py      # CDN config sync with caching
