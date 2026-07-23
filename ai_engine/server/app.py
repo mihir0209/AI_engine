@@ -719,14 +719,6 @@ async def delete_model(model_id: str):
         content={"error": {"message": "Model deletion not supported", "type": "not_found_error", "param": "model", "code": "model_not_found"}}
     )
 
-@app.post("/v1/embeddings-old-stub-removed", tags=["OpenAI Compatible"])
-async def _create_embeddings_removed(request: Request):
-    """Old embeddings stub — removed, replaced by proper implementation"""
-    return JSONResponse(
-        status_code=501,
-        content={"error": {"message": "Embeddings not supported by AI Engine", "type": "not_implemented_error", "param": None, "code": "not_implemented"}}
-    )
-
 async def discover_and_cache_models():
     """Discover models from all providers and cache the results"""
     import concurrent.futures
@@ -2216,24 +2208,13 @@ async def embeddings(request: Request):
 
     Request: { model, input, dimensions?, encoding_format? }
     Response: { object: "list", data: [{ object: "embedding", embedding: [...], index }], model, usage }
-    Stub: returns placeholder embedding. Full embedding support requires a dedicated embedding provider.
+
+    Uses remote embeddings when EMBEDDINGS_ENDPOINT + key are set; otherwise
+    deterministic local embeddings for offline / free use.
     """
     try:
         body = await request.json()
-        model = body.get("model", "text-embedding-3-small")
-        input_text = body.get("input", "")
-
-        if not input_text:
-            return JSONResponse(status_code=400, content={"error": {"message": "input is required", "type": "invalid_request_error"}})
-
-        texts = [input_text] if isinstance(input_text, str) else input_text
-        return {
-            "object": "list",
-            "data": [{"object": "embedding", "embedding": [0.0] * 1536, "index": i} for i in range(len(texts))],
-            "model": model,
-            "usage": {"prompt_tokens": sum(len(t.split()) for t in texts), "total_tokens": sum(len(t.split()) for t in texts)}
-        }
-
+        return await _handle_embeddings(body)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": {"message": str(e), "type": "server_error"}})
 
@@ -2291,52 +2272,8 @@ async def videos_generations(request: Request):
 
 async def _handle_image_generation(body: dict):
     """Handle image generation from a body dict. Returns OpenAI-compatible image response."""
-    prompt = body.get("prompt", "")
-    model = body.get("model", "auto")
-    body.get("response_format", "url")
-
-    if not prompt:
-        return JSONResponse(status_code=400, content={"error": {"message": "prompt is required"}})
-
-    from core.capabilities import capability_manager
-    capability_manager.fetch_openrouter_capabilities()
-    image_gen_models = capability_manager.get_models_for_modality("image_gen")
-
-    target_model = None
-    if model and model != "auto" and model != "dall-e-3":
-        for m in image_gen_models:
-            if model.lower() in m.lower():
-                target_model = m
-                break
-    if not target_model and image_gen_models:
-        target_model = image_gen_models[0]
-
-    if not target_model:
-        return JSONResponse(status_code=404, content={"error": {"message": "No image generation model available"}})
-
-    import asyncio
-    import re
-    import base64 as b64
-    from core.ai_engine import AI_engine
-    engine = AI_engine()
-    gen_messages = [{"role": "user", "content": f"Generate an image: {prompt}. Output ONLY the image. No text explanation."}]
-
-    result = await asyncio.to_thread(
-        engine.chat_completion, messages=gen_messages,
-        model=target_model, preferred_provider="openrouter", force_provider=True
-    )
-
-    data = []
-    if result.success and result.content:
-        img_match = re.search(r'!\[.*?\]\((https?://[^\)]+)\)', result.content)
-        if img_match:
-            data.append({"url": img_match.group(1), "revised_prompt": prompt})
-        else:
-            data_match = re.search(r'(data:image/[^;]+;base64,[A-Za-z0-9+/=]+)', result.content)
-            if data_match:
-                data.append({"b64_json": b64.b64encode(b64.b64decode(data_match.group(1).split(",", 1)[1])).decode(), "revised_prompt": prompt})
-
-    return {"created": int(time.time()), "data": data}
+    from .routes.multimodal import handle_image_generation
+    return await handle_image_generation(body)
 
 
 async def _handle_audio_speech(body: dict):
@@ -2382,19 +2319,9 @@ async def _handle_audio_speech(body: dict):
 
 async def _handle_embeddings(body: dict):
     """Handle embeddings from a body dict. Returns OpenAI-compatible embedding response."""
-    model = body.get("model", "text-embedding-3-small")
-    input_text = body.get("input", "")
+    from .routes.multimodal import handle_embeddings
+    return await handle_embeddings(body)
 
-    if not input_text:
-        return JSONResponse(status_code=400, content={"error": {"message": "input is required"}})
-
-    texts = [input_text] if isinstance(input_text, str) else input_text
-    return {
-        "object": "list",
-        "data": [{"object": "embedding", "embedding": [0.0], "index": i} for i in range(len(texts))],
-        "model": model,
-        "usage": {"prompt_tokens": sum(len(t.split()) for t in texts), "total_tokens": sum(len(t.split()) for t in texts)}
-    }
 
 
 # ============================================================

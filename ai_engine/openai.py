@@ -5,6 +5,8 @@ import logging
 from ._engine import get_engine, _resolve_config
 from .resources.chat import Completions
 from .resources.models import Models
+from .resources.embeddings import Embeddings
+from .resources.images import Images
 
 logger = logging.getLogger("ai_engine")
 
@@ -59,6 +61,8 @@ class OpenAI:
         self._engine = get_engine(self._config)
         self._chat = _ChatNamespace(self._engine)
         self._models = Models(self._engine)
+        self._embeddings = Embeddings(self._engine)
+        self._images = Images(self._engine)
 
     @property
     def chat(self) -> _ChatNamespace:
@@ -67,6 +71,14 @@ class OpenAI:
     @property
     def models(self) -> Models:
         return self._models
+
+    @property
+    def embeddings(self) -> Embeddings:
+        return self._embeddings
+
+    @property
+    def images(self) -> Images:
+        return self._images
 
     def config_status(self):
         """Get CDN config sync status."""
@@ -131,10 +143,14 @@ class AsyncOpenAI:
 
     def __init__(self, **kwargs):
         from .resources.models import AsyncModels
+        from .resources.embeddings import AsyncEmbeddings
+        from .resources.images import AsyncImages
         self._config = _resolve_config(**kwargs)
         self._engine = get_engine(self._config)
         self._chat = _AsyncChatNamespace(self._engine)
         self._models = AsyncModels(self._engine)
+        self._embeddings = AsyncEmbeddings(self._engine)
+        self._images = AsyncImages(self._engine)
 
     @property
     def chat(self):
@@ -143,6 +159,14 @@ class AsyncOpenAI:
     @property
     def models(self):
         return self._models
+
+    @property
+    def embeddings(self):
+        return self._embeddings
+
+    @property
+    def images(self):
+        return self._images
 
 
 class _AsyncChatNamespace:

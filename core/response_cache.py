@@ -23,14 +23,11 @@ class ResponseCache:
 
     def _get_cache_key(self, messages: List[Dict], model: str, provider: str = None) -> str:
         """Generate cache key from request"""
-        # Create a normalized representation
         normalized = {
             "messages": [{"role": m.get("role"), "content": m.get("content", "")} for m in messages],
             "model": model,
             "provider": provider
         }
-
-        # Generate hash
         content = json.dumps(normalized, sort_keys=True)
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
@@ -39,7 +36,6 @@ class ResponseCache:
         cache_key = self._get_cache_key(messages, model, provider)
 
         with self._lock:
-            # Check memory cache first
             if cache_key in self.memory_cache:
                 entry = self.memory_cache[cache_key]
                 if time.time() < entry["expires_at"]:
@@ -48,14 +44,12 @@ class ResponseCache:
                 else:
                     del self.memory_cache[cache_key]
 
-            # Check disk cache
             cache_file = self.cache_dir / f"{cache_key}.json"
             if cache_file.exists():
                 try:
                     with open(cache_file, "r") as f:
                         entry = json.load(f)
                     if time.time() < entry["expires_at"]:
-                        # Restore to memory cache
                         self.memory_cache[cache_key] = entry
                         self.stats["hits"] += 1
                         return entry["response"]
@@ -63,6 +57,19 @@ class ResponseCache:
                         cache_file.unlink()
                 except (json.JSONDecodeError, KeyError):
                     cache_file.unlink()
+
+            try:
+                from core.redis_cache import redis_cache
+                remote = redis_cache.get(cache_key)
+                if remote is not None:
+                    self.memory_cache[cache_key] = {
+                        "response": remote,
+                        "expires_at": time.time() + self.default_ttl,
+                    }
+                    self.stats["hits"] += 1
+                    return remote
+            except Exception:
+                pass
 
             self.stats["misses"] += 1
             return None
@@ -88,16 +95,19 @@ class ResponseCache:
         }
 
         with self._lock:
-            # Store in memory
             self.memory_cache[cache_key] = entry
-
-            # Store on disk
             cache_file = self.cache_dir / f"{cache_key}.json"
             try:
                 with open(cache_file, "w") as f:
                     json.dump(entry, f)
             except Exception as e:
                 print(f"Warning: Failed to write cache to disk: {e}")
+
+        try:
+            from core.redis_cache import redis_cache
+            redis_cache.set(cache_key, response, ttl=ttl)
+        except Exception:
+            pass
 
     def invalidate(self, messages: List[Dict], model: str, provider: str = None):
         """Invalidate a specific cache entry"""
@@ -108,6 +118,11 @@ class ResponseCache:
             cache_file = self.cache_dir / f"{cache_key}.json"
             if cache_file.exists():
                 cache_file.unlink()
+        try:
+            from core.redis_cache import redis_cache
+            redis_cache.delete(cache_key)
+        except Exception:
+            pass
 
     def clear(self):
         """Clear all cache"""
@@ -115,86 +130,72 @@ class ResponseCache:
             self.memory_cache.clear()
             for cache_file in self.cache_dir.glob("*.json"):
                 cache_file.unlink()
-            self.stats = {"hits": 0, "misses": 0, "evictions": 0}
+        self.stats = {"hits": 0, "misses": 0, "evictions": 0}
+
+    def get_stats(self) -> Dict:
+        """Get cache statistics"""
+        total = self.stats["hits"] + self.stats["misses"]
+        hit_rate = self.stats["hits"] / total if total > 0 else 0
+        return {
+            **self.stats,
+            "hit_rate": hit_rate,
+            "size": len(self.memory_cache),
+            "disk_entries": len(list(self.cache_dir.glob("*.json")))
+        }
 
     def cleanup_expired(self):
         """Remove expired entries"""
-        current_time = time.time()
-
+        now = time.time()
         with self._lock:
-            # Clean memory cache
             expired_keys = [
-                key for key, entry in self.memory_cache.items()
-                if current_time >= entry["expires_at"]
+                k for k, v in self.memory_cache.items()
+                if now >= v["expires_at"]
             ]
             for key in expired_keys:
                 del self.memory_cache[key]
                 self.stats["evictions"] += 1
 
-            # Clean disk cache
             for cache_file in self.cache_dir.glob("*.json"):
                 try:
                     with open(cache_file, "r") as f:
                         entry = json.load(f)
-                    if current_time >= entry.get("expires_at", 0):
+                    if now >= entry["expires_at"]:
                         cache_file.unlink()
                         self.stats["evictions"] += 1
                 except (json.JSONDecodeError, KeyError):
                     cache_file.unlink()
 
-    def get_stats(self) -> Dict:
-        """Get cache statistics"""
-        total_requests = self.stats["hits"] + self.stats["misses"]
-        hit_rate = self.stats["hits"] / total_requests if total_requests > 0 else 0
-
-        return {
-            "hits": self.stats["hits"],
-            "misses": self.stats["misses"],
-            "evictions": self.stats["evictions"],
-            "hit_rate": round(hit_rate, 4),
-            "memory_entries": len(self.memory_cache),
-            "disk_entries": len(list(self.cache_dir.glob("*.json")))
-        }
-
-    def find_similar(self, messages: List[Dict], threshold: float = 0.7) -> Optional[Dict]:
-        """Find similar cached responses using word overlap similarity"""
-        query_content = " ".join(m.get("content", "") for m in messages).lower()
-
-        # Preprocess: remove common words and normalize
-        stop_words = {'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-                      'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-                      'should', 'may', 'might', 'shall', 'can', 'i', 'you', 'he', 'she',
-                      'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your',
-                      'his', 'its', 'our', 'their', 'this', 'that', 'these', 'those'}
-
-        query_words = set(query_content.split()) - stop_words
-
-        if not query_words:
+    def find_similar(self, messages: List[Dict], model: str = None, threshold: float = 0.9) -> Optional[Dict]:
+        """Find similar cached responses (simple text matching)"""
+        if not messages:
             return None
 
+        query = " ".join(str(m.get("content", "")) for m in messages).lower()
+        query_words = set(query.split())
+
         best_match = None
-        best_score = 0.0
+        best_score = 0
 
         with self._lock:
             for entry in self.memory_cache.values():
                 if time.time() >= entry["expires_at"]:
                     continue
-
-                cached_content = entry["response"].get("content", "").lower()
-                cached_words = set(cached_content.split()) - stop_words
-
-                if not cached_words:
+                if model is not None and entry.get("model") != model:
                     continue
 
-                # Calculate Jaccard similarity
-                intersection = query_words & cached_words
-                union = query_words | cached_words
-
-                if union:
-                    similarity = len(intersection) / len(union)
-
-                    if similarity > best_score and similarity >= threshold:
-                        best_score = similarity
-                        best_match = entry["response"]
+                cached_msgs = entry.get("response", {})
+                # Compare against stored messages in key space is hard; use response content
+                content = str(cached_msgs)
+                words = set(content.lower().split())
+                if not words or not query_words:
+                    continue
+                score = len(query_words & words) / len(query_words | words)
+                if score > best_score and score >= threshold:
+                    best_score = score
+                    best_match = entry["response"]
 
         return best_match
+
+
+# Global instance
+response_cache = ResponseCache()

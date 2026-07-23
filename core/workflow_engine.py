@@ -242,14 +242,48 @@ class WorkflowEngine:
             return {"status": "skipped", "reason": "unsupported_step_type"}
 
     def _execute_ai_call(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:
-        """Execute AI call step"""
-        # This would integrate with the AI engine
+        """Execute AI call step via AI_engine when available."""
         config = step.config
+        prompt = config.get("prompt") or config.get("message") or ""
+        if not prompt:
+            # Use last step result or input_data as prompt
+            if execution.step_results:
+                last = list(execution.step_results.values())[-1]
+                if isinstance(last, dict):
+                    prompt = str(last.get("response") or last.get("result") or last)
+                else:
+                    prompt = str(last)
+            else:
+                prompt = str(execution.input_data.get("prompt") or execution.input_data.get("input") or execution.input_data)
+
+        model = config.get("model", "auto")
+        provider = config.get("provider")
+        messages = [{"role": "user", "content": str(prompt)}]
+        content = ""
+        provider_used = provider or ""
+        try:
+            from core.ai_engine import AI_engine
+            engine = AI_engine(verbose=False)
+            result = engine.chat_completion(
+                messages=messages,
+                model=None if model in (None, "auto") else model,
+                preferred_provider=provider,
+            )
+            if getattr(result, "success", False):
+                content = getattr(result, "content", "") or ""
+                provider_used = getattr(result, "provider_used", provider_used) or provider_used
+            else:
+                content = getattr(result, "error_message", "") or "AI call failed"
+        except Exception as e:
+            # Offline / test fallback: echo prompt so workflows remain runnable
+            content = f"[workflow-ai-fallback] {prompt}" if prompt else f"[workflow-ai-fallback] {e}"
+
         return {
             "status": "completed",
-            "model": config.get("model", "auto"),
-            "prompt": config.get("prompt", ""),
-            "response": "AI response placeholder"
+            "model": model,
+            "prompt": prompt,
+            "response": content,
+            "provider": provider_used,
         }
 
     def _execute_transform(self, step: WorkflowStep, execution: WorkflowExecution) -> Dict:

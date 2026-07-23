@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-engine
+  labels:
+    app: ai-engine
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-engine
+  template:
+    metadata:
+      labels:
+        app: ai-engine
+    spec:
+      containers:
+        - name: ai-engine
+          image: ai-engine:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: AI_ENGINE_MODE
+              value: "live"
+            - name: CDN_CONFIG_URL
+              value: "default"
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ai-engine-secrets
+                  key: redis-url
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-engine
+spec:
+  selector:
+    app: ai-engine
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: ClusterIP
